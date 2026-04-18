@@ -29,31 +29,35 @@
 
 ---
 
-### Phase 1 — Domain + Database ⬜ PENDING
+### Phase 1 — Domain + Database ✅ DONE
 
 | Task | Status | Notes |
 |------|--------|-------|
-| SQLAlchemy models | ⬜ | farms, zones, pumps, valves, sensors, schedules, etc. |
-| Alembic migrations setup | ⬜ | Initial migration |
-| Seed data script | ⬜ | Algaroshy Farm zones, devices, default config |
-| Farm/Zone/Device CRUD | ⬜ | Basic REST endpoints |
-| Event log model | ⬜ | Append-only audit trail |
-| Telemetry table | ⬜ | Time-series point storage |
+| SQLAlchemy models | ✅ Done | 22 models across 16 files (farm, zone, pump, valve, sensor, schedule, command, alarm, cycle, event_log, telemetry, user, 6 AI models) |
+| Alembic migrations setup | ✅ Done | Async env.py, alembic.ini, migration template |
+| Seed data script | ✅ Done | 12 zones, 12 valves, 2 pumps, 2 sources, 15 sensors, 1 admin user |
+| Farm/Zone/Device CRUD | ✅ Done | GET/PATCH for farm, zones, pumps, valves, sensors |
+| Event log model | ✅ Done | Append-only audit trail with AI actor support |
+| Telemetry table | ✅ Done | Time-series points + device state snapshots |
+| Pydantic schemas | ✅ Done | Response/Update schemas for all entities |
+| FastAPI server | ✅ Done | CORS, lifespan, versioned routes (/api/v1) |
+| AI database models | ✅ Done | Suggestions, anomalies, weather cache, advisories, insights, maintenance predictions |
+| Verification | ✅ Done | All endpoints tested and returning correct data |
 
 ---
 
-### Phase 2 — Simulator + Live State ⬜ PENDING
+### Phase 2 — Simulator + Live State ✅ DONE
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Simulator engine | ⬜ | Deterministic tick loop |
-| Simulated zone states | ⬜ | Off → starting → running → stopping → completed |
-| Pump/valve/sensor simulation | ⬜ | Pressure, flow, tank, moisture |
-| Current-state endpoint | ⬜ | `GET /api/v1/state/map` |
-| WebSocket event emitter | ⬜ | zone.state.changed, pump.state.changed, etc. |
-| Command handling | ⬜ | start-zone, stop-zone, set-mode |
-| Fault injection API | ⬜ | Valve stuck, pump fault, no flow, etc. |
-| Scenario runner | ⬜ | Scripted test sequences |
+| Simulator engine | ✅ Done | Deterministic tick loop |
+| Simulated zone states | ✅ Done | Off → starting → running → stopping → completed |
+| Pump/valve/sensor simulation | ✅ Done | Pressure, flow, tank, moisture |
+| Current-state endpoint | ✅ Done | `GET /api/v1/state/map` |
+| WebSocket event emitter | ✅ Done | zone.state.changed, pump.state.changed, etc. |
+| Command handling | ✅ Done | start-zone, stop-zone, set-mode |
+| Fault injection API | ✅ Done | Valve stuck, pump fault, no flow, etc. |
+| Scenario runner | ✅ Done | Scripted test sequences |
 
 ---
 

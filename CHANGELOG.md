@@ -8,7 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Added
+### Added — Phase 1: Domain + Database
+- 🗄️ 22 SQLAlchemy models (farm, zones, pumps, valves, sensors, schedules, commands, alarms, cycles, event_log, telemetry, users, 6 AI models)
+- 🔧 Pydantic schemas for all entities (response + update)
+- 🌐 FastAPI server with CORS, lifespan, versioned routes (`/api/v1`)
+- 📡 CRUD endpoints: farm, zones, pumps, valves, sensors (GET + PATCH)
+- 🏥 Health check endpoint with AI feature toggle status
+- 🗃️ Alembic migration infrastructure (async env.py, config, template)
+- 🌾 12-zone seed script (12 zones, 12 valves, 2 pumps, 2 sources, 15 sensors, 1 admin)
+- 🤖 AI-ready tables: suggestions, anomalies, weather cache, advisories, insights, maintenance predictions
+- 📊 Append-only event log with AI actor support
+- 📈 Telemetry time-series table with device state snapshot cache
 - 🧠 `docs/AI_FEATURES.md` — 10 AI feature specifications
 - AI type definitions in `@algaroshy/contracts` (ai-types.ts)
 - 15+ AI enums: AIFeature, AnomalyType, WeatherCondition, VoiceIntent, etc.
