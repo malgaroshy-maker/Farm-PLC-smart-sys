@@ -1,13 +1,13 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-04-18  
-**Current Phase:** Phase 0 — Contracts & Repo Setup  
+**Current Phase:** Phase 1 — Domain + Database  
 
 ---
 
 ## Phase Progress
 
-### Phase 0 — Contracts & Repo Setup 🔄 IN PROGRESS
+### Phase 0 — Contracts & Repo Setup ✅ DONE
 
 | Task | Status | Notes |
 |------|--------|-------|
@@ -18,10 +18,14 @@
 | CHANGELOG.md | ✅ Done | Version tracking from Phase 0 |
 | CONTRIBUTING.md | ✅ Done | Dev standards and rules |
 | PROJECT_STATUS.md | ✅ Done | This file |
-| Create folder structure | ⬜ Pending | `apps/`, `packages/`, `infra/` |
-| Shared contracts package | ⬜ Pending | TypeScript + Python enums/schemas |
-| Git init + first commit | ⬜ Pending | |
-| Basic CI config | ⬜ Pending | GitHub Actions or equivalent |
+| Create folder structure | ✅ Done | `apps/`, `packages/`, `infra/` created |
+| Shared contracts package | ✅ Done | 30+ enums, 25+ types, 50 alarm codes, 12-zone seed data |
+| pnpm + Turborepo monorepo | ✅ Done | 7 workspace packages linked |
+| Vite + React + Tailwind v4 web scaffold | ✅ Done | Design system tokens configured |
+| FastAPI + SQLAlchemy backend scaffold | ✅ Done | pyproject.toml + requirements.txt |
+| Simulator scaffold | ✅ Done | pyproject.toml + requirements.txt |
+| Git init + first commit | ✅ Done | Commit `a56baa3` — 63 files, 8K lines |
+| Push to GitHub | ✅ Done | `malgaroshy-maker/Farm-PLC-smart-sys` |
 
 ---
 
@@ -125,12 +129,12 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Exact number of farm zones | ❓ Pending field survey | Need final zone count for seed data |
+| Exact number of farm zones | ✅ Resolved | 12 zones from farm layout SVG |
 | Valve sizes and pipe diameters | ❓ Pending site survey | Affects pressure/flow thresholds |
 | Pump specifications (HP, head, flow) | ❓ Pending | Required for accurate simulation |
 | PLC model selection (Siemens S7-1200/1500?) | ❓ Pending | Affects adapter protocol |
 | Hosting decision (local-only vs cloud?) | ❓ User decision | Mode B vs Mode C |
-| Package manager (npm vs pnpm) | ❓ User preference | Monorepo tooling |
+| Package manager (npm vs pnpm) | ✅ Resolved | pnpm 9.15 + Turborepo 2.9 |
 
 ---
 
