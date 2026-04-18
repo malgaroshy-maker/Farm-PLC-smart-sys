@@ -1,0 +1,12 @@
+{
+  "name": "@algaroshy/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'Mobile app setup pending — use: npx create-expo-app'",
+    "build": "echo 'No build step yet'"
+  },
+  "dependencies": {
+    "@algaroshy/contracts": "workspace:*"
+  }
+}
