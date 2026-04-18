@@ -2,7 +2,7 @@
 
 **Farm:** Algaroshy Farm  
 **Originator:** Mahamed Algaroshy — محمد عادل الجروشي  
-**Status:** Phase 0 — Project Initialization  
+**Status:** Phase 1 — Domain + Database  
 
 ---
 
@@ -20,6 +20,7 @@ A PLC-driven, sensor-backed, remotely observable and controllable smart irrigati
 - 📈 **Reports** — Water usage, pump runtime, alarm history, irrigation logs
 - 🔒 **Role-Based Access** — Owner/Admin, Operator, Viewer roles
 - 🏭 **Local-First** — PLC handles safety; operates without internet dependency
+- 🧠 **AI-Powered** — 10 smart AI features (see below)
 
 ---
 
@@ -28,8 +29,9 @@ A PLC-driven, sensor-backed, remotely observable and controllable smart irrigati
 | Layer | Technology |
 |-------|-----------|
 | **Backend** | Python 3.11+, FastAPI, SQLAlchemy, Alembic, Pydantic |
+| **AI / ML** | Google Gemini 2.5 API, NumPy, APScheduler |
 | **Database** | SQLite (dev/sim) → PostgreSQL (staging/prod) |
-| **Web App** | React 18, Vite, TypeScript, Tailwind CSS, Zustand, React Query |
+| **Web App** | React 19, Vite 8, TypeScript, Tailwind CSS v4, Zustand, React Query |
 | **Mobile App** | React Native + Expo + TypeScript |
 | **Simulator** | Python engine (shared domain models, deterministic tick loop) |
 | **Real-Time** | WebSocket (apps), MQTT (edge/PLC integration) |
@@ -125,14 +127,30 @@ npx expo start
 
 | Phase | Name | Status |
 |-------|------|--------|
-| **0** | Contracts & Repo Setup | 🔄 In Progress |
+| **0** | Contracts & Repo Setup | ✅ Done |
 | **1** | Domain + Database | ⬜ Pending |
 | **2** | Simulator + Live State | ⬜ Pending |
 | **3** | Web MVP | ⬜ Pending |
 | **4** | Android MVP | ⬜ Pending |
 | **5** | Schedules + Reports | ⬜ Pending |
 | **6** | Alarm Completion | ⬜ Pending |
-| **7** | PLC Adapter | ⬜ Pending |
+| **7** | 🧠 AI Integration | ⬜ Pending |
+| **8** | PLC Adapter | ⬜ Pending |
+
+### 🧠 AI Features
+
+| # | Feature | Status |
+|---|---------|--------|
+| 1 | AI Alarm Assistant (bilingual AR/EN) | ⬜ |
+| 2 | Smart Irrigation Scheduling | ⬜ |
+| 3 | Predictive Maintenance | ⬜ |
+| 4 | Anomaly Detection (leaks, faults) | ⬜ |
+| 5 | Weather-Aware Advisor | ⬜ |
+| 6 | Water Usage Optimizer | ⬜ |
+| 7 | Daily AI Insights Report | ⬜ |
+| 8 | Crop Health Vision (future) | ⬜ |
+| 9 | Arabic Voice Control (future) | ⬜ |
+| 10 | Seasonal Learning Model (future) | ⬜ |
 
 ---
 
@@ -164,6 +182,7 @@ All detailed engineering documents are in [`/docs`](./docs/):
 | [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) | Build phases and folder structure |
 | [Hardware BOM](docs/HARDWARE_BOM_DRAFT.md) | Preliminary hardware list |
 | [Test Plan](docs/TEST_PLAN.md) | Acceptance tests and commissioning |
+| [AI Features](docs/AI_FEATURES.md) | 🧠 10 AI feature specifications |
 | [AI Agent Runbook](docs/AI_AGENT_RUNBOOK.md) | Agent coding rules and prompts |
 
 ---
@@ -175,6 +194,8 @@ All detailed engineering documents are in [`/docs`](./docs/):
 3. **Arabic-first bilingual** — All UI and alarm messages in Arabic and English
 4. **Event-sourced audit** — All control changes produce immutable event logs
 5. **Shared contracts** — Same schemas across backend, simulator, web, and mobile
+6. **AI suggests, humans decide** — AI never directly controls equipment; operator/PLC has final authority
+7. **Offline-resilient AI** — All AI features degrade gracefully with local fallbacks
 
 ---
 

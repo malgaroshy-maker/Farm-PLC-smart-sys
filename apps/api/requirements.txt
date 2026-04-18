@@ -12,6 +12,12 @@ websockets>=15.0
 httpx>=0.28.0
 python-multipart>=0.0.20
 
+# AI / ML dependencies
+google-genai>=1.14.0
+numpy>=2.2.0
+apscheduler>=3.11.0
+jinja2>=3.1.6
+
 # Dev
 pytest>=8.3.0
 pytest-asyncio>=0.25.0

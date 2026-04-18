@@ -2,7 +2,7 @@
  * Algaroshy Farm — Shared Enums
  *
  * Central enum definitions used across backend, simulator, web, and mobile.
- * Derived from PRD.md, DOMAIN_MODEL.md, ALARM_MATRIX.md, and PLC_CONTROL_LOGIC.md.
+ * Derived from PRD.md, DOMAIN_MODEL.md, ALARM_MATRIX.md, PLC_CONTROL_LOGIC.md, and AI_FEATURES.md.
  */
 
 // ─── System ─────────────────────────────────────────────
@@ -173,7 +173,12 @@ export type EventType =
   | "alarm.reset"
   | "command.updated"
   | "telemetry.stale"
-  | "system.mode.changed";
+  | "system.mode.changed"
+  | "ai.suggestion.new"
+  | "ai.anomaly.detected"
+  | "ai.weather.advisory"
+  | "ai.insight.ready"
+  | "ai.maintenance.alert";
 
 // ─── Users & Roles (PRD.md §6) ─────────────────────────
 
@@ -181,7 +186,7 @@ export type EventType =
 export type UserRole = "owner_admin" | "operator" | "viewer";
 
 /** Actor type for event sourcing */
-export type ActorType = "user" | "system" | "scheduler" | "plc";
+export type ActorType = "user" | "system" | "scheduler" | "plc" | "ai";
 
 // ─── Reports ────────────────────────────────────────────
 
@@ -192,3 +197,101 @@ export type ReportFormat = "csv" | "xlsx" | "pdf";
 
 /** Notification channel */
 export type NotificationChannel = "push" | "web" | "email" | "sms";
+
+// ─── AI Features (AI_FEATURES.md) ───────────────────────
+
+/** AI feature module identifier */
+export type AIFeature =
+  | "alarm_assistant"
+  | "smart_scheduling"
+  | "predictive_maintenance"
+  | "anomaly_detection"
+  | "weather_advisor"
+  | "water_optimizer"
+  | "daily_insights"
+  | "crop_vision"
+  | "voice_control"
+  | "seasonal_learning";
+
+/** AI service availability mode */
+export type AIServiceMode = "online" | "offline_fallback" | "disabled";
+
+/** AI suggestion status lifecycle */
+export type AISuggestionStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "expired"
+  | "auto_applied";
+
+/** AI suggestion priority */
+export type AISuggestionPriority = "low" | "medium" | "high" | "urgent";
+
+/** Anomaly type detected by AI (AI_FEATURES.md §4) */
+export type AnomalyType =
+  | "slow_leak"
+  | "pipe_burst"
+  | "sensor_stuck"
+  | "phantom_consumption"
+  | "unusual_pattern"
+  | "pressure_anomaly"
+  | "flow_anomaly"
+  | "consumption_anomaly";
+
+/** Anomaly severity */
+export type AnomalySeverity = "info" | "warning" | "critical";
+
+/** Weather condition category (AI_FEATURES.md §5) */
+export type WeatherCondition =
+  | "clear"
+  | "cloudy"
+  | "rain_light"
+  | "rain_heavy"
+  | "thunderstorm"
+  | "wind_strong"
+  | "heatwave"
+  | "frost_risk"
+  | "high_humidity"
+  | "sandstorm";
+
+/** Weather advisory action */
+export type WeatherAction =
+  | "skip_irrigation"
+  | "extend_duration"
+  | "reduce_duration"
+  | "delay_irrigation"
+  | "emergency_protect"
+  | "no_action";
+
+/** Equipment health score band (AI_FEATURES.md §3) */
+export type EquipmentHealth =
+  | "excellent"   // 80-100
+  | "good"        // 60-79
+  | "fair"        // 40-59
+  | "poor"        // 20-39
+  | "critical";   // 0-19
+
+/** AI insight/report type (AI_FEATURES.md §7) */
+export type InsightType =
+  | "daily_summary"
+  | "weekly_summary"
+  | "water_efficiency"
+  | "maintenance_advisory"
+  | "scheduling_optimization"
+  | "anomaly_summary";
+
+/** AI insight delivery channel */
+export type InsightDelivery = "dashboard" | "push" | "email";
+
+/** Voice command intent (AI_FEATURES.md §9) */
+export type VoiceIntent =
+  | "start_zone"
+  | "stop_zone"
+  | "stop_all"
+  | "query_status"
+  | "query_report"
+  | "set_mode"
+  | "unknown";
+
+/** Supported AI language */
+export type AILanguage = "ar" | "en";

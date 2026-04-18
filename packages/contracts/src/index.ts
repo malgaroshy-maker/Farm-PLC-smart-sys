@@ -11,6 +11,9 @@ export * from "./enums.js";
 // Type interfaces
 export * from "./types.js";
 
+// AI feature types
+export * from "./ai-types.js";
+
 // Alarm definitions
 export { ALARM_DEFINITIONS } from "./alarms.js";
 export type { AlarmDefinition } from "./alarms.js";

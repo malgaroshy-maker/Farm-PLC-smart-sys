@@ -114,7 +114,26 @@
 
 ---
 
-### Phase 7 — PLC Adapter ⬜ PENDING
+### Phase 7 — AI Integration 🧠 ⬜ PENDING
+
+| Task | Status | Notes |
+|------|--------|-------|
+| AI service layer + Gemini SDK | ⬜ | google-genai, config, fallback |
+| AI Alarm Assistant (bilingual) | ⬜ | RAG over alarm docs + live context |
+| Weather API integration | ⬜ | OpenWeatherMap, 3h fetch cycle |
+| Weather-Aware Advisor | ⬜ | Skip/extend/delay based on forecast |
+| Anomaly Detection engine | ⬜ | Z-score, sliding window, leak detection |
+| Smart Scheduling optimizer | ⬜ | Multi-signal AI schedule suggestions |
+| Predictive Maintenance | ⬜ | Equipment health scores, trend analysis |
+| Water Usage Optimizer | ⬜ | Zone grouping, energy savings |
+| Daily AI Insights Report | ⬜ | Morning briefing, bilingual |
+| Crop Health Vision | ⬜ | Gemini Vision API (future — needs camera) |
+| Arabic Voice Control | ⬜ | Speech-to-text + intent parsing (future) |
+| Seasonal Learning Model | ⬜ | Multi-year optimization (needs data) |
+
+---
+
+### Phase 8 — PLC Adapter ⬜ PENDING
 
 | Task | Status | Notes |
 |------|--------|-------|

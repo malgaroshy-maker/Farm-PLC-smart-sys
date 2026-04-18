@@ -1,7 +1,7 @@
 [project]
 name = "algaroshy-api"
 version = "0.1.0"
-description = "Algaroshy Farm Smart Irrigation System — Backend API"
+description = "Algaroshy Farm Smart Irrigation System — Backend API with AI"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.136.0",
@@ -16,6 +16,11 @@ dependencies = [
     "websockets>=15.0",
     "httpx>=0.28.0",
     "python-multipart>=0.0.20",
+    # AI / ML dependencies
+    "google-genai>=1.14.0",
+    "numpy>=2.2.0",
+    "apscheduler>=3.11.0",
+    "jinja2>=3.1.6",
 ]
 
 [project.optional-dependencies]
