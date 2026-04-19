@@ -1,0 +1,13 @@
+@echo off
+echo Starting Farm-PLC Services...
+
+echo [1/3] Starting API Backend...
+start "Farm-PLC API" cmd /k "cd apps\api & if exist .venv\Scripts\activate call .venv\Scripts\activate & uvicorn app.main:app --reload --port 8000"
+
+echo [2/3] Starting Simulator Engine...
+start "Farm-PLC Simulator" cmd /k "cd apps\simulator & if exist .venv\Scripts\activate (call .venv\Scripts\activate) else (if exist ..\api\.venv\Scripts\activate call ..\api\.venv\Scripts\activate) & python -m src.main"
+
+echo [3/3] Starting Web Frontend...
+start "Farm-PLC Web Frontend" cmd /k "pnpm --filter web run dev"
+
+echo All services launched in separate windows!

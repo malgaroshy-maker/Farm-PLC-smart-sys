@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-04-18  
-**Current Phase:** Phase 1 — Domain + Database  
+**Current Phase:** Phase 3 — Web MVP  
 
 ---
 
@@ -61,18 +61,18 @@
 
 ---
 
-### Phase 3 — Web MVP ⬜ PENDING
+### Phase 3 — Web MVP ✅ DONE
 
 | Task | Status | Notes |
 |------|--------|-------|
-| React + Vite + TS setup | ⬜ | |
-| Login page | ⬜ | Auth stub + role-based |
-| Main dashboard | ⬜ | Status header, alarm banner, map, cards |
-| Live farm map (SVG) | ⬜ | Zone polygons, animated pipelines, device markers |
-| Zone detail drawer | ⬜ | State, pressure, flow, moisture, controls |
-| Alarm center | ⬜ | Active/history, ack/reset, severity filter |
-| Pump/source cards | ⬜ | Status, run feedback, fault |
-| Stale data indicators | ⬜ | Visual freshness badges |
+| React + Vite + TS setup | ✅ Done | Included Lucide & Recharts |
+| Login page | ✅ Done | Auth stub (Mahamed97/Admin1234) |
+| Main dashboard | ✅ Done | Status header, alarm banner, KPI cards |
+| Live farm map (SVG) | ✅ Done | CSS Grid-based abstract topology |
+| Zone detail drawer | ✅ Done | State, gauge charts, Start/Stop overrides |
+| Alarm center | ✅ Done | Data grid, Ack/Reset actions, severity tabs |
+| Pump/source cards | ✅ Done | Integrated in Map and KPI |
+| WebSocket & REST Integration | ✅ Done | `useFarmConnector` hook connected to engine |
 
 ---
 
