@@ -12,9 +12,9 @@ interface KPICardProps {
 /** Compact KPI tile. Logical (start/end) spacing so it mirrors correctly in RTL. */
 export default function KPICard({ title, value, unit, icon, color = '#849396' }: KPICardProps) {
   return (
-    <div className="bg-[#1c1b1b] border border-[#353534] rounded-xl px-4 py-3 flex items-center gap-3 relative overflow-hidden min-w-0">
+    <div className="panel px-4 py-3 flex items-center gap-3 relative overflow-hidden min-w-0">
       <div className="absolute inset-y-0 start-0 w-1 opacity-70" style={{ backgroundColor: color }} />
-      <div className="p-2 rounded-lg bg-[#0e0e0e] border border-[#353534] shrink-0" style={{ color }}>
+      <div className="p-2 rounded-lg bg-black/30 border border-white/5 shrink-0" style={{ color }}>
         {icon}
       </div>
       <div className="min-w-0">

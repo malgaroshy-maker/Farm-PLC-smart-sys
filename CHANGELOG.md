@@ -8,6 +8,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### UI round 2 — map realism, animation, dashboard, styling (2026-11-18)
+**Map**
+- About 3,200 individual tree sprites, drawn on a canvas layer at real row spacing and row direction for each crop (pomegranate, olive, trellis grape, peach/apricot/plum rows). Fruit follows the real season: each crop has a fruiting and a green sprite, chosen by the farm-local month. Dry zones yellow tree by tree.
+- Irrigating zones show damp soil spreading under each tree, expanding cyan rings and drip sparkles.
+- Camera fly-to when a zone is selected, and auto-focus on a new S2/S3 alarm. The rest of the farm dims, and a "back to farm" button appears.
+- Glass label chips with a live badge (moisture, flow + time left, or the alarm code) and a pointer tooltip. A pulsing severity ring marks an alarmed zone, and faulted equipment glows.
+- Life on the farm: a tractor working a track, birds crossing now and then, and a worker who walks the tracks to the valve of an unacknowledged zone alarm and stays there until it is handled.
+- Fix: valve markers on the map and in the zone panel now show the real valve state. The API's live valve state has no `zone_id`, so the old lookup never matched.
+
+**Dashboard & panels**
+- Map + side column: tank gauge with a wave, pumps, the top active alarms, and trends (tank 24 h, flow & pressure 1 h, water used today by zone). Phones get a status card first.
+- New `GET /api/v1/telemetry/water-today`: m³ per zone since farm-local midnight, integrated from flow telemetry (with test).
+- Zone panel redesigned in the order status → controls → history → crop & hardware. Starting a zone uses a duration picker (preset chips 15/30/45/60, a slider up to the zone's max runtime, default = the zone's usual duration) with a confirm step. The chosen duration is sent as `payload.duration_min`.
+- Header: alarm-chime mute and reduce-motion toggles, remembered per viewer. Reduce motion also follows the OS setting and turns off the farm-life and water animations. A short WebAudio chime plays on new S2/S3 alarms.
+
+**Style & assets**
+- Duotone line icon set (navigation, equipment, crops) replaces the generic icons.
+- Glass panels across all pages.
+- New photoreal art, generated through the ChatGPT/Codex subscription: crop detail images in the zone panel, pump art on the Equipment page, a golden-hour login aerial, and calm empty-state images for alarms and events.
+
 ### Start script (2026-11-18)
 - New one-window launcher (`scripts/start.mjs`, wrapped by `run.bat` / `run.sh`). It starts the API, simulator and web app with tagged logs, waits until live data flows, then opens the browser.
 - First run sets itself up: `.env` with generated secrets (admin login printed once), Python venv and requirements (reinstalled when they change), `pnpm install`, database migration and seed.

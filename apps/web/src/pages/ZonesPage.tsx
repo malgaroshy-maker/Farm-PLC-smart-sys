@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { LayoutGrid } from 'lucide-react';
+import { ZonesIcon } from '../components/icons/FarmIcons';
+import { CROP_ICON } from '../components/icons/cropIcon';
 import type { Zone, ZoneLiveState } from '@algaroshy/contracts';
 import { apiFetch } from '../lib/api';
 import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
@@ -59,7 +60,7 @@ export default function ZonesPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <LayoutGrid className="text-[#00e5ff]" /> {t('zones.title')}
+            <ZonesIcon size={24} className="text-[#00e5ff]" /> {t('zones.title')}
           </h1>
           <p className="text-sm text-[#849396] mt-1">{t('zones.subtitle')}</p>
         </div>
@@ -87,10 +88,11 @@ export default function ZonesPage() {
             <button
               key={z.id}
               onClick={() => setSelected(z.id)}
-              className="text-start bg-[#1c1b1b] border border-[#353534] hover:border-[#849396] rounded-xl p-4 space-y-3 transition-colors"
+              className="panel text-start hover:border-white/25 p-4 space-y-3 transition-colors"
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <CropBadge crop={z.crop_type} color={color} />
+                <div className="min-w-0 flex-1">
                   <div className="font-bold text-lg truncate">{pickName(lang, z.name, z.name_ar)}</div>
                   <div className="text-xs text-[#849396]">
                     {t(`crop.${z.crop_type}` as MsgKey)} · <span dir="ltr">{fmtNum(z.area_ha, 2)} ha</span>
@@ -151,5 +153,14 @@ function Metric({ label, value, unit }: { label: string; value: string; unit?: s
         {value} {unit && <span className="text-[10px] text-[#849396]">{unit}</span>}
       </div>
     </div>
+  );
+}
+
+function CropBadge({ crop, color }: { crop: string; color: string }) {
+  const Icon = CROP_ICON[crop as keyof typeof CROP_ICON] ?? CROP_ICON.pomegranate;
+  return (
+    <span className="p-1.5 rounded-lg bg-white/5 shrink-0" style={{ color }}>
+      <Icon size={24} />
+    </span>
   );
 }

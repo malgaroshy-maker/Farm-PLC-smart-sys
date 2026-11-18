@@ -16,6 +16,8 @@ import type {
 } from '@algaroshy/contracts';
 import { ApiError, apiFetch, wsUrl } from '../lib/api';
 import { upsertAlarm } from '../lib/alarms';
+import { usePrefs } from '../lib/prefs';
+import { playAlarmChime } from '../lib/sound';
 
 export type LinkStatus = 'idle' | 'connecting' | 'live' | 'polling' | 'offline';
 
@@ -28,6 +30,9 @@ interface FarmStore {
   link: LinkStatus;
   commands: Record<string, Command>;
   scenario: ScenarioRun | null;
+  /** latest NEW major/critical alarm — the map flies to it */
+  focus: { alarmId: string; zoneId: string | null; deviceId: string | null; at: number } | null;
+  clearFocus: () => void;
   connect: (token: string) => void;
   disconnect: () => void;
   sendCommand: (req: CommandRequest) => Promise<CommandOutcome>;
@@ -42,6 +47,9 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let backoff = 1000;
 let wanted: string | null = null; // token we should be connected with
+// alarm ids already known — only alarms raised after we connected chime / fly-to
+const seenAlarms = new Set<string>();
+let primed = false;
 
 export const useFarmStore = create<FarmStore>((set, get) => {
   const stopPolling = () => {
@@ -52,6 +60,10 @@ export const useFarmStore = create<FarmStore>((set, get) => {
   const pollOnce = async () => {
     try {
       const state = await apiFetch<FarmMapState>('/api/v1/state/map');
+      if (!primed) {
+        state.active_alarms.forEach((al) => seenAlarms.add(al.id));
+        primed = true;
+      }
       set({ state, link: get().link === 'live' ? 'live' : 'polling' });
     } catch {
       set({ link: 'offline' });
@@ -66,15 +78,31 @@ export const useFarmStore = create<FarmStore>((set, get) => {
 
   const handleEvent = (evt: RealtimeEvent) => {
     switch (evt.type) {
-      case 'state.snapshot':
-        set({ state: evt.payload as FarmMapState });
+      case 'state.snapshot': {
+        const snap = evt.payload as FarmMapState;
+        if (!primed) {
+          snap.active_alarms.forEach((a) => seenAlarms.add(a.id));
+          primed = true;
+        }
+        set({ state: snap });
         break;
+      }
       case 'command.updated': {
         const cmd = evt.payload as Command;
         set({ commands: { ...get().commands, [cmd.id]: cmd } });
         break;
       }
-      case 'alarm.active':
+      case 'alarm.active': {
+        const a = evt.payload as Alarm;
+        if (primed && !seenAlarms.has(a.id) && (a.severity === 'S2' || a.severity === 'S3') && a.condition_active) {
+          if (!usePrefs.getState().muted) playAlarmChime(a.severity);
+          set({ focus: { alarmId: a.id, zoneId: a.zone_id, deviceId: a.device_id, at: Date.now() } });
+        }
+        seenAlarms.add(a.id);
+        const s = get().state;
+        if (s) set({ state: { ...s, active_alarms: upsertAlarm(s.active_alarms, a) } });
+        break;
+      }
       case 'alarm.updated':
       case 'alarm.acknowledged':
       case 'alarm.cleared':
@@ -129,6 +157,8 @@ export const useFarmStore = create<FarmStore>((set, get) => {
     link: 'idle',
     commands: {},
     scenario: null,
+    focus: null,
+    clearFocus: () => set({ focus: null }),
 
     connect(token) {
       if (wanted === token && socket) return;
@@ -144,7 +174,9 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       stopPolling();
       socket?.close();
       socket = null;
-      set({ link: 'idle', state: null, commands: {}, scenario: null });
+      primed = false;
+      seenAlarms.clear();
+      set({ link: 'idle', state: null, commands: {}, scenario: null, focus: null });
     },
 
     async alarmAction(alarmId, action) {

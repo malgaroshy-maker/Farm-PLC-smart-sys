@@ -127,7 +127,7 @@ export default function SimulatorPanel() {
 
       {/* Current run */}
       {run && run.name && (
-        <div className="bg-[#1c1b1b] border border-[#353534] rounded-lg p-4 space-y-3">
+        <div className="panel p-4 space-y-3">
           <div className="flex justify-between items-center font-mono text-sm">
             <span>
               <span style={{ color: STATUS_COLOR[run.status] }} className="font-bold me-3">{t(`sim.st.${run.status}` as MsgKey)}</span>
@@ -152,7 +152,7 @@ export default function SimulatorPanel() {
           <h2 className="text-sm font-bold text-[#bac9cc]">{t('sim.scenarios')}</h2>
           <div className="grid md:grid-cols-2 gap-3">
             {scenarios.map((s) => (
-              <div key={s.name} className="bg-[#1c1b1b] border border-[#353534] rounded-lg p-4 flex flex-col gap-2">
+              <div key={s.name} className="panel p-4 flex flex-col gap-2">
                 <div className="flex justify-between gap-2">
                   <div>
                     <div className="font-bold text-[#e5e2e1]">{lang === 'ar' ? s.title_ar : s.title}</div>
@@ -180,7 +180,7 @@ export default function SimulatorPanel() {
 
         {/* Manual controls */}
         <div className="space-y-4">
-          <div className="bg-[#1c1b1b] border border-[#353534] rounded-lg p-4 space-y-3">
+          <div className="panel p-4 space-y-3">
             <h2 className="text-sm font-bold text-[#bac9cc]">{t('sim.mode')}</h2>
             <div className="grid grid-cols-2 gap-2">
               {(['auto', 'manual', 'maintenance', 'off'] as SystemMode[]).map((m) => (
@@ -213,7 +213,7 @@ export default function SimulatorPanel() {
           </div>
 
           {FAULT_GROUPS.map((g) => (
-            <div key={g.title} className="bg-[#1c1b1b] border border-[#353534] rounded-lg p-4 space-y-2">
+            <div key={g.title} className="panel p-4 space-y-2">
               <h2 className="text-sm font-bold text-[#bac9cc] flex items-center gap-2">
                 <Wrench size={14} /> {t(g.title)}
               </h2>

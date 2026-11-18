@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ScrollText } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
+import { EventsIcon } from '../components/icons/FarmIcons';
 import { apiFetch } from '../lib/api';
 import { useT, type MsgKey } from '../lib/i18n';
 import { useFarmStore } from '../store/farm';
@@ -85,7 +86,7 @@ export default function EventsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ScrollText className="text-[#00e5ff]" /> {t('ev.title')}
+            <EventsIcon size={24} className="text-[#00e5ff]" /> {t('ev.title')}
           </h1>
           <p className="text-sm text-[#849396] mt-1">{t('ev.subtitle')}</p>
         </div>
@@ -102,7 +103,7 @@ export default function EventsPage() {
         </div>
       </div>
 
-      <div className="bg-[#1c1b1b] border border-[#353534] rounded-xl overflow-x-auto">
+      <div className="panel overflow-x-auto">
         <table className="w-full text-sm min-w-[640px]">
           <thead className="text-xs text-[#849396] bg-[#0e0e0e]">
             <tr>
@@ -133,8 +134,8 @@ export default function EventsPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-[#849396]">
-                  {t('ev.none')}
+                <td colSpan={5}>
+                  <EmptyState art="events" text={t('empty.events')} />
                 </td>
               </tr>
             )}

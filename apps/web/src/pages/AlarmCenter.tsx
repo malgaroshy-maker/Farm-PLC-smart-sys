@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import EmptyState from '../components/EmptyState';
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import type { Alarm, AlarmSeverity } from '@algaroshy/contracts';
 import { useFarmStore } from '../store/farm';
@@ -109,7 +110,7 @@ export default function AlarmCenter() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 bg-[#0e0e0e] border border-[#353534] rounded-lg overflow-hidden flex flex-col">
+      <div className="panel flex-1 min-h-0 overflow-hidden flex flex-col">
         <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-[#353534] bg-[#1c1b1b] text-[#bac9cc] text-xs font-bold">
           <div className="col-span-2">{t('al.triggered')}</div>
           <div className="col-span-1">{t('al.severity')}</div>
@@ -209,9 +210,7 @@ export default function AlarmCenter() {
             );
           })}
           {rows.length === 0 && (
-            <div className="p-8 text-center text-[#849396]">
-              {view === 'active' ? t('al.noActive') : t('al.noHistory')}
-            </div>
+            <EmptyState art="alarms" text={view === 'active' ? t('empty.alarms') : t('al.noHistory')} />
           )}
         </div>
       </div>

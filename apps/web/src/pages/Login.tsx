@@ -37,7 +37,7 @@ export default function Login() {
   return (
     <div
       className="min-h-dvh text-[#e5e2e1] flex items-center justify-center p-4 bg-[#0e0e0e] bg-cover bg-center"
-      style={{ backgroundImage: 'linear-gradient(rgba(14,14,14,0.82), rgba(14,14,14,0.92)), url(/map/tex_pomegranate.webp)' }}
+      style={{ backgroundImage: 'radial-gradient(ellipse at center, rgba(14,14,14,0.55), rgba(14,14,14,0.9)), url(/art/login_aerial.webp)' }}
     >
       <button
         onClick={toggleLang}
@@ -46,7 +46,7 @@ export default function Login() {
         <Languages size={16} /> {t('common.lang')}
       </button>
 
-      <div className="w-full max-w-sm bg-[#1c1b1b]/95 border border-[#353534] rounded-2xl p-8 shadow-2xl backdrop-blur">
+      <div className="w-full max-w-sm bg-[#141416]/75 border border-white/10 rounded-2xl p-8 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col items-center mb-8 text-center">
           <img src="/map/logo.webp" alt="" className="w-20 h-20 object-contain mb-3" />
           <h1 className="text-2xl font-bold">{t('app.name')}</h1>

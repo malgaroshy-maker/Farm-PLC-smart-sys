@@ -7,7 +7,8 @@ Metric keys
   zone:    zone.moisture_pct, zone.flow_m3h, zone.pressure_bar   (zone_id set)
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,6 +93,40 @@ async def series(
         }
         for i, v in sorted(buckets.items())
     ]
+
+
+MAX_GAP_S = 60.0  # don't integrate across data gaps (comms loss, simulator off)
+
+
+def farm_midnight_utc(now: datetime | None = None) -> datetime:
+    tz = ZoneInfo(settings.farm_timezone)
+    local = (now or utcnow()).astimezone(tz)
+    return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+
+
+async def water_today(db: AsyncSession) -> list[dict]:
+    """m³ delivered per zone since farm-local midnight (trapezoid over zone.flow_m3h)."""
+    since = farm_midnight_utc()
+    rows = (
+        await db.execute(
+            select(TelemetryPoint.zone_id, TelemetryPoint.ts, TelemetryPoint.value_numeric)
+            .where(TelemetryPoint.metric_key == "zone.flow_m3h", TelemetryPoint.ts >= since)
+            .order_by(TelemetryPoint.zone_id, TelemetryPoint.ts)
+        )
+    ).all()
+    totals: dict[str, float] = {}
+    prev: dict[str, tuple[datetime, float]] = {}
+    for zone_id, ts, value in rows:
+        ts = as_utc(ts)
+        v = value or 0.0
+        if zone_id in prev:
+            pts, pv = prev[zone_id]
+            dt = (ts - pts).total_seconds()
+            if 0 < dt <= MAX_GAP_S:
+                totals[zone_id] = totals.get(zone_id, 0.0) + (pv + v) / 2 * dt / 3600.0
+        totals.setdefault(zone_id, 0.0)
+        prev[zone_id] = (ts, v)
+    return [{"zone_id": z, "m3": round(m3, 3)} for z, m3 in sorted(totals.items())]
 
 
 async def prune_old(db: AsyncSession) -> None:

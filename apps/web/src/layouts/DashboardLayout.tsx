@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Navigate, NavLink, Outlet, Link } from 'react-router-dom';
+import { Languages, LogOut, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import {
-  Activity,
-  AlertTriangle,
-  Cpu,
-  FlaskConical,
-  Languages,
-  LayoutGrid,
-  LogOut,
-  Menu,
-  OctagonX,
-  ScrollText,
-  X,
-} from 'lucide-react';
+  AlarmIcon,
+  EquipmentIcon,
+  EventsIcon,
+  MapIcon,
+  SimulatorIcon,
+  StopAllIcon,
+  ZonesIcon,
+  type IconProps,
+} from '../components/icons/FarmIcons';
+import { usePrefs } from '../lib/prefs';
 import { useAuth } from '../lib/auth';
 import { session } from '../lib/api';
 import { useFarmStore } from '../store/farm';
@@ -63,6 +62,7 @@ export default function DashboardLayout() {
   const [stopMsg, setStopMsg] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const clock = useFarmClock(lang);
+  const prefs = usePrefs();
 
   useEffect(() => {
     if (user && session.token) connect(session.token);
@@ -88,17 +88,17 @@ export default function DashboardLayout() {
     setTimeout(() => setStopMsg(null), 4000);
   };
 
-  const nav: { key: MsgKey; path: string; icon: typeof Activity; badge?: number }[] = [
-    { key: 'nav.dashboard', path: '/', icon: Activity },
-    { key: 'nav.zones', path: '/zones', icon: LayoutGrid },
-    { key: 'nav.equipment', path: '/equipment', icon: Cpu },
-    { key: 'nav.alarms', path: '/alarms', icon: AlertTriangle, badge: alarmCount },
-    { key: 'nav.events', path: '/events', icon: ScrollText },
-    ...(showTech ? [{ key: 'nav.simulator' as MsgKey, path: '/simulator', icon: FlaskConical }] : []),
+  const nav: { key: MsgKey; path: string; icon: (p: IconProps) => React.ReactNode; badge?: number }[] = [
+    { key: 'nav.dashboard', path: '/', icon: MapIcon },
+    { key: 'nav.zones', path: '/zones', icon: ZonesIcon },
+    { key: 'nav.equipment', path: '/equipment', icon: EquipmentIcon },
+    { key: 'nav.alarms', path: '/alarms', icon: AlarmIcon, badge: alarmCount },
+    { key: 'nav.events', path: '/events', icon: EventsIcon },
+    ...(showTech ? [{ key: 'nav.simulator' as MsgKey, path: '/simulator', icon: SimulatorIcon }] : []),
   ];
 
   const sidebar = (
-    <aside className="w-64 h-full border-e border-[#353534] bg-[#1c1b1b] flex flex-col">
+    <aside className="w-64 h-full border-e border-white/10 bg-[#141416]/90 backdrop-blur-xl flex flex-col">
       <div className="p-5 border-b border-[#353534] flex items-center gap-3">
         <img src="/map/logo.webp" alt="" className="w-10 h-10 object-contain" />
         <div className="min-w-0">
@@ -179,7 +179,7 @@ export default function DashboardLayout() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 shrink-0 border-b border-[#353534] bg-[#0e0e0e] flex items-center gap-3 px-3 lg:px-6">
+        <header className="h-14 shrink-0 border-b border-white/10 bg-[#0e0e0e]/80 backdrop-blur-xl flex items-center gap-3 px-3 lg:px-6">
           <button className="lg:hidden p-2 text-[#bac9cc]" onClick={() => setMenuOpen(true)} aria-label="menu">
             <Menu size={22} />
           </button>
@@ -188,13 +188,31 @@ export default function DashboardLayout() {
             {clock}
           </span>
           <div className="ms-auto flex items-center gap-3 sm:gap-5">
+            <button
+              onClick={prefs.toggleMute}
+              title={t(prefs.muted ? 'header.unmute' : 'header.mute')}
+              aria-label={t(prefs.muted ? 'header.unmute' : 'header.mute')}
+              aria-pressed={prefs.muted}
+              className="p-1.5 rounded-lg text-[#849396] hover:bg-white/10 hover:text-[#e5e2e1]"
+            >
+              {prefs.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </button>
+            <button
+              onClick={prefs.toggleMotion}
+              title={t('header.reduceMotion')}
+              aria-label={t('header.reduceMotion')}
+              aria-pressed={prefs.reduceMotion}
+              className={`p-1.5 rounded-lg hover:bg-white/10 ${prefs.reduceMotion ? 'text-[#ffeb3b]' : 'text-[#849396] hover:text-[#e5e2e1]'}`}
+            >
+              <Sparkles size={18} className={prefs.reduceMotion ? 'opacity-50' : ''} />
+            </button>
             {stopMsg && <span className="text-xs text-[#ffeb3b] max-w-40 truncate">{stopMsg}</span>}
             <Link
               to="/alarms"
               className={`hidden sm:flex items-center gap-2 ${worst === 'S3' ? 'animate-pulse' : ''}`}
               style={{ color: worst ? SEVERITY[worst].color : '#849396' }}
             >
-              <AlertTriangle size={18} />
+              <AlarmIcon size={18} accent={worst ? SEVERITY[worst].color : '#849396'} />
               <span className="text-sm font-bold">
                 <span className="font-mono">{alarmCount}</span> {t('header.alarms')}
               </span>
@@ -204,7 +222,7 @@ export default function DashboardLayout() {
                 onClick={handleStopAll}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#ffb4ab] text-[#ffb4ab] hover:bg-[#ffb4ab] hover:text-[#410002] text-xs font-bold whitespace-nowrap transition-colors"
               >
-                <OctagonX size={16} /> {t('header.stopAll')}
+                <StopAllIcon size={16} /> {t('header.stopAll')}
               </button>
             )}
           </div>
@@ -215,7 +233,7 @@ export default function DashboardLayout() {
         </main>
 
         {/* mobile bottom navigation */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 h-16 bg-[#1c1b1b] border-t border-[#353534] grid grid-cols-4">
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 h-16 bg-[#141416]/95 backdrop-blur-xl border-t border-white/10 grid grid-cols-4">
           {nav.slice(0, 4).map(({ key, path, icon: Icon, badge }) => (
             <NavLink
               key={path}

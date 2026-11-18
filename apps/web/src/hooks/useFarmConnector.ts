@@ -12,11 +12,12 @@ export function useFarmConnector() {
   const send = useFarmStore((s) => s.sendCommand);
 
   const sendCommand = useCallback(
-    (action: 'start' | 'stop', zoneId: string): Promise<CommandOutcome> =>
+    (action: 'start' | 'stop', zoneId: string, durationMin?: number): Promise<CommandOutcome> =>
       send({
         command_type: action === 'start' ? 'start_zone' : 'stop_zone',
         target_type: 'zone',
         target_id: zoneId,
+        payload: action === 'start' && durationMin ? { duration_min: durationMin } : undefined,
       }),
     [send],
   );

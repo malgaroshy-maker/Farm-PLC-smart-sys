@@ -89,3 +89,34 @@ def test_scenario_without_simulator_fails_cleanly(client, monkeypatch):
     assert state["status"] == "failed"
     assert "ALM-006" in state["message"]
     assert not runner.busy
+
+
+def test_water_today_integrates_flow(client):
+    import asyncio
+    from datetime import timedelta
+
+    from app.core.timeutil import utcnow
+    from app.database import async_session_factory
+    from app.models.telemetry import TelemetryPoint
+
+    async def seed_points():
+        now = utcnow()
+        async with async_session_factory() as db:
+            # 6 m³/h for 30 s → 0.05 m³; plus a 10-minute gap that must NOT count
+            for offset, q in [(-700, 6.0), (-40, 6.0), (-10, 6.0)]:
+                db.add(
+                    TelemetryPoint(
+                        metric_key="zone.flow_m3h",
+                        farm_id="farm_algaroshy",
+                        zone_id="zone_enab",
+                        ts=now + timedelta(seconds=offset),
+                        value_numeric=q,
+                    )
+                )
+            await db.commit()
+
+    asyncio.run(seed_points())
+    body = client.get("/api/v1/telemetry/water-today", headers=login(client, "viewer")).json()
+    enab = next(z for z in body["zones"] if z["zone_id"] == "zone_enab")
+    assert enab["m3"] == 0.05
+    assert body["total_m3"] >= 0.05

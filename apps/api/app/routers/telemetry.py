@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import Actor, get_actor
-from app.services.telemetry import METRIC_KEYS, series
+from app.services.telemetry import METRIC_KEYS, series, water_today
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
 
@@ -30,3 +30,10 @@ async def get_series(
         "minutes": minutes,
         "points": await series(db, metric_key, zone_id, minutes, points),
     }
+
+
+@router.get("/water-today")
+async def get_water_today(_: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
+    """Water delivered per zone since farm-local midnight, in m³."""
+    zones = await water_today(db)
+    return {"zones": zones, "total_m3": round(sum(z["m3"] for z in zones), 3)}

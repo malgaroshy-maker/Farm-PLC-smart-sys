@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { X, Activity, Droplet, Gauge, Clock, Play, Square } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import type { TelemetrySeries } from '@algaroshy/contracts';
+import { Play, Square, X } from 'lucide-react';
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import type { TelemetrySeries, Zone } from '@algaroshy/contracts';
+import { ZONE_SEEDS } from '@algaroshy/contracts';
 
 import type { ZoneLiveState } from '../hooks/useFarmConnector';
 import type { CommandOutcome } from '../store/farm';
@@ -9,30 +10,41 @@ import { useFarmStore } from '../store/farm';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { SEVERITY } from '../lib/alarms';
-import { pickName, useT, type MsgKey } from '../lib/i18n';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
-
-const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
+import { DropIcon, FlowIcon, GaugeIcon, ValveIcon } from './icons/FarmIcons';
+import { CROP_ICON } from './icons/cropIcon';
 
 interface ZoneDrawerProps {
   zoneId: string | null;
   zoneState?: ZoneLiveState;
   onClose: () => void;
-  onCommand?: (action: 'start' | 'stop', targetId: string) => Promise<CommandOutcome>;
+  onCommand?: (action: 'start' | 'stop', targetId: string, durationMin?: number) => Promise<CommandOutcome>;
 }
 
 type Feedback = { kind: 'ok' | 'error'; text: string } | null;
 type ChartRow = { time: string; moisture?: number; flow?: number };
 
+const SEED: Record<string, Zone> = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const DETAIL_ART: Record<string, string> = {
+  pomegranate: '/art/detail_pomegranate.webp',
+  olives: '/art/detail_olive.webp',
+  grapes: '/art/detail_grape.webp',
+  mixed_fruit: '/art/detail_stonefruit.webp',
+};
 const RANGES = [
   { label: '1H', minutes: 60 },
   { label: '6H', minutes: 360 },
   { label: '24H', minutes: 1440 },
 ];
+const PRESETS = [15, 30, 45, 60];
+const CYAN = '#00e5ff';
+const ACTIVE_STATES = ['starting_pump', 'opening_valve', 'validating_flow', 'running', 'stopping'];
 
-function hhmmss(sec: number): string {
+function hms(sec: number): string {
   const s = Math.max(0, Math.round(sec));
-  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map((n) => String(n).padStart(2, '0')).join(':');
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h ? `${h}:` : ''}${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
 function useZoneHistory(zoneId: string, minutes: number): ChartRow[] {
@@ -47,7 +59,8 @@ function useZoneHistory(zoneId: string, minutes: number): ChartRow[] {
           apiFetch<TelemetrySeries>(`/api/v1/telemetry/series?metric_key=zone.flow_m3h&${q}`),
         ]);
         const byTs = new Map<string, ChartRow>();
-        const label = (ts: string) => new Date(ts).toTimeString().slice(0, 5);
+        const label = (ts: string) =>
+          new Date(ts).toLocaleTimeString('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' });
         m.points.forEach((p) => byTs.set(p.ts, { time: label(p.ts), moisture: p.value }));
         f.points.forEach((p) => byTs.set(p.ts, { ...(byTs.get(p.ts) ?? { time: label(p.ts) }), flow: p.value }));
         if (live) setRows([...byTs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, r]) => r));
@@ -67,33 +80,51 @@ function useZoneHistory(zoneId: string, minutes: number): ChartRow[] {
 
 export default function ZoneDrawer(props: ZoneDrawerProps) {
   if (!props.zoneId) return null;
-  // Keyed by zone so feedback resets when another zone is opened.
+  // Keyed by zone so feedback and the duration choice reset per zone.
   return <ZoneDrawerBody key={props.zoneId} {...props} zoneId={props.zoneId} />;
 }
 
 function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerProps & { zoneId: string }) {
   const { can } = useAuth();
   const { t, lang } = useT();
+  const canControl = can('owner_admin', 'operator');
+  const [config, setConfig] = useState<Zone | undefined>(SEED[zoneId]);
+  const [minutes, setMinutes] = useState<number | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const [range, setRange] = useState(RANGES[0]);
+  const history = useZoneHistory(zoneId, range.minutes);
+  const valve = useFarmStore((s) => s.state?.valves.find((v) => v.valve_id === `valve_${zoneId.slice(5)}` || v.zone_id === zoneId));
+  const allAlarms = useFarmStore((s) => s.state?.active_alarms);
+  const zoneAlarms = (allAlarms ?? []).filter((a) => a.zone_id === zoneId || a.device_id === `valve_${zoneId.slice(5)}`);
+
+  useEffect(() => {
+    apiFetch<Zone>(`/api/v1/zones/${zoneId}`)
+      .then(setConfig)
+      .catch(() => undefined);
+  }, [zoneId]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  const canControl = can('owner_admin', 'operator');
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback>(null);
-  const [range, setRange] = useState(RANGES[0]);
-  const history = useZoneHistory(zoneId, range.minutes);
-  const valve = useFarmStore((s) => s.state?.valves.find((v) => v.zone_id === zoneId));
-  const allAlarms = useFarmStore((s) => s.state?.active_alarms);
-  const zoneAlarms = (allAlarms ?? []).filter((a) => a.zone_id === zoneId);
+
+  const maxMin = config?.max_runtime_min ?? 120;
+  const usual = config?.default_duration_min ?? 45;
+  const duration = Math.min(maxMin, minutes ?? usual);
+  const pick = (m: number) => {
+    setMinutes(m);
+    setConfirming(false);
+  };
 
   const run = async (action: 'start' | 'stop') => {
     if (!onCommand) return;
     setBusy(true);
     setFeedback(null);
-    const res = await onCommand(action, zoneId);
+    const res = await onCommand(action, zoneId, action === 'start' ? duration : undefined);
     setBusy(false);
+    setConfirming(false);
     setFeedback(
       res.ok
         ? { kind: 'ok', text: t(action === 'start' ? 'drawer.startOk' : 'drawer.stopOk') }
@@ -102,192 +133,219 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
   };
 
   const state = zoneState?.state ?? 'unknown';
-  const isRunning = state === 'running';
+  const active = ACTIVE_STATES.includes(state);
   const isFault = state === 'faulted' || zoneState?.health === 'critical';
-  const stateLabel = t(`state.${state}` as MsgKey);
-  const moisture = zoneState?.moisture_pct != null ? zoneState.moisture_pct.toFixed(1) : '--';
-  const pressure = zoneState?.pressure_bar ? zoneState.pressure_bar.toFixed(2) : '0.00';
-  const flow = zoneState?.flow_m3h ? Math.round(zoneState.flow_m3h * (1000 / 60)) : 0; // L/min
+  const color = isFault ? SEVERITY.S3.color : state === 'running' ? CYAN : active ? '#ffeb3b' : '#849396';
   const target = zoneState?.target_runtime_sec ?? 0;
   const runtime = zoneState?.runtime_sec ?? 0;
   const progress = target > 0 ? Math.min(100, (runtime / target) * 100) : 0;
-  const badgeColor = isFault ? '#ffb4ab' : isRunning ? '#00e5ff' : '#849396';
+  const crop = config?.crop_type ?? 'pomegranate';
+  const CropIcon = CROP_ICON[crop as keyof typeof CROP_ICON] ?? CROP_ICON.pomegranate;
 
   return (
     <>
-      <div className="fixed inset-0 bg-[#0e0e0e]/80 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
-
-      <div className="fixed top-0 end-0 h-full w-[450px] max-w-full bg-[#1c1b1b] border-s border-[#353534] shadow-2xl z-50 flex flex-col font-sans text-[#e5e2e1]">
-        {/* Header */}
-        <div className="p-6 border-b border-[#353534] flex justify-between items-start bg-[#0e0e0e]">
-          <div>
-            <h2 className="text-2xl font-bold text-[#00e5ff]">
-              {pickName(lang, SEED[zoneId]?.name, SEED[zoneId]?.name_ar) || zoneId}
-            </h2>
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span
-                className="px-2 py-0.5 rounded text-xs font-bold font-mono tracking-wider border"
-                style={{ color: badgeColor, borderColor: `${badgeColor}55`, backgroundColor: `${badgeColor}15` }}
-              >
-                {t('drawer.state')}: {stateLabel}
-              </span>
-              <span className="text-xs text-[#849396] border-s border-[#353534] ps-2">
-                {t('drawer.source')}: {zoneState?.source_mode ? t(`source.${zoneState.source_mode}` as MsgKey) : '—'}
-              </span>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-40" onClick={onClose} />
+      <div className="fixed top-0 end-0 h-full w-[460px] max-w-full z-50 flex flex-col text-[#e5e2e1] bg-[#121214]/95 backdrop-blur-xl border-s border-white/10 shadow-2xl">
+        <div className="p-5 flex items-start gap-3 border-b border-white/10">
+          <span className="p-2 rounded-xl bg-white/5" style={{ color }}>
+            <CropIcon size={26} />
+          </span>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-bold truncate">{pickName(lang, config?.name, config?.name_ar) || zoneId}</h2>
+            <div className="text-xs text-[#849396]">
+              {t(`crop.${crop}` as MsgKey)} · <bdi className="font-mono">{fmtNum(config?.area_ha, 2)} ha</bdi>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            aria-label={t('drawer.close')}
-            className="text-[#849396] bg-[#1c1b1b] hover:bg-[#ffb4ab] hover:text-[#410002] p-2 rounded transition-colors"
-          >
+          <button onClick={onClose} aria-label={t('drawer.close')} className="p-2 rounded-lg text-[#849396] hover:bg-white/10 hover:text-[#e5e2e1]">
             <X size={20} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Actions */}
-          <div className="border-b border-[#353534] pb-6 space-y-3">
-            {canControl ? (
-              <div className="flex gap-4">
-                <button
-                  disabled={busy}
-                  onClick={() => run('start')}
-                  className="flex-1 bg-[#1c1b1b] hover:bg-[#353534] disabled:opacity-50 border border-[#353534] hover:border-[#00e5ff] text-[#00e5ff] py-3 rounded flex items-center justify-center gap-2 font-bold font-mono tracking-wider transition-colors">
-                  <Play size={18} /> {t('drawer.start')}
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => run('stop')}
-                  className="flex-1 bg-[#1c1b1b] hover:bg-[#353534] disabled:opacity-50 border border-[#353534] hover:border-[#ffb4ab] text-[#ffb4ab] py-3 rounded flex items-center justify-center gap-2 font-bold font-mono tracking-wider transition-colors">
-                  <Square size={18} /> {t('drawer.stop')}
-                </button>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* 1 — status */}
+          <section className="panel p-4 space-y-4" style={{ borderColor: `${color}55` }}>
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${active ? 'animate-pulse' : ''}`} style={{ background: color }} />
+              <span className="font-bold" style={{ color }}>
+                {t(`state.${state}` as MsgKey)}
+              </span>
+              <span className="ms-auto text-xs text-[#849396]">
+                {t('drawer.source')}: {zoneState?.source_mode ? t(`source.${zoneState.source_mode}` as MsgKey) : '—'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Big icon={<DropIcon size={18} />} label={t('drawer.moisture')} value={fmtNum(zoneState?.moisture_pct, 1)} unit="%" />
+              <Big icon={<FlowIcon size={18} />} label={t('drawer.flow')} value={fmtNum(zoneState?.flow_m3h, 1)} unit="m³/h" />
+              <Big icon={<GaugeIcon size={18} />} label={t('drawer.pressure')} value={fmtNum(zoneState?.pressure_bar, 2)} unit="bar" />
+            </div>
+            {target > 0 && active && (
+              <div>
+                <div className="flex justify-between text-xs text-[#849396] mb-1.5">
+                  <span>
+                    {t('drawer.cycle')} <bdi className="font-mono text-[#e5e2e1]">{hms(runtime)}</bdi>
+                  </span>
+                  <span>
+                    {t('drawer.remaining')} <bdi className="font-mono text-[#e5e2e1]">{hms(target - runtime)}</bdi>
+                  </span>
+                </div>
+                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${CYAN}88, ${CYAN})` }} />
+                </div>
               </div>
+            )}
+            {zoneAlarms.map((a) => {
+              const c = SEVERITY[a.severity].color;
+              return (
+                <div key={a.id} className="rounded-lg px-3 py-2 text-xs border" style={{ borderColor: `${c}66`, color: c, background: `${c}10` }}>
+                  <bdi className="font-mono">{a.alarm_code}</bdi> {pickName(lang, a.name, a.name_ar)} — {t(a.condition_active ? 'drawer.active' : 'drawer.latched')}
+                </div>
+              );
+            })}
+          </section>
+
+          {/* 2 — controls */}
+          <section className="panel p-4 space-y-3">
+            {!canControl ? (
+              <p className="text-sm text-[#849396]">{t('drawer.viewOnly')}</p>
+            ) : active ? (
+              <button disabled={busy} onClick={() => run('stop')} className="w-full py-3 rounded-xl border border-[#ffb4ab]/60 text-[#ffb4ab] hover:bg-[#ffb4ab]/10 font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                <Square size={18} /> {t('drawer.stop')}
+              </button>
             ) : (
-              <p className="text-xs text-[#849396]">{t('drawer.viewOnly')}</p>
+              <>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[#bac9cc]">{t('drawer.duration')}</span>
+                  <bdi className="font-mono font-bold text-lg">{duration} min</bdi>
+                </div>
+                <div className="flex gap-2">
+                  {PRESETS.filter((p) => p <= maxMin).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => pick(p)}
+                      className={`flex-1 py-1.5 rounded-lg text-sm font-mono border ${duration === p ? 'border-[#00e5ff] text-[#00e5ff] bg-[#00e5ff]/10' : 'border-white/10 text-[#bac9cc] hover:bg-white/5'}`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="range"
+                  min={5}
+                  max={maxMin}
+                  step={5}
+                  value={duration}
+                  onChange={(e) => pick(Number(e.target.value))}
+                  className="w-full accent-[#00e5ff]"
+                  aria-label={t('drawer.duration')}
+                  dir="ltr"
+                />
+                <div className="flex justify-between text-[10px] text-[#849396] font-mono" dir="ltr">
+                  <span>5</span>
+                  <span>
+                    {t('drawer.usual')} {usual}
+                  </span>
+                  <span>max {maxMin}</span>
+                </div>
+                {confirming ? (
+                  <div className="flex gap-2">
+                    <button disabled={busy} onClick={() => run('start')} className="flex-1 py-3 rounded-xl bg-[#00e5ff] text-[#0e0e0e] font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                      <Play size={18} /> {t('drawer.confirm')} <bdi>{duration} min</bdi>
+                    </button>
+                    <button onClick={() => setConfirming(false)} className="px-4 py-3 rounded-xl border border-white/10 text-[#bac9cc] hover:bg-white/5">
+                      {t('drawer.cancel')}
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirming(true)} className="w-full py-3 rounded-xl border border-[#00e5ff]/60 text-[#00e5ff] hover:bg-[#00e5ff]/10 font-bold flex items-center justify-center gap-2">
+                    <Play size={18} /> {t('drawer.start')}
+                  </button>
+                )}
+              </>
             )}
             {feedback && (
-              <p role="status" className={`text-xs font-mono ${feedback.kind === 'ok' ? 'text-[#00e5ff]' : 'text-[#ffb4ab]'}`}>
+              <p role="status" className={`text-xs ${feedback.kind === 'ok' ? 'text-[#00e5ff]' : 'text-[#ffb4ab]'}`}>
                 {feedback.text}
               </p>
             )}
-            {target > 0 && (state === 'running' || state === 'stopping') && (
-              <div>
-                <div className="flex justify-between text-xs font-mono text-[#849396] mb-1">
-                  <span>{t('drawer.cycle')} <span dir="ltr">{hhmmss(runtime)}</span></span>
-                  <span dir="ltr">{hhmmss(target)}</span>
-                </div>
-                <div className="h-1.5 bg-[#353534] rounded overflow-hidden">
-                  <div className="h-full bg-[#00e5ff] transition-all" style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-            )}
-          </div>
+          </section>
 
-          {/* Zone alarms */}
-          {zoneAlarms.length > 0 && (
-            <div className="space-y-2">
-              {zoneAlarms.map((a) => (
-                <div key={a.id} className="p-3 rounded border text-xs font-mono" style={{ borderColor: SEVERITY[a.severity].color, color: SEVERITY[a.severity].color }}>
-                  {a.alarm_code} {pickName(lang, a.name, a.name_ar)} — {t(a.condition_active ? 'drawer.active' : 'drawer.latched')}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Live metrics */}
-          <div className="grid grid-cols-2 gap-4">
-            <MetricCard icon={<Droplet />} label={t('drawer.moisture')} value={moisture} unit="%" />
-            <MetricCard icon={<Gauge />} label={t('drawer.pressure')} value={pressure} unit="BAR" />
-            <MetricCard icon={<Activity />} label={t('drawer.flow')} value={flow} unit="L/MIN" />
-            <MetricCard icon={<Clock />} label={t('drawer.runtime')} value={hhmmss(runtime)} />
-          </div>
-
-          {/* History */}
-          <div className="bg-[#0e0e0e] border border-[#353534] rounded p-4">
-            <h3 className="text-xs text-[#bac9cc] font-bold font-mono tracking-widest mb-4 flex justify-between items-center">
+          {/* 3 — history */}
+          <section className="panel p-4">
+            <div className="text-xs text-[#bac9cc] font-bold mb-3 flex justify-between items-center">
               <span>{t('drawer.history')}</span>
               <span className="flex gap-1">
                 {RANGES.map((r) => (
-                  <button
-                    key={r.label}
-                    onClick={() => setRange(r)}
-                    className={`px-2 py-0.5 rounded ${range.label === r.label ? 'bg-[#353534] text-[#e5e2e1]' : 'text-[#849396] hover:text-[#e5e2e1]'}`}
-                  >
+                  <button key={r.label} onClick={() => setRange(r)} className={`px-2 py-0.5 rounded-md font-mono ${range.label === r.label ? 'bg-white/10 text-[#e5e2e1]' : 'text-[#849396] hover:text-[#e5e2e1]'}`}>
                     {r.label}
                   </button>
                 ))}
               </span>
-            </h3>
-            <div className="h-48 w-full">
+            </div>
+            <div className="h-44" dir="ltr">
               {history.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-xs font-mono text-[#849396]">
-                  {t('drawer.noHistory')}
-                </div>
+                <div className="h-full flex items-center justify-center text-xs text-[#849396]">{t('drawer.noHistory')}</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={history}>
                     <defs>
-                      <linearGradient id="colorMoisture" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#00e5ff" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#00e5ff" stopOpacity={0} />
+                      <linearGradient id="g-moist" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={CYAN} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={CYAN} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="time" stroke="#849396" fontSize={10} tickLine={false} axisLine={false} minTickGap={24} />
-                    <YAxis yAxisId="m" stroke="#849396" fontSize={10} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                    <YAxis yAxisId="f" orientation="right" stroke="#ffeb3b" fontSize={10} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1c1b1b', border: '1px solid #353534', borderRadius: '4px' }}
-                      labelStyle={{ color: '#bac9cc' }}
-                    />
-                    <Area yAxisId="m" type="monotone" dataKey="moisture" name="Moisture %" stroke="#00e5ff" strokeWidth={2} fill="url(#colorMoisture)" />
-                    <Area yAxisId="f" type="stepAfter" dataKey="flow" name="Flow m³/h" stroke="#ffeb3b" strokeWidth={1.5} fill="transparent" />
+                    <YAxis yAxisId="m" stroke="#849396" fontSize={10} tickLine={false} axisLine={false} domain={['auto', 'auto']} width={28} />
+                    <YAxis yAxisId="f" orientation="right" stroke="#ffeb3b" fontSize={10} tickLine={false} axisLine={false} width={28} />
+                    <Tooltip contentStyle={{ backgroundColor: '#161618', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} labelStyle={{ color: '#bac9cc' }} />
+                    <Area yAxisId="m" type="monotone" connectNulls dataKey="moisture" name="%" stroke={CYAN} strokeWidth={2} fill="url(#g-moist)" />
+                    <Area yAxisId="f" type="stepAfter" connectNulls dataKey="flow" name="m³/h" stroke="#ffeb3b" strokeWidth={1.5} fill="transparent" />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
             </div>
-          </div>
+          </section>
 
-          {/* Hardware */}
-          <div className="bg-[#0e0e0e] border border-[#353534] rounded p-4">
-            <h3 className="text-xs text-[#bac9cc] font-bold font-mono tracking-widest mb-4">{t('drawer.hardware')}</h3>
-            <div className="space-y-3 font-mono text-sm">
-              <Row label={t('drawer.valveId')} value={valve?.valve_id ?? '—'} />
+          {/* 4 — crop & hardware */}
+          <section className="panel overflow-hidden">
+            <img src={DETAIL_ART[crop] ?? DETAIL_ART.pomegranate} alt="" className="w-full h-36 object-cover" loading="lazy" />
+            <div className="p-4 space-y-2 text-sm">
+              <Row label={t('drawer.valveId')} value={<bdi className="font-mono">{valve?.valve_id ?? '—'}</bdi>} />
               <Row
                 label={t('drawer.valveState')}
-                value={t(`valve.${valve?.status ?? 'unknown'}` as MsgKey)}
-                color={valve?.status === 'fault' ? '#ffb4ab' : valve?.status === 'open' ? '#00e5ff' : undefined}
+                value={
+                  <span className="flex items-center gap-1.5" style={{ color: valve?.status === 'fault' ? SEVERITY.S3.color : valve?.status === 'open' ? CYAN : undefined }}>
+                    <ValveIcon size={16} /> {t(`valve.${valve?.status ?? 'unknown'}` as MsgKey)}
+                  </span>
+                }
               />
-              <Row
-                label={t('drawer.health')}
-                value={t(`health.${zoneState?.health ?? 'unknown'}` as MsgKey)}
-                color={isFault ? '#ffb4ab' : '#00e5ff'}
-              />
+              <Row label={t('drawer.flowRange')} value={<bdi className="font-mono">{config ? `${config.flow_min_m3h}–${config.flow_max_m3h} m³/h` : '—'}</bdi>} />
+              <Row label={t('drawer.pressureRange')} value={<bdi className="font-mono">{config ? `${config.pressure_min_bar}–${config.pressure_max_bar} bar` : '—'}</bdi>} />
+              <Row label={t('drawer.health')} value={<span style={{ color: isFault ? SEVERITY.S3.color : CYAN }}>{t(`health.${zoneState?.health ?? 'unknown'}` as MsgKey)}</span>} />
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </>
   );
 }
 
-function Row({ label, value, color }: { label: string; value: string; color?: string }) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex justify-between border-b border-[#353534] pb-2 last:border-0">
+    <div className="flex justify-between items-center gap-3 border-b border-white/5 pb-2 last:border-0 last:pb-0">
       <span className="text-[#849396]">{label}</span>
-      <span style={{ color: color ?? '#e5e2e1' }}>{value}</span>
+      <span>{value}</span>
     </div>
   );
 }
 
-function MetricCard({ icon, label, value, unit = '' }: { icon: React.ReactNode; label: string; value: string | number; unit?: string }) {
+function Big({ icon, label, value, unit }: { icon: React.ReactNode; label: string; value: string; unit: string }) {
   return (
-    <div className="bg-[#0e0e0e] border border-[#353534] rounded p-4 flex flex-col pt-5 relative overflow-hidden">
-      <div className="absolute start-0 top-0 w-1 h-full bg-[#00e5ff] opacity-50" />
-      <div className="text-[#00e5ff] mb-3 bg-[#1c1b1b] p-2 rounded self-start border border-[#353534]">{icon}</div>
-      <div className="text-xs text-[#849396] font-bold mb-1">{label}</div>
-      <div className="text-2xl font-bold font-mono text-[#e5e2e1]" dir="ltr">
-        {value} <span className="text-sm text-[#bac9cc]">{unit}</span>
+    <div className="rounded-xl bg-black/30 border border-white/5 p-2.5">
+      <div className="text-[#00e5ff] mb-1">{icon}</div>
+      <div className="text-[11px] text-[#849396]">{label}</div>
+      <div className="font-mono font-bold text-xl leading-tight" dir="ltr">
+        {value}
+        <span className="text-[10px] text-[#849396] ms-1">{unit}</span>
       </div>
     </div>
   );

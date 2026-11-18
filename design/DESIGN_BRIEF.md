@@ -92,3 +92,6 @@ Focus: **map realism, map animations, dashboard layout, pages & panels styling**
 - **Water colour**: cyan, matching the HMI accent.
 - **Login art**: a golden-hour photoreal aerial of pomegranate and olive rows, darkened behind the login card.
 - **Empty states**: a calm photoreal vignette with a short reassuring line (e.g. "All clear — no active alarms").
+
+## Round 2 — status (2026-11-18)
+All of the above is implemented on branch `ui-round-2`. Approved samples are in `design/samples-r2/`. Final assets are in `apps/web/public/map` (trees, farm-life sprites) and `apps/web/public/art` (detail, login and empty-state art).

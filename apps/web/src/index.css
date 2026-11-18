@@ -100,3 +100,66 @@ body {
 html[lang="ar"] body { font-family: "IBM Plex Sans Arabic", system-ui, sans-serif; }
 html[lang="en"] body { font-family: "IBM Plex Sans Arabic", system-ui, sans-serif; }
 .font-mono, code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+
+/* ─── Glass panels (round 2 styling) ──────────────── */
+.panel {
+  background: linear-gradient(180deg, rgba(36, 36, 38, 0.78), rgba(22, 22, 24, 0.82));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0.9rem;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* ─── Map label chips (counter-scaled by the zoom level --ms) ─── */
+.map-chip-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(calc(1 / max(1, pow(var(--ms, 1), 0.55))));
+  transform-origin: center;
+}
+.map-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 9px 4px;
+  border-radius: 9px;
+  background: rgba(14, 14, 14, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  white-space: nowrap;
+  font-family: "IBM Plex Sans Arabic", sans-serif;
+}
+.map-chip-name { font-size: 11px; font-weight: 700; line-height: 1.25; }
+.map-chip-badge { font-size: 8.5px; font-family: "IBM Plex Mono", monospace; line-height: 1.2; }
+.map-chip-sm { padding: 1px 5px; border-radius: 6px; }
+.map-chip-sm .map-chip-name { font-size: 6.5px; }
+
+@keyframes map-ring { 0%, 100% { stroke-opacity: 0.9; stroke-width: 3; } 50% { stroke-opacity: 0.25; stroke-width: 9; } }
+@keyframes map-eq-alarm { 0%, 100% { filter: drop-shadow(0 0 1px #ff5449); } 50% { filter: drop-shadow(0 0 5px #ff5449) drop-shadow(0 0 2px #ff5449); } }
+.map-ring { animation: map-ring 1.6s ease-in-out infinite; }
+.map-eq-alarm { animation: map-eq-alarm 1.2s ease-in-out infinite; }
+.map-dim { transition: opacity 0.5s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .map-ring, .map-eq-alarm { animation: none; }
+}
+html[data-reduce-motion="1"] .map-flow,
+html[data-reduce-motion="1"] .map-spin,
+html[data-reduce-motion="1"] .map-fault,
+html[data-reduce-motion="1"] .map-glow,
+html[data-reduce-motion="1"] .map-tank,
+html[data-reduce-motion="1"] .map-ring,
+html[data-reduce-motion="1"] .map-eq-alarm { animation: none !important; }
+
+@keyframes tank-wave { to { transform: translateX(-50%); } }
+.tank-wave { animation: tank-wave 3s linear infinite; }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+.spin-slow { display: inline-flex; animation: spin-slow 2.4s linear infinite; }
+html[data-reduce-motion="1"] .tank-wave, html[data-reduce-motion="1"] .spin-slow { animation: none !important; }
