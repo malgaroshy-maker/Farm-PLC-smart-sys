@@ -13,6 +13,7 @@ import { SEVERITY } from '../lib/alarms';
 import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
 import { DropIcon, FlowIcon, GaugeIcon, ValveIcon } from './icons/FarmIcons';
 import { CROP_ICON } from './icons/cropIcon';
+import MaintenanceDone from './MaintenanceDone';
 
 interface ZoneDrawerProps {
   zoneId: string | null;
@@ -201,6 +202,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                 </div>
               );
             })}
+            {zoneAlarms.some((a) => a.alarm_code === 'ALM-036') && <MaintenanceDone zoneId={zoneId} />}
           </section>
 
           {/* 2 — controls */}

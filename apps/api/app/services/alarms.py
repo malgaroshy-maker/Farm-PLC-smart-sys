@@ -31,6 +31,7 @@ from app.core.timeutil import as_utc, utcnow
 from app.deps import Actor
 from app.models.alarm import Alarm
 from app.models.command import Command
+from app.models.event_log import EventLog
 from app.models.zone import Zone
 from app.schemas.alarm import AlarmResponse
 from app.services.events import log_event
@@ -38,6 +39,7 @@ from app.services.live_state import Snapshot, last_update
 from app.services.realtime import manager
 
 OPEN = ("active_unacked", "active_acked")
+MAINTENANCE_DONE = "zone.maintenance_done"
 
 
 @dataclass
@@ -190,32 +192,50 @@ class AlarmEngine:
             elif m == "maintenance":
                 out.append(Condition("ALM-043"))
 
-        # ALM-036: repeated major faults on the same zone in 24 h
+        # ALM-036: repeated major faults on the same zone in 24 h. A recorded
+        # "maintenance done" restarts that zone's window, so the alarm clears
+        # as soon as the repair is signed off.
         since = now - timedelta(hours=24)
-        rows = await db.execute(
-            select(Alarm.zone_id, func.count())
-            .where(
+        done_at = {
+            zid: as_utc(at)
+            for zid, at in (
+                await db.execute(
+                    select(EventLog.entity_id, func.max(EventLog.occurred_at))
+                    .where(EventLog.event_type == MAINTENANCE_DONE, EventLog.occurred_at >= since)
+                    .group_by(EventLog.entity_id)
+                )
+            ).all()
+        }
+
+        def after_cutoff(zone_id: str | None, at: datetime) -> bool:
+            cut = done_at.get(zone_id or "")
+            return cut is None or as_utc(at) > cut
+
+        counts: dict[str, int] = {}
+        for zone_id, at in await db.execute(
+            select(Alarm.zone_id, Alarm.triggered_at).where(
                 Alarm.zone_id.is_not(None),
                 Alarm.triggered_at >= since,
                 Alarm.severity.in_(("S2", "S3")),
                 Alarm.alarm_code != "ALM-036",
             )
-            .group_by(Alarm.zone_id)
-        )
-        counts: dict[str, int] = dict(rows.all())
+        ):
+            if after_cutoff(zone_id, at):
+                counts[zone_id] = counts.get(zone_id, 0) + 1
         # A persistent fault (e.g. a valve that stays stuck) keeps ONE alarm open
         # across retries, so also count starts the controller aborted.
-        failed = await db.execute(
-            select(Command.target_id, func.count())
-            .where(
+        failed: dict[str, int] = {}
+        for zone_id, at in await db.execute(
+            select(Command.target_id, Command.requested_at).where(
                 Command.command_type == "start_zone",
                 Command.status == "failed",
                 Command.requested_at >= since,
                 Command.failure_reason.not_like("Superseded%"),
             )
-            .group_by(Command.target_id)
-        )
-        for zone_id, n in failed:
+        ):
+            if after_cutoff(zone_id, at):
+                failed[zone_id] = failed.get(zone_id, 0) + 1
+        for zone_id, n in failed.items():
             counts[zone_id] = max(counts.get(zone_id, 0), n)
         for zone_id, count in counts.items():
             if zone_id and count >= settings.repeated_fault_threshold:

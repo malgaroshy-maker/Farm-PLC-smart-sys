@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import EmptyState from '../components/EmptyState';
+import MaintenanceDone from '../components/MaintenanceDone';
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import type { Alarm, AlarmSeverity } from '@algaroshy/contracts';
+import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { useFarmStore } from '../store/farm';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
@@ -9,6 +11,7 @@ import { SEVERITY, availableActions, sortAlarms } from '../lib/alarms';
 import { pickName, useT, type MsgKey } from '../lib/i18n';
 
 const NO_ALARMS: Alarm[] = [];
+const ZONE_NAME = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
 
 type View = 'active' | 'history';
 type SevFilter = 'all' | AlarmSeverity;
@@ -149,8 +152,12 @@ export default function AlarmCenter() {
                       {pickName(lang, alarm.name, alarm.name_ar)}
                     </div>
                   </div>
-                  <div className="md:col-span-2 font-mono text-xs text-[#e5e2e1] truncate" dir="ltr">
-                    {alarm.zone_id ?? alarm.device_id ?? t('al.system')}
+                  <div className="md:col-span-2 text-xs text-[#e5e2e1] truncate">
+                    {alarm.zone_id && ZONE_NAME[alarm.zone_id] ? (
+                      pickName(lang, ZONE_NAME[alarm.zone_id].name, ZONE_NAME[alarm.zone_id].name_ar)
+                    ) : (
+                      <bdi className="font-mono">{alarm.zone_id ?? alarm.device_id ?? t('al.system')}</bdi>
+                    )}
                   </div>
                   <div className="md:col-span-2">
                     <span
@@ -195,6 +202,7 @@ export default function AlarmCenter() {
                         </p>
                       </div>
                     ))}
+                    {alarm.alarm_code === 'ALM-036' && alarm.zone_id && alarm.status !== 'cleared' && <MaintenanceDone zoneId={alarm.zone_id} />}
                     <p className="text-xs text-[#849396] flex flex-wrap gap-x-3 gap-y-1">
                       {alarm.current_value != null && <span>{t('al.value')} <bdi className="font-mono">{alarm.current_value}</bdi></span>}
                       {alarm.threshold_value != null && <span>{t('al.threshold')} <bdi className="font-mono">{alarm.threshold_value}</bdi></span>}

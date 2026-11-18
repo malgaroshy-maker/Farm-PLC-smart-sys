@@ -76,6 +76,7 @@ Farm-PLC/
 ```bash
 run.bat            # Windows, dev mode (hot reload)       → http://localhost:5173
 run.bat demo       # Windows, demo mode (phones + PWA)    → http://localhost:4173
+run.bat reset      # clear alarms/commands/events/telemetry first (keeps users + settings; combine: run.bat demo reset)
 ./run.sh           # macOS / Linux (same options)
 ```
 That's all. On first run the launcher sets itself up:

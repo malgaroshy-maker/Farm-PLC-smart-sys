@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Maintenance sign-off + clean demo reset (2026-11-18)
+- **"Maintenance done"** for a zone (operator+). It's in the zone panel and on ALM-036 in the Alarm Center, with an optional note. `POST /api/v1/zones/{id}/maintenance-done` writes a `zone.maintenance_done` event. Faults before that moment stop counting towards ALM-036 (repeated faults), so the alarm clears on the next sync instead of hanging for 24 h. New faults count again from zero. Covered by a test.
+- **`run.bat reset`** (or `./run.sh reset`, which can be combined with `demo`) clears alarms, commands, the event log, telemetry and state snapshots before starting. Users, passwords, zones and settings are kept. It can also be run on its own: `python -m app.reset_demo`.
+- The Alarm Center shows zone names instead of ids.
+
 ### UI round 2 — map realism, animation, dashboard, styling (2026-11-18)
 **Map**
 - About 3,200 individual tree sprites, drawn on a canvas layer at real row spacing and row direction for each crop (pomegranate, olive, trellis grape, peach/apricot/plum rows). Fruit follows the real season: each crop has a fruiting and a green sprite, chosen by the farm-local month. Dry zones yellow tree by tree.

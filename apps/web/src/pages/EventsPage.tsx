@@ -28,6 +28,7 @@ const TYPE_COLOR: Record<string, string> = {
   'alarm.active': '#ff9f43',
   'alarm.reset': '#00e5ff',
   'alarm.acknowledged': '#ffeb3b',
+  'zone.maintenance_done': '#ff9f43',
 };
 
 function fetchPage(cat: Cat, before?: number): Promise<EventRow[]> {

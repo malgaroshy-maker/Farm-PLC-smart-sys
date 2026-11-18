@@ -158,6 +158,36 @@ def test_repeated_faults_raise_maintenance_alarm(client):
     assert a["zone_id"] == "zone_enab" and a["current_value"] == 3
 
 
+def test_maintenance_done_clears_repeated_fault_alarm(client):
+    op, viewer = login(client, "operator"), login(client, "viewer")
+    cond = {"code": "ALM-019", "zone_id": "zone_enab", "device_id": "valve_enab"}
+    def fault():
+        push_state(client, plc_alarms=[cond])
+        push_state(client, plc_alarms=[])
+        aid = by_code(active(client, op), "ALM-019")["id"]
+        client.post(f"/api/v1/alarms/{aid}/ack", headers=op)
+
+    for _ in range(3):
+        fault()
+    push_state(client)
+    assert by_code(active(client, op), "ALM-036")
+
+    url = "/api/v1/zones/zone_enab/maintenance-done"
+    assert client.post(url, headers=viewer).status_code == 403
+    assert client.post("/api/v1/zones/nope/maintenance-done", headers=op).status_code == 404
+    assert client.post(url, json={"note": "valve replaced"}, headers=op).status_code == 204
+    push_state(client)
+    assert not [a for a in active(client, op) if a["alarm_code"] == "ALM-036"]
+    history = client.get("/api/v1/alarms?view=history", headers=op).json()
+    assert by_code(history, "ALM-036")["zone_id"] == "zone_enab"
+
+    # new faults after the sign-off count again from zero
+    for _ in range(2):
+        fault()
+    push_state(client)
+    assert not [a for a in active(client, op) if a["alarm_code"] == "ALM-036"]
+
+
 def test_stale_then_comms_lost_then_recovered(client):
     op = login(client, "operator")
     old = (utcnow() - timedelta(seconds=60)).isoformat()
@@ -214,3 +244,16 @@ def test_repeated_aborted_starts_raise_maintenance_alarm(client):
     push_state(client)
     a = by_code(active(client, op), "ALM-036")
     assert a["zone_id"] == "zone_enab" and a["current_value"] == 3
+
+
+def test_reset_demo_clears_history_but_keeps_users(client):
+    from app.reset_demo import reset_history
+
+    op = login(client, "operator")
+    push_state(client, plc_alarms=[{"code": "ALM-019", "zone_id": "zone_enab", "device_id": "valve_enab"}])
+    assert active(client, op)
+    removed = asyncio.run(reset_history())
+    assert removed["alarms"] >= 1
+    op = login(client, "operator")  # users survive
+    assert client.get("/api/v1/alarms", headers=op).json() == []
+    assert client.get("/api/v1/zones", headers=op).json()  # config survives

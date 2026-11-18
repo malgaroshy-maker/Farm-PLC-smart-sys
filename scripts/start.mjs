@@ -30,6 +30,7 @@ const VENV_PY = IS_WIN ? path.join(API_DIR, '.venv', 'Scripts', 'python.exe') : 
 const args = process.argv.slice(2);
 const MODE = args.includes('demo') ? 'demo' : 'dev';
 const SMOKE = args.includes('--smoke');
+const RESET = args.includes('reset');
 const OPEN_BROWSER = !SMOKE && !args.includes('--no-open');
 
 // ── output ──────────────────────────────────────────────────────────────
@@ -276,6 +277,10 @@ async function main() {
   if (!run(VENV_PY, ['-m', 'alembic', 'upgrade', 'head'], { cwd: API_DIR, env: { ...process.env, ...shared } })) die('Database migration failed.');
   log('setup', 'Seeding (skipped if already seeded)…');
   run(VENV_PY, ['-m', 'app.seed'], { cwd: API_DIR, env: { ...process.env, ...shared } });
+  if (RESET) {
+    log('setup', 'Clearing alarms, commands, events and telemetry for a clean demo (users and settings are kept)…');
+    if (!run(VENV_PY, ['-m', 'app.reset_demo'], { cwd: API_DIR, env: { ...process.env, ...shared } })) die('Demo reset failed.');
+  }
 
   // API: in dev, --reload; the whole tree is killed on exit so no orphaned workers remain.
   start('api', VENV_PY, ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(apiPort), ...(MODE === 'dev' && !SMOKE ? ['--reload'] : [])], {
