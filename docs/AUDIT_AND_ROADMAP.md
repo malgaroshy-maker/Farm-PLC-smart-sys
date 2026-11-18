@@ -92,7 +92,8 @@ Each milestone ends in something you can run and show. Estimates assume one deve
 6. **Responsive layout + PWA** (manifest, service worker, installable, offline shell). Test at phone width, which covers the Android goal.
 7. **Polish pass:** loading/empty/error states, stale-data banner, toasts for command results.
 
-### Milestone D — Schedules, cycles, reports (≈1.5 weeks)
+### Milestone D — Simulation time, schedules, cycles, reports (≈2 weeks)
+0. **Simulation time first** (spec: [SIMULATION_TIME.md](SIMULATION_TIME.md), decided with the owner 2026-11-19). One virtual farm clock shared by the API, simulator and UI. Live speed control in presenter mode (pause, 1×, 10×, 60×, 360×), jump to a time of day, step, a SIMULATED TIME badge, and "Back to real time" (which clears demo history). Locked to real time with a real PLC. Schedules (1–2) are built on this clock.
 1. Schedule CRUD with a conflict checker (overlap, combinations, pump capacity).
 2. Scheduler service (APScheduler) that issues commands through the same command service, so the same interlocks apply.
 3. An irrigation cycle log for each run: planned vs actual duration, water used, outcome, alarms.

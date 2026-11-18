@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-18
-**Current milestone:** A ✅ · B ✅ · C ✅ → next is **D: schedules, cycles, reports**
+**Current milestone:** A ✅ · B ✅ · C ✅ → next is **D: simulation time, schedules, cycles, reports**
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -39,6 +39,7 @@ All **13/13** scenarios pass against the running API + simulator (timescale 1×)
 
 | Gap | Planned in |
 |-----|-----------|
+| Simulation time: `TIMESCALE` only speeds up the simulator's physics. Clocks, day/night, charts, water-today and alarm windows stay on real time, so they drift apart above 1× | D (first item, [spec](docs/SIMULATION_TIME.md)) |
 | Schedules, irrigation cycle log, reports | D |
 | All AI features (`/health` reports `ai: not_implemented`) | E |
 | PLC adapter, hosting, PostgreSQL in production, notifications/SMS | Production track |
@@ -55,7 +56,7 @@ All **13/13** scenarios pass against the running API + simulator (timescale 1×)
 | **A: Foundations** | ✅ Done 2026-11-18 |
 | **B: Credible simulator + real alarms** | ✅ Done 2026-11-18 |
 | **C: Demo-quality UI + PWA** | ✅ Done 2026-11-18 |
-| **D: Schedules, cycles, reports** | ⬜ Next |
+| **D: Simulation time, schedules, cycles, reports** | ⬜ Next. Starts with the virtual farm clock ([spec](docs/SIMULATION_TIME.md)) |
 | **E: AI (alarm assistant, weather advisor, anomaly detection)** | ⬜ |
 | Production track (PLC adapter, hosting, hardening) | ⬜ After the demo |
 

@@ -17,6 +17,8 @@
 9. `ALARM_MATRIX.md` — alarm severity, triggers, actions, notifications
 10. `UI_WIREFRAMES.md` — web and Android screen definitions and UX rules
 11. `SIMULATION_PLAN.md` — simulation-first plan for vibecoding and testing
+    - `SIMULATION_TIME.md` — virtual farm clock: live speed, pause, jump, SIMULATED TIME badge (Milestone D)
+    - `prompts/` — ready-to-paste prompts for the next AI coding agent
 12. `IMPLEMENTATION_PLAN.md` — phased build plan and repository structure
 13. `HARDWARE_BOM_DRAFT.md` — preliminary hardware blocks and field instrumentation list
 14. `TEST_PLAN.md` — acceptance tests, scenario tests, and commissioning checks

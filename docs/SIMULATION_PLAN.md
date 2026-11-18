@@ -62,3 +62,7 @@ Allow development of the entire stack before real hardware is connected.
 - alarm center can be fully tested
 - reports can be generated from simulated history
 - command rules can be validated before hardware
+
+---
+
+**Simulation time:** the planned virtual farm clock (live speed, pause, jump, SIMULATED TIME badge) is specified in [SIMULATION_TIME.md](SIMULATION_TIME.md). Until then, `TIMESCALE` only speeds up the physics.
