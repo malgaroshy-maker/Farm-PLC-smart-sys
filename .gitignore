@@ -98,3 +98,4 @@ design/assets-raw/*.png
 
 # launcher runtime state
 .run/
+design/assets-raw/log_*.txt

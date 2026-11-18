@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="260" viewBox="0 0 720 260">
+  <!-- Duotone line icon samples (24px grid, shown at 6×). Stroke = currentColor, accent = cyan. -->
+  <rect width="720" height="260" fill="#0e0e0e"/>
+  <defs>
+    <!-- PUMP: motor body + impeller housing, cyan impeller -->
+    <symbol id="i-pump" viewBox="0 0 24 24">
+      <rect x="2.5" y="8" width="9" height="8" rx="1.5" fill="none" stroke="#e5e2e1" stroke-width="1.6"/>
+      <path d="M5 8V6.5M9 8V6.5M5 16v1.5M9 16v1.5" stroke="#e5e2e1" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M11.5 12h1.5" stroke="#e5e2e1" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="17" cy="12" r="4.5" fill="#00e5ff" fill-opacity="0.18" stroke="#00e5ff" stroke-width="1.6"/>
+      <path d="M17 12l2.2-1.3M17 12l-1.2 2.2M17 12l-1-2.4" stroke="#00e5ff" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M17 7.5V4.5h4" fill="none" stroke="#e5e2e1" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <!-- VALVE: pipe + bow-tie body + handwheel, cyan flow -->
+    <symbol id="i-valve" viewBox="0 0 24 24">
+      <path d="M2 14h4M18 14h4" stroke="#00e5ff" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M6 10.5l6 3.5-6 3.5zM18 10.5l-6 3.5 6 3.5z" fill="#00e5ff" fill-opacity="0.18" stroke="#e5e2e1" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M12 14V7" stroke="#e5e2e1" stroke-width="1.6" stroke-linecap="round"/>
+      <ellipse cx="12" cy="5.5" rx="4" ry="1.5" fill="none" stroke="#e5e2e1" stroke-width="1.6"/>
+    </symbol>
+    <!-- TANK: square concrete building, cyan water level -->
+    <symbol id="i-tank" viewBox="0 0 24 24">
+      <rect x="3.5" y="5" width="17" height="15" rx="1.5" fill="none" stroke="#e5e2e1" stroke-width="1.6"/>
+      <path d="M3.5 13.5c2 1 3.6-1 5.7 0s3.6 1 5.6 0 3.7-1 5.7 0V18.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z" fill="#00e5ff" fill-opacity="0.25" stroke="#00e5ff" stroke-width="1.4" stroke-linejoin="round"/>
+      <rect x="14.5" y="2.5" width="4" height="2.5" rx="0.6" fill="none" stroke="#e5e2e1" stroke-width="1.4"/>
+      <path d="M7 9h4" stroke="#e5e2e1" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
+    </symbol>
+  </defs>
+  <g font-family="IBM Plex Sans Arabic, sans-serif" fill="#bac9cc" font-size="16" text-anchor="middle">
+    <use href="#i-pump" x="60" y="40" width="144" height="144"/>
+    <use href="#i-valve" x="288" y="40" width="144" height="144"/>
+    <use href="#i-tank" x="516" y="40" width="144" height="144"/>
+    <text x="132" y="220">مضخة · pump</text>
+    <text x="360" y="220">صمام · valve</text>
+    <text x="588" y="220">خزان · tank</text>
+    <!-- actual size row -->
+    <use href="#i-pump" x="108" y="232" width="24" height="24"/>
+    <use href="#i-valve" x="336" y="232" width="24" height="24"/>
+    <use href="#i-tank" x="564" y="232" width="24" height="24"/>
+  </g>
+</svg>
