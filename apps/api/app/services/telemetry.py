@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.clock import clock
 from app.core.timeutil import as_utc, utcnow
 from app.models.telemetry import TelemetryPoint
 from app.services.live_state import Snapshot
@@ -25,13 +26,32 @@ METRIC_KEYS = (*SYSTEM_METRICS, *(f"zone.{m}" for m in ZONE_METRICS))
 
 class Recorder:
     def __init__(self) -> None:
-        self._last: datetime | None = None
+        self._last_farm: datetime | None = None
+        self._last_real: datetime | None = None
+
+    @property
+    def _last(self) -> datetime | None:
+        return self._last_farm
+
+    @_last.setter
+    def _last(self, val: datetime | None) -> None:
+        self._last_farm = val
+        self._last_real = val
 
     async def maybe_record(self, db: AsyncSession, snapshots: dict[str, Snapshot]) -> int:
-        now = utcnow()
-        if self._last and (now - self._last).total_seconds() < settings.telemetry_interval_sec:
-            return 0
-        self._last = now
+        now_real = utcnow()
+        now_farm = clock.farm_now()
+        # Telemetry every 10 s farm time, at most 1/s real (bypassed in tests where interval == 0)
+        if settings.telemetry_interval_sec > 0:
+            if self._last_real and (now_real - self._last_real).total_seconds() < 1.0:
+                return 0
+            if (
+                self._last_farm
+                and (now_farm - self._last_farm).total_seconds() < settings.telemetry_interval_sec
+            ):
+                return 0
+        self._last_real = now_real
+        self._last_farm = now_farm
         points: list[TelemetryPoint] = []
 
         def add(metric: str, value, zone_id: str | None = None) -> None:
@@ -41,7 +61,7 @@ class Recorder:
                         metric_key=metric,
                         farm_id=settings.farm_id,
                         zone_id=zone_id,
-                        ts=now,
+                        ts=now_farm,
                         value_numeric=float(value),
                         source="simulator" if settings.deployment_mode == "simulation" else "plc",
                     )
@@ -65,7 +85,7 @@ async def series(
     db: AsyncSession, metric_key: str, zone_id: str | None, minutes: int, points: int
 ) -> list[dict]:
     """Bucket-averaged series, oldest first: [{ts, value, min, max}]."""
-    end = utcnow()
+    end = clock.farm_now()
     start = end - timedelta(minutes=minutes)
     q = select(TelemetryPoint.ts, TelemetryPoint.value_numeric).where(
         TelemetryPoint.metric_key == metric_key, TelemetryPoint.ts >= start
@@ -95,12 +115,12 @@ async def series(
     ]
 
 
-MAX_GAP_S = 60.0  # don't integrate across data gaps (comms loss, simulator off)
+MAX_GAP_S = 600.0  # don't integrate across data gaps (comms loss, simulator off; up to 10 farm min)
 
 
 def farm_midnight_utc(now: datetime | None = None) -> datetime:
     tz = ZoneInfo(settings.farm_timezone)
-    local = (now or utcnow()).astimezone(tz)
+    local = (now or clock.farm_now()).astimezone(tz)
     return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
 
 
@@ -130,7 +150,7 @@ async def water_today(db: AsyncSession) -> list[dict]:
 
 
 async def prune_old(db: AsyncSession) -> None:
-    cutoff = utcnow() - timedelta(days=settings.telemetry_retention_days)
+    cutoff = clock.farm_now() - timedelta(days=settings.telemetry_retention_days)
     await db.execute(delete(TelemetryPoint).where(TelemetryPoint.ts < cutoff))
     await db.commit()
 

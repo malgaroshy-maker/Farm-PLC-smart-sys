@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     farm_timezone: str = "Africa/Tripoli"
     default_language: str = "ar"
     deployment_mode: str = "simulation"  # simulation | local_pilot | production_hybrid
+    controller_mode: str = "simulator"  # simulator | plc
 
     # ── API ──────────────────────────────────────────────
     api_host: str = "0.0.0.0"

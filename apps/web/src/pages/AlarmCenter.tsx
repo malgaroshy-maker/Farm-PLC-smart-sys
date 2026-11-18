@@ -19,7 +19,18 @@ type SevFilter = 'all' | AlarmSeverity;
 function fmtTime(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 19)}`;
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Tripoli',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  })
+    .format(d)
+    .replace(',', '');
 }
 
 export default function AlarmCenter() {

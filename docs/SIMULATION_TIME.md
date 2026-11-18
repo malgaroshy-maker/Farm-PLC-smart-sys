@@ -1,6 +1,6 @@
 # Simulation time — one virtual farm clock
 
-**Status:** planned. This is the first item of Milestone D, because schedules depend on the clock. The owner decided the design on 2026-11-19.
+**Status:** ✅ done (2026-11-19). This is the first item of Milestone D, because schedules depend on the clock. All owner decisions and implementation requirements delivered and verified with automated test suites and live Playwright execution.
 
 ## Why
 Today `TIMESCALE` in `.env` only speeds up the simulator's physics (tank, moisture, runtimes), and it's fixed when the simulator starts. Everything else still runs on the real wall clock: the API timestamps, the header clock, day/night lighting, seasonal fruit, "water today", telemetry charts, and the 24 h window of ALM-036. At 60× these drift apart, so the demo looks wrong.

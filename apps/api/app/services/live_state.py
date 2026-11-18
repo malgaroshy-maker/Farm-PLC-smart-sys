@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.clock import clock
 from app.core.timeutil import as_utc, utcnow
 from app.models.telemetry import DeviceStateSnapshot
 from app.schemas.state import FarmMapState, StateSyncPayload
@@ -76,6 +77,10 @@ def build_map_state(
         active_alarms=active_alarms or [],
         data_fresh=is_fresh(snapshots),
         last_snapshot_ts=last,
+        farm_now=clock.farm_now(),
+        speed=clock.speed,
+        clock_mode=clock.mode,
+        clock_paused=clock.is_paused,
     )
 
 

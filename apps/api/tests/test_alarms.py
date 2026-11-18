@@ -161,6 +161,7 @@ def test_repeated_faults_raise_maintenance_alarm(client):
 def test_maintenance_done_clears_repeated_fault_alarm(client):
     op, viewer = login(client, "operator"), login(client, "viewer")
     cond = {"code": "ALM-019", "zone_id": "zone_enab", "device_id": "valve_enab"}
+
     def fault():
         push_state(client, plc_alarms=[cond])
         push_state(client, plc_alarms=[])
@@ -250,7 +251,9 @@ def test_reset_demo_clears_history_but_keeps_users(client):
     from app.reset_demo import reset_history
 
     op = login(client, "operator")
-    push_state(client, plc_alarms=[{"code": "ALM-019", "zone_id": "zone_enab", "device_id": "valve_enab"}])
+    push_state(
+        client, plc_alarms=[{"code": "ALM-019", "zone_id": "zone_enab", "device_id": "valve_enab"}]
+    )
     assert active(client, op)
     removed = asyncio.run(reset_history())
     assert removed["alarms"] >= 1

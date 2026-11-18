@@ -354,6 +354,29 @@ export interface FarmMapState {
   active_alarms: Alarm[];
   data_fresh: boolean;
   last_snapshot_ts: string | null;
+  farm_now?: string;
+  speed?: number;
+  clock_mode?: "real" | "sim";
+  clock_paused?: boolean;
+}
+
+// ─── Simulation Clock ───────────────────────────────────
+
+export interface FarmClockState {
+  mode: "real" | "sim";
+  speed: number;
+  paused: boolean;
+  farm_now: string;
+  real_now: string;
+}
+
+export interface ClockUpdateRequest {
+  speed?: number;
+  pause?: boolean;
+  step_min?: number;
+  jump_to?: string;
+  real?: boolean;
+  confirm?: boolean;
 }
 
 // ─── Reports ────────────────────────────────────────────

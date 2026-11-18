@@ -12,6 +12,7 @@ from .ai import (
 )
 from .alarm import Alarm
 from .base import Base
+from .clock import FarmClockModel
 from .command import Command
 from .event_log import EventLog
 from .farm import Farm
@@ -28,6 +29,7 @@ from .zone import Zone, ZoneCombination
 __all__ = [
     "Base",
     "Farm",
+    "FarmClockModel",
     "Zone",
     "ZoneCombination",
     "Pump",

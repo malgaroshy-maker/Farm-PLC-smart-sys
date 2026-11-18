@@ -23,6 +23,9 @@ class Command(Base, IdentityMixin):
     )  # user | system | scheduler | plc | ai
     status: Mapped[str] = mapped_column(String(20), default="pending")
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    requested_at_real: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failure_reason: Mapped[str | None] = mapped_column(Text)

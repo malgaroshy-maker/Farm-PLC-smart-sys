@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.alarm_catalog import CATALOG, SEVERITY_RANK, AlarmSpec
+from app.core.clock import clock
 from app.core.timeutil import as_utc, utcnow
 from app.deps import Actor
 from app.models.alarm import Alarm
@@ -153,15 +154,20 @@ class AlarmEngine:
         return (now - since).total_seconds() >= seconds
 
     async def derived_conditions(
-        self, db: AsyncSession, snapshots: dict[str, Snapshot], now: datetime
+        self,
+        db: AsyncSession,
+        snapshots: dict[str, Snapshot],
+        now: datetime,
+        real_now: datetime | None = None,
     ) -> list[Condition]:
         out: list[Condition] = []
+        r_now = real_now or utcnow()
         stats = snapshots.get("simulation_stats")
         mode = snapshots.get("system_mode")
         if stats:
             tank = float(stats.state.get("tank_level_pct", 100.0))
             low = settings.tank_critical_pct <= tank < settings.tank_warning_pct
-            if self._debounced("ALM-001", low, settings.tank_warning_debounce_sec, now):
+            if self._debounced("ALM-001", low, settings.tank_warning_debounce_sec, r_now):
                 out.append(
                     Condition("ALM-001", value=round(tank, 1), threshold=settings.tank_warning_pct)
                 )
@@ -178,13 +184,13 @@ class AlarmEngine:
                 p = float(stats.state.get("main_pressure_bar", 0.0))
                 p_min = max((z.pressure_min_bar for z in zones), default=0.0)
                 p_max = min((z.pressure_max_bar for z in zones), default=99.0)
-                if self._debounced("ALM-008", p < p_min, settings.alarm_debounce_sec, now):
+                if self._debounced("ALM-008", p < p_min, settings.alarm_debounce_sec, r_now):
                     out.append(Condition("ALM-008", value=round(p, 2), threshold=p_min))
-                if self._debounced("ALM-010", p > p_max, settings.alarm_debounce_sec, now):
+                if self._debounced("ALM-010", p > p_max, settings.alarm_debounce_sec, r_now):
                     out.append(Condition("ALM-010", value=round(p, 2), threshold=p_max))
             else:
-                self._debounced("ALM-008", False, 0, now)
-                self._debounced("ALM-010", False, 0, now)
+                self._debounced("ALM-008", False, 0, r_now)
+                self._debounced("ALM-010", False, 0, r_now)
         if mode:
             m = mode.state.get("mode")
             if m == "manual":
@@ -268,7 +274,7 @@ class AlarmEngine:
         scope_codes: set[str],
     ) -> list[tuple[str, Alarm]]:
         """Bring open alarms for `scope_codes` in line with the current conditions."""
-        now = utcnow()
+        now = clock.farm_now()
         wanted = {c.key: c for c in conditions if c.code in scope_codes}
         existing = {
             a.correlation_key: a
@@ -345,12 +351,13 @@ class AlarmEngine:
     # ── Entry points ─────────────────────────────────────
 
     async def on_state_sync(self, db: AsyncSession, snapshots: dict[str, Snapshot]) -> None:
-        now = utcnow()
+        farm_now = clock.farm_now()
+        real_now = utcnow()
         plc_codes = {c for c, s in CATALOG.items() if s.source == "plc"}
         derived_codes = {"ALM-001", "ALM-008", "ALM-010", "ALM-036", "ALM-042", "ALM-043"}
         events = await self.reconcile(db, self.plc_conditions(snapshots), plc_codes)
         events += await self.reconcile(
-            db, await self.derived_conditions(db, snapshots, now), derived_codes
+            db, await self.derived_conditions(db, snapshots, farm_now, real_now), derived_codes
         )
         # fresh data just arrived → staleness alarms clear
         events += await self.reconcile(db, [], {"ALM-029", "ALM-044"})
@@ -373,7 +380,7 @@ class AlarmEngine:
         device_id: str | None = None,
     ) -> Alarm:
         """One-shot alarm (condition is momentary) — e.g. ALM-035."""
-        now = utcnow()
+        now = clock.farm_now()
         cond = Condition(code, zone_id=zone_id, device_id=device_id, value=value, detail=detail)
         alarm = self._new_alarm(cond, now)
         alarm.correlation_key = f"{cond.key}:{alarm.id[:8]}"
@@ -406,7 +413,7 @@ class AlarmEngine:
             raise HTTPException(404, "Alarm not found")
         if alarm.status != "active_unacked":
             raise HTTPException(409, f"Alarm is {alarm.status}; nothing to acknowledge")
-        alarm.acknowledged_at = utcnow()
+        alarm.acknowledged_at = clock.farm_now()
         alarm.acknowledged_by = actor.actor_id
         alarm.status = resolve_status(alarm, CATALOG[alarm.alarm_code])
         await log_event(
@@ -428,10 +435,11 @@ class AlarmEngine:
             raise HTTPException(409, "Alarm is already cleared")
         if alarm.cleared_at is None:
             raise HTTPException(409, "Condition is still active — fix the cause before resetting")
+        now = clock.farm_now()
         if not alarm.acknowledged_at:
-            alarm.acknowledged_at = utcnow()
+            alarm.acknowledged_at = now
             alarm.acknowledged_by = actor.actor_id
-        alarm.reset_at = utcnow()
+        alarm.reset_at = now
         alarm.reset_by = actor.actor_id
         alarm.status = "cleared"
         await log_event(
@@ -448,10 +456,12 @@ class AlarmEngine:
     async def reset_all_cleared(self, db: AsyncSession, actor: Actor) -> int:
         """Reset every latched alarm whose condition is gone (scenario prep)."""
         latched = [a for a in await open_alarms(db) if a.cleared_at is not None]
+        now = clock.farm_now()
         for a in latched:
-            a.acknowledged_at = a.acknowledged_at or utcnow()
-            a.reset_at, a.reset_by, a.status = utcnow(), actor.actor_id, "cleared"
+            a.acknowledged_at = a.acknowledged_at or now
+            a.reset_at, a.reset_by, a.status = now, actor.actor_id, "cleared"
         await self._publish(db, [("alarm.reset", a) for a in latched])
+        return len(latched)
         return len(latched)
 
 

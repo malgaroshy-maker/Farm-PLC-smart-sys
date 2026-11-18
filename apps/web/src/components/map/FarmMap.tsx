@@ -17,6 +17,7 @@ import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
 import { SEVERITY, topSeverity } from '../../lib/alarms';
 import { usePrefs } from '../../lib/prefs';
 import { useFarmStore } from '../../store/farm';
+import { useFarmClock } from '../../lib/clock';
 
 type Light = 'auto' | 'day' | 'night';
 type UiState = 'running' | 'busy' | 'fault' | 'idle';
@@ -42,18 +43,6 @@ const STATE_COLOR: Record<UiState, string> = {
 
 // ── time & light ─────────────────────────────────────────────────────────
 
-function farmNow(now: Date) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Tripoli',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'numeric',
-    hourCycle: 'h23',
-  }).formatToParts(now);
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
-  return { hour: get('hour') + get('minute') / 60, month: get('month') || now.getMonth() + 1 };
-}
-
 function lighting(mode: Light, hour: number): { night: number; dusk: number } {
   if (mode === 'day') return { night: 0, dusk: 0 };
   if (mode === 'night') return { night: 1, dusk: 0 };
@@ -61,15 +50,6 @@ function lighting(mode: Light, hour: number): { night: number; dusk: number } {
   const night = sun >= 0.15 ? 0 : Math.min(1, (0.15 - sun) / 0.45);
   const dusk = sun > -0.2 && sun < 0.3 ? 1 - Math.abs(sun - 0.05) / 0.25 : 0;
   return { night, dusk: Math.max(0, dusk) };
-}
-
-function useFarmClock() {
-  const [t, setT] = useState(() => farmNow(new Date()));
-  useEffect(() => {
-    const id = setInterval(() => setT(farmNow(new Date())), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  return t;
 }
 
 // ── alarm → map location ─────────────────────────────────────────────────

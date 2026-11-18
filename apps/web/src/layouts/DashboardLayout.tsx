@@ -19,6 +19,9 @@ import type { LinkStatus } from '../store/farm';
 import { SEVERITY, topSeverity } from '../lib/alarms';
 import { useI18nStore, useT, type MsgKey } from '../lib/i18n';
 import { usePresenter } from '../lib/presenter';
+import { useFarmClock } from '../lib/clock';
+import SimTimeBadge from '../components/clock/SimTimeBadge';
+import ClockHeaderChip from '../components/clock/ClockHeaderChip';
 
 const LINK: Record<LinkStatus, { key: MsgKey; color: string }> = {
   idle: { key: 'link.connecting', color: '#849396' },
@@ -27,26 +30,6 @@ const LINK: Record<LinkStatus, { key: MsgKey; color: string }> = {
   polling: { key: 'link.polling', color: '#ffeb3b' },
   offline: { key: 'link.offline', color: '#ffb4ab' },
 };
-
-/** Clock in farm local time (Africa/Tripoli). */
-function useFarmClock(lang: string) {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const fmt = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-LY-u-nu-latn' : 'en-GB', {
-    timeZone: 'Africa/Tripoli',
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  });
-  return fmt.format(now);
-}
 
 export default function DashboardLayout() {
   const { user, loading, logout, can } = useAuth();
@@ -61,7 +44,7 @@ export default function DashboardLayout() {
   const sendCommand = useFarmStore((s) => s.sendCommand);
   const [stopMsg, setStopMsg] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const clock = useFarmClock(lang);
+  const { formatted: clock } = useFarmClock(lang);
   const prefs = usePrefs();
 
   useEffect(() => {
@@ -184,9 +167,13 @@ export default function DashboardLayout() {
             <Menu size={22} />
           </button>
           <img src="/map/logo.webp" alt="" className="w-7 h-7 lg:hidden" />
-          <span className="text-xs sm:text-sm text-[#849396] font-mono truncate" dir="ltr">
-            {clock}
-          </span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs sm:text-sm text-[#849396] font-mono truncate" dir="ltr">
+              {clock}
+            </span>
+            <SimTimeBadge />
+            {showTech && <ClockHeaderChip />}
+          </div>
           <div className="ms-auto flex items-center gap-3 sm:gap-5">
             <button
               onClick={prefs.toggleMute}

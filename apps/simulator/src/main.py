@@ -36,7 +36,7 @@ async def run_simulator():
 
     api_url = os.getenv("API_URL", "http://127.0.0.1:8000/api/v1")
     token = os.getenv("SIMULATOR_TOKEN", "dev-simulator-token")
-    client = APIClient(engine, base_url=api_url, token=token)
+    client = APIClient(engine, base_url=api_url, token=token, initial_timescale=time_scale)
 
     # Run loops concurrently
     loop = asyncio.get_running_loop()

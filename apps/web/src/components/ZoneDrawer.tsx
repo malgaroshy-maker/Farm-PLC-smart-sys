@@ -14,6 +14,7 @@ import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
 import { DropIcon, FlowIcon, GaugeIcon, ValveIcon } from './icons/FarmIcons';
 import { CROP_ICON } from './icons/cropIcon';
 import MaintenanceDone from './MaintenanceDone';
+import { useClockStore } from '../lib/clock';
 
 interface ZoneDrawerProps {
   zoneId: string | null;
@@ -50,6 +51,7 @@ function hms(sec: number): string {
 
 function useZoneHistory(zoneId: string, minutes: number): ChartRow[] {
   const [rows, setRows] = useState<ChartRow[]>([]);
+  const speed = useClockStore((s) => s.speed);
   useEffect(() => {
     let live = true;
     const load = async () => {
@@ -70,12 +72,13 @@ function useZoneHistory(zoneId: string, minutes: number): ChartRow[] {
       }
     };
     void load();
-    const id = setInterval(load, 15000);
+    const interval = speed >= 60 ? 3000 : speed >= 10 ? 6000 : 15000;
+    const id = setInterval(load, interval);
     return () => {
       live = false;
       clearInterval(id);
     };
-  }, [zoneId, minutes]);
+  }, [zoneId, minutes, speed]);
   return rows;
 }
 

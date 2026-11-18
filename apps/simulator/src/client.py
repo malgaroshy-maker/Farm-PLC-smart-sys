@@ -1,6 +1,8 @@
 """HTTP client connecting the simulator to the backend API (acts as the PLC bridge)."""
 
 import asyncio
+import json
+from datetime import datetime
 
 import httpx
 
@@ -22,9 +24,12 @@ class APIClient:
         engine: SimulatorEngine,
         base_url: str = "http://127.0.0.1:8000/api/v1",
         token: str = "dev-simulator-token",
+        initial_timescale: float = 1.0,
     ):
         self.engine = engine
         self.base_url = base_url
+        self.token = token
+        self.initial_timescale = initial_timescale
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {token}"},
@@ -32,6 +37,70 @@ class APIClient:
         )
         self.running = False
         self._comms_down = False
+        root = base_url.replace("/api/v1", "")
+        ws_proto = "wss://" if root.startswith("https://") else "ws://"
+        host_part = root.split("://", 1)[1] if "://" in root else root
+        self.ws_url = f"{ws_proto}{host_part}/ws?token={token}"
+
+    async def sync_clock(self) -> None:
+        try:
+            resp = await self.client.get("/sim/clock")
+            if resp.status_code == 200:
+                data = resp.json()
+                self._handle_clock_update(data)
+                if (
+                    self.initial_timescale != 1.0
+                    and data.get("mode") == "real"
+                    and data.get("speed") == 1.0
+                ):
+                    set_resp = await self.client.post(
+                        "/sim/clock", json={"speed": self.initial_timescale}
+                    )
+                    if set_resp.status_code == 200:
+                        self._handle_clock_update(set_resp.json())
+        except Exception as e:
+            print(f"[SIMULATOR] Could not sync clock: {e}")
+
+    def _handle_clock_update(self, payload: dict) -> None:
+        speed = payload.get("speed")
+        paused = payload.get("paused")
+        if paused is None:
+            paused = payload.get("clock_paused", False)
+        farm_now_str = payload.get("farm_now")
+        if farm_now_str:
+            try:
+                s = farm_now_str.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(s)
+                gap = abs((dt - self.engine.sim_time).total_seconds())
+                if gap > 15.0:
+                    self.engine.jump(dt)
+                else:
+                    self.engine.sim_time = dt
+            except Exception:
+                pass
+        if speed is not None:
+            self.engine.timescale = float(speed)
+        self.engine.paused = bool(paused)
+
+    async def ws_loop(self) -> None:
+        import websockets
+
+        while self.running:
+            try:
+                async with websockets.connect(self.ws_url) as ws:
+                    print(f"[SIMULATOR] Connected to WebSocket at {self.ws_url}")
+                    while self.running:
+                        msg = await ws.recv()
+                        try:
+                            data = json.loads(msg)
+                            event_type = data.get("type")
+                            payload = data.get("payload") or {}
+                            if event_type in ("clock.changed", "state.snapshot"):
+                                self._handle_clock_update(payload)
+                        except Exception as e:
+                            print(f"[SIMULATOR] WS message error: {e}")
+            except Exception:
+                await asyncio.sleep(2.0)
 
     async def fetch_initial_layout(self) -> bool:
         """Load zones, pumps, valves and sensors from the API. Returns True on success."""
@@ -92,11 +161,18 @@ class APIClient:
         while self.running and not await self.fetch_initial_layout():
             await asyncio.sleep(2.0)
 
-        while self.running:
-            if not self.comms_dropped():
-                await self.poll_commands()
-                await self.push_state()
-            await asyncio.sleep(1.0)
+        await self.sync_clock()
+        loop = asyncio.get_running_loop()
+        ws_task = loop.create_task(self.ws_loop())
+
+        try:
+            while self.running:
+                if not self.comms_dropped():
+                    await self.poll_commands()
+                    await self.push_state()
+                await asyncio.sleep(1.0)
+        finally:
+            ws_task.cancel()
 
 
 def apply_layout(engine: SimulatorEngine, zones, pumps, valves, sensors) -> None:

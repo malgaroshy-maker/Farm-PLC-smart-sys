@@ -253,6 +253,30 @@ const dict = {
   // common
   'common.lang': { ar: 'English', en: 'العربية' },
   'common.loading': { ar: 'جارٍ التحميل…', en: 'Loading…' },
+  // simulation clock
+  'clock.simulated': { ar: 'وقت محاكاة', en: 'SIMULATED TIME' },
+  'clock.paused': { ar: 'متوقف مؤقتاً', en: 'PAUSED' },
+  'clock.speed': { ar: 'السرعة', en: 'Speed' },
+  'clock.step': { ar: '+1 دقيقة', en: '+1 min' },
+  'clock.jump': { ar: 'انتقال إلى وقت', en: 'Jump to time' },
+  'clock.jumpAction': { ar: 'انتقال', en: 'Jump' },
+  'clock.realTime': { ar: 'العودة إلى الوقت الحقيقي', en: 'Back to real time' },
+  'clock.realTimeConfirm': {
+    ar: 'هل أنت متأكد من العودة إلى الوقت الحقيقي؟ سيتم مسح سجل المحاكاة بالكامل (الإنذارات، الأوامر، سجل الأحداث، وسجلات القياسات) والعودة إلى توقيت طرابلس الفعلي.',
+    en: 'Are you sure you want to return to real time? Demo operating history (alarms, commands, events, telemetry) will be cleared, and the clock will resync to real Tripoli time.',
+  },
+  'clock.confirmReset': { ar: 'تأكيد ومسح السجل', en: 'Confirm & Clear History' },
+  'clock.cancel': { ar: 'إلغاء', en: 'Cancel' },
+  'clock.title': { ar: 'ساعة المزرعة الافتراضية', en: 'Virtual Farm Clock' },
+  'clock.subtitle': { ar: 'ساعة موحدة تدير المحاكاة والجداول والإضاءة', en: 'One shared clock controlling simulation, schedules and lighting' },
+  'clock.presets': { ar: 'أوقات سريعة', en: 'Quick presets' },
+  'clock.dawn': { ar: 'الفجر 05:30', en: 'Dawn 05:30' },
+  'clock.noon': { ar: 'الظهيرة 12:00', en: 'Noon 12:00' },
+  'clock.sunset': { ar: 'الغروب 18:30', en: 'Sunset 18:30' },
+  'clock.night': { ar: 'الليل 22:00', en: 'Night 22:00' },
+  'clock.play': { ar: 'تشغيل', en: 'Play' },
+  'clock.pause': { ar: 'إيقاف مؤقت', en: 'Pause' },
+  'clock.customTime': { ar: 'وقت مخصص (س:د)', en: 'Custom time (HH:MM)' },
 } as const;
 
 export type MsgKey = keyof typeof dict;
@@ -301,13 +325,13 @@ export const useI18nStore = create<I18nStore>((set, get) => {
 });
 
 export function translate(lang: Lang, key: MsgKey): string {
-  return dict[key][lang];
+  return dict[key]?.[lang] ?? (key as string);
 }
 
 /** Hook: `const { t, lang } = useT(); t('nav.alarms')` */
 export function useT() {
   const lang = useI18nStore((s) => s.lang);
-  return { lang, t: (key: MsgKey) => dict[key][lang], isRtl: lang === 'ar' };
+  return { lang, t: (key: MsgKey) => dict[key]?.[lang] ?? (key as string), isRtl: lang === 'ar' };
 }
 
 /** Pick the right field from bilingual records (`name` / `name_ar`). */

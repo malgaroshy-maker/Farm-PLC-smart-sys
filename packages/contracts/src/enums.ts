@@ -178,6 +178,7 @@ export type EventType =
   | "system.mode.changed"
   | "alarm.updated"
   | "scenario.updated"
+  | "clock.changed"
   | "ai.suggestion.new"
   | "ai.anomaly.detected"
   | "ai.weather.advisory"

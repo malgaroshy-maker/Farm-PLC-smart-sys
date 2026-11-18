@@ -315,3 +315,45 @@ def test_stop_during_start_fails_the_start_command(eng):
     eng.process_commands([cmd("stop_zone", "zone_a", "c2")])
     [update] = eng.drain_outbox()
     assert update["command_id"] == "c1" and update["status"] == "failed"
+
+
+# ── Virtual clock & simulation time tests ─────────────────
+
+
+def test_paused_means_no_physics(eng):
+    eng.paused = True
+    initial_moisture = eng.state.zones["zone_a"].moisture_pct
+    initial_tank = eng.state.system.tank_level_pct
+    initial_sim_time = eng.sim_time
+
+    # Run steps while paused
+    eng.step(10.0)
+    eng.step(10.0)
+
+    assert eng.sim_time == initial_sim_time
+    assert eng.state.zones["zone_a"].moisture_pct == initial_moisture
+    assert eng.state.system.tank_level_pct == initial_tank
+
+
+def test_timescale_physics_acceleration(eng):
+    # Running 600 simulated seconds (e.g. 10 real seconds at 60x)
+    initial_moisture = eng.state.zones["zone_a"].moisture_pct
+    run(eng, 600.0, dt=1.0)
+    # Moisture should dry over 600 simulated seconds
+    assert eng.state.zones["zone_a"].moisture_pct < initial_moisture
+
+
+def test_jump_stops_running_zones_and_approximates(eng):
+    from datetime import timedelta
+
+    start(eng)
+    run(eng, 40)
+    assert eng.state.zones["zone_a"].state == "running"
+
+    t_jump = eng.sim_time + timedelta(hours=4)
+    eng.jump(t_jump)
+
+    assert eng.sim_time == t_jump
+    assert eng.state.zones["zone_a"].state == "off"
+    assert eng.state.zones["zone_a"].flow_m3h == 0.0
+    assert eng.state.pumps["pump_booster_01"].state == "off"

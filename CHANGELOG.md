@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Simulation time — virtual farm clock (2026-11-19)
+- **Shared Virtual Farm Clock:** Single source of truth in the API (`app/core/clock.py`), persisted via Alembic migration (`farm_clock` table). Monotonic progression, locked to real time unless `CONTROLLER_MODE=simulator`.
+- **Clock Endpoints & Events:** `GET /api/v1/sim/clock` and `POST /api/v1/sim/clock` (admin only in simulation mode). Audit events (`clock.speed_changed`, `clock.paused`, `clock.resumed`, `clock.stepped`, `clock.jumped`, `clock.reset_to_real`) and real-time WebSocket broadcast `clock.changed`.
+- **Separation of Clocks:** Farm-facing timestamps (`telemetry.ts`, `alarm.triggered_at/cleared_at/acknowledged_at/reset_at`, `event.occurred_at`, `command.requested_at/completed_at`, ALM-036 24h window, water-today midnight, telemetry retention) use `clock.farm_now()`. Link-health checks (comms staleness, command timeouts, JWT expiry, debounce) stay on real wall clock (`utcnow()`), with AST guard test enforcing separation.
+- **Telemetry Throttling:** Persisted every 10 s of farm time, at most 1 row/s real time, with farm timestamps. `MAX_GAP_S` expanded to 600 s so high-speed integration doesn't drop samples.
+- **Simulator Dynamic Following:** Simulator connects to `clock.changed` and `state.snapshot` events over WebSocket. Physics `dt = real_dt × speed` with sub-stepping; pause suspends physics while continuing sensor publication; jumps stop running zones and apply closed-form soil drying and tank balance. `TIMESCALE` in `.env` sets initial speed only.
+- **"Back to Real Time":** Confirmation modal explaining history will be cleared; invokes `reset_history()` and resets virtual clock to Tripoli wall clock at 1×.
+- **Web UI:**
+  - `useFarmClock()` hook with local sub-second tick interpolation across header clock, map lighting, tree seasonal sprites, chart labels, and event times.
+  - Amber `#ff9f43` SIMULATED TIME badge with speed (e.g. `⏩ 360× · وقت محاكاة` / `SIMULATED TIME`) shown beside every clock when simulated.
+  - Presenter-mode header chip on desktop (play/pause, 1×/10×/60×/360×, step +1 min, quick jump popover) collapsing to badge on phones.
+  - Full Virtual Farm Clock control panel on the Simulator page with digital clock, playback, speeds, presets, custom jump, and "Back to real time".
+- **Verification:** 81 API tests, 25 simulator tests, 27 Vitest tests (136 total green). End-to-end automated Playwright browser test verified login, 360× speed, normal cycle execution, high-speed telemetry, pause, jump to 05:30 dawn lighting, and "Back to real time" history reset.
+
 ### Maintenance sign-off + clean demo reset (2026-11-18)
 - **"Maintenance done"** for a zone (operator+). It's in the zone panel and on ALM-036 in the Alarm Center, with an optional note. `POST /api/v1/zones/{id}/maintenance-done` writes a `zone.maintenance_done` event. Faults before that moment stop counting towards ALM-036 (repeated faults), so the alarm clears on the next sync instead of hanging for 24 h. New faults count again from zero. Covered by a test.
 - **`run.bat reset`** (or `./run.sh reset`, which can be combined with `demo`) clears alarms, commands, the event log, telemetry and state snapshots before starting. Users, passwords, zones and settings are kept. It can also be run on its own: `python -m app.reset_demo`.

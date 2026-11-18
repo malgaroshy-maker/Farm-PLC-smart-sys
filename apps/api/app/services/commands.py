@@ -20,6 +20,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.clock import clock
 from app.core.domain import (
     ACTIVE_ZONE_STATES,
     COMMAND_PERMISSIONS,
@@ -207,7 +208,7 @@ async def _supersede_starts(db: AsyncSession, req: CommandCreate) -> list[Comman
     """
     open_starts = await _open_commands(db, "start_zone")
     hit = [c for c in open_starts if req.command_type == "stop_all" or c.target_id == req.target_id]
-    now = utcnow()
+    now = clock.farm_now()
     for c in hit:
         c.status = "failed"
         c.completed_at = now
@@ -239,7 +240,8 @@ async def submit_command(db: AsyncSession, req: CommandCreate, actor: Actor) -> 
         requested_by=actor.actor_id,
         actor_type=actor.actor_type,
         status="pending",
-        requested_at=utcnow(),
+        requested_at=clock.farm_now(),
+        requested_at_real=utcnow(),
     )
     rejection: _Interlock | None = None
     if req.command_type == "start_zone" and zone is not None:
@@ -281,7 +283,7 @@ async def sync_command(db: AsyncSession, command_id: str, update: CommandSyncUpd
     if cmd.status in TERMINAL_COMMAND_STATUSES:
         raise HTTPException(409, f"Command already {cmd.status}")
     cmd.status = update.status
-    now = utcnow()
+    now = clock.farm_now()
     cmd.acknowledged_at = update.acknowledged_at or cmd.acknowledged_at or now
     if update.status in TERMINAL_COMMAND_STATUSES:
         cmd.completed_at = update.completed_at or now
@@ -302,7 +304,8 @@ async def sync_command(db: AsyncSession, command_id: str, update: CommandSyncUpd
 
 async def expire_stale_commands(db: AsyncSession) -> list[Command]:
     """Time out commands nobody picked up (short) or that never finished (long)."""
-    now = utcnow()
+    now_real = utcnow()
+    now_farm = clock.farm_now()
     result = await db.execute(
         select(Command).where(Command.status.not_in(TERMINAL_COMMAND_STATUSES))
     )
@@ -313,11 +316,12 @@ async def expire_stale_commands(db: AsyncSession) -> list[Command]:
             if c.status == "pending"
             else settings.command_execution_timeout_sec
         )
-        if (now - as_utc(c.requested_at)).total_seconds() > limit:
+        ref_real = as_utc(c.requested_at_real or c.requested_at)
+        if (now_real - ref_real).total_seconds() > limit:
             expired.append((c, limit))
     for c, limit in expired:
         c.status = "timed_out"
-        c.completed_at = now
+        c.completed_at = now_farm
         c.failure_reason = f"No response from controller within {limit:.0f}s"
         await log_event(
             db,

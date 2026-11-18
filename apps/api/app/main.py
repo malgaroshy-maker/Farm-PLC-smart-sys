@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import DEFAULT_SECRET, settings
+from app.core.clock import clock
+from app.database import async_session_factory
 from app.routers import (
     alarms,
     auth,
@@ -39,6 +41,8 @@ async def lifespan(app: FastAPI):
     settings.check_production_safety()
     if settings.secret_key == DEFAULT_SECRET:
         log.warning("SECRET_KEY is the development default — set a real one before deploying.")
+    async with async_session_factory() as db:
+        await clock.load(db)
     task = asyncio.create_task(Monitor().run())
     try:
         yield

@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.timeutil import utcnow
+from app.core.clock import clock
 from app.models.event_log import EventLog
 
 
@@ -27,6 +27,6 @@ async def log_event(
             actor_type=actor_type,
             actor_id=actor_id,
             payload_json=json.dumps(payload, default=str) if payload else None,
-            occurred_at=utcnow(),
+            occurred_at=clock.farm_now(),
         )
     )

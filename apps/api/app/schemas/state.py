@@ -56,6 +56,10 @@ class FarmMapState(BaseModel):
     active_alarms: list[Any] = []
     data_fresh: bool = True
     last_snapshot_ts: datetime | None = None
+    farm_now: datetime | None = None
+    speed: float = 1.0
+    clock_mode: str = "real"
+    clock_paused: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

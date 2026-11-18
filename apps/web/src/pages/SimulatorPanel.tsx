@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 import { useFarmStore } from '../store/farm';
 import { useT, type MsgKey } from '../lib/i18n';
 import { usePresenter } from '../lib/presenter';
+import VirtualClockPanel from '../components/clock/VirtualClockPanel';
 
 interface FaultButton {
   label: string;
@@ -124,6 +125,8 @@ export default function SimulatorPanel() {
         </div>
         {msg && <span className="font-mono text-xs text-[#ffeb3b]" role="status">{msg}</span>}
       </div>
+
+      <VirtualClockPanel />
 
       {/* Current run */}
       {run && run.name && (

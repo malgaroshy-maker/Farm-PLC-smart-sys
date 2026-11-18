@@ -29,6 +29,7 @@ class SimulatorEngine:
     def __init__(self, state: FarmSimulationState, timescale: float = 1.0, seed: int = 42):
         self.state = state
         self.timescale = timescale
+        self.paused = False
         self.running = False
         self.rng = random.Random(seed)
         self.faults = FaultInjector(self)
@@ -500,11 +501,54 @@ class SimulatorEngine:
             sensor.quality = "good"
             sensor.timestamp = now
 
-    # ── Main step ────────────────────────────────────────
+    # ── Main step & Jump ─────────────────────────────────
+
+    def jump(self, new_sim_time) -> None:
+        """Monotonic jump: stop running zones, apply closed-form environment, log."""
+        for zid in list(self.state.zones):
+            if self.state.zones[zid].state in ACTIVE_STATES:
+                self.abort_zone(zid, "clock.jumped", "Zone stopped due to virtual clock jump")
+                self.state.zones[zid].state = "off"
+                self.state.zones[zid].flow_m3h = 0.0
+                self.state.zones[zid].pressure_bar = 0.0
+        for pump in self.state.pumps.values():
+            pump.state = "off"
+            pump.run_fb = False
+
+        delta_s = (new_sim_time - self.sim_time).total_seconds()
+        if delta_s > 0:
+            hours = delta_s / 3600.0
+            # Closed-form soil drying (avg ~0.6%/h)
+            dry_pct = 0.6 * hours
+            for z in self.state.zones.values():
+                z.moisture_pct = min(95.0, max(10.0, z.moisture_pct - dry_pct))
+            # Closed-form tank refill
+            if self.state.system.refilling:
+                refill_m3 = self.state.hyd.well_refill_flow_m3h * hours
+                refill_pct = refill_m3 / self.state.hyd.tank_capacity_m3 * 100.0
+                self.true_tank_pct = min(100.0, self.true_tank_pct + refill_pct)
+                if self.true_tank_pct >= self.state.hyd.tank_refill_stop_pct:
+                    self.state.system.refilling = False
+                self.state.system.tank_level_pct = self.true_tank_pct
+
+        self.sim_time = new_sim_time
+        print(f"[SIMULATOR] Clock jumped to {new_sim_time.isoformat()} (skipped {delta_s:.0f}s)")
 
     def step(self, dt: float) -> None:
         """Advance the simulation by dt simulated seconds."""
         now = utcnow()
+        if self.paused or self.timescale == 0 or dt <= 0:
+            # Paused: zero physics steps, but keep sensor timestamps and objects fresh
+            for sensor in self.state.sensors.values():
+                sensor.timestamp = now
+            for obj in (
+                *self.state.zones.values(),
+                *self.state.pumps.values(),
+                *self.state.valves.values(),
+            ):
+                obj.last_updated = now
+            return
+
         self.sim_time += timedelta(seconds=dt)
         self._step_protection()
         for zid in list(self.state.zones):
@@ -531,9 +575,11 @@ class SimulatorEngine:
         loop = asyncio.get_event_loop()
         while self.running:
             start = loop.time()
-            # Sub-step so fast timescales stay numerically stable.
-            sim_dt = tick_interval * self.timescale
-            n = max(1, math.ceil(sim_dt / 2.0))
-            for _ in range(n):
-                self.step(sim_dt / n)
+            if not self.paused and self.timescale > 0:
+                sim_dt = tick_interval * self.timescale
+                n = max(1, math.ceil(sim_dt / 2.0))
+                for _ in range(n):
+                    self.step(sim_dt / n)
+            else:
+                self.step(0.0)
             await asyncio.sleep(max(0, tick_interval - (loop.time() - start)))

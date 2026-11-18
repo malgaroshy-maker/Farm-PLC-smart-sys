@@ -15,6 +15,7 @@ import type {
   ScenarioRun,
 } from '@algaroshy/contracts';
 import { ApiError, apiFetch, wsUrl } from '../lib/api';
+import { useClockStore } from '../lib/clock';
 import { upsertAlarm } from '../lib/alarms';
 import { usePrefs } from '../lib/prefs';
 import { playAlarmChime } from '../lib/sound';
@@ -84,7 +85,14 @@ export const useFarmStore = create<FarmStore>((set, get) => {
           snap.active_alarms.forEach((a) => seenAlarms.add(a.id));
           primed = true;
         }
+        if (snap.farm_now) {
+          useClockStore.getState().sync(snap);
+        }
         set({ state: snap });
+        break;
+      }
+      case 'clock.changed': {
+        useClockStore.getState().sync(evt.payload as Record<string, unknown>);
         break;
       }
       case 'command.updated': {
@@ -164,6 +172,7 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       if (wanted === token && socket) return;
       get().disconnect();
       wanted = token;
+      void useClockStore.getState().fetchClock();
       open(token);
     },
 

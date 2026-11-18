@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api';
 import { SEVERITY, sortAlarms } from '../../lib/alarms';
 import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
 import { AlarmIcon, PumpIcon, TankIcon } from '../icons/FarmIcons';
+import { useClockStore } from '../../lib/clock';
 
 const CYAN = '#00e5ff';
 const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
@@ -134,10 +135,13 @@ type Trend = 'tank' | 'flow' | 'water';
 export function TrendsCard() {
   const { t, lang } = useT();
   const [tab, setTab] = useState<Trend>('tank');
-  const tank = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=tank_level_pct&minutes=1440&points=72', 60_000);
-  const flow = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=main_flow_m3h&minutes=60&points=60', 15_000);
-  const pres = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=main_pressure_bar&minutes=60&points=60', 15_000);
-  const water = usePoll<{ zones: { zone_id: string; m3: number }[]; total_m3: number }>('/api/v1/telemetry/water-today', 30_000);
+  const speed = useClockStore((s) => s.speed);
+  const fast = speed >= 60 ? 3_000 : speed >= 10 ? 8_000 : 30_000;
+  const fastLong = speed >= 60 ? 5_000 : speed >= 10 ? 15_000 : 60_000;
+  const tank = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=tank_level_pct&minutes=1440&points=72', fastLong);
+  const flow = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=main_flow_m3h&minutes=60&points=60', fast);
+  const pres = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=main_pressure_bar&minutes=60&points=60', fast);
+  const water = usePoll<{ zones: { zone_id: string; m3: number }[]; total_m3: number }>('/api/v1/telemetry/water-today', fast);
 
   const flowRows = (flow?.points ?? []).map((p, i) => ({ time: hhmm(p.ts), flow: p.value, pressure: pres?.points[i]?.value }));
   const waterRows = (water?.zones ?? [])

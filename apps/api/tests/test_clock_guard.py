@@ -1,0 +1,56 @@
+"""Guard test: prevents code in services/ from using utcnow() for farm-facing events."""
+
+from pathlib import Path
+
+SERVICES_DIR = Path(__file__).resolve().parents[1] / "app" / "services"
+
+
+def test_guard_no_forbidden_utcnow_in_services():
+    """
+    SIMULATION_TIME.md §2 table rule:
+    Only link-health checks (staleness, debounce, command timeouts, rate limits)
+    may read real wall-clock time (`utcnow()`).
+    All farm events (telemetry ts, alarm timestamps, command user-facing times,
+    water-today, event log) must use `clock.farm_now()`.
+    """
+    # Whitelist of allowed lines that call utcnow() in services:
+    allowed_patterns = {
+        "alarms.py": [
+            "r_now = real_now or utcnow()",  # debounce timer
+            "self.staleness_conditions(snapshots, utcnow())",  # ALM-044 / ALM-029 link check
+            "real_now = utcnow()",  # debounce timer
+        ],
+        "commands.py": [
+            "requested_at_real=utcnow()",  # command timeout tracking
+            "now_real = utcnow()",  # command timeout tracking
+        ],
+        "live_state.py": [
+            "((now or utcnow()) - last).total_seconds() <= settings.state_stale_after_sec",  # link staleness
+        ],
+        "telemetry.py": [
+            "now_real = utcnow()",  # at most 1/s real rate limit
+        ],
+        "scenarios.py": [  # scenario runner internal execution timers
+            "self._started = utcnow()",
+            "self._picked_up_at = utcnow()",
+            "started_at=utcnow().isoformat()",
+            "self.state.log.append(f\"{utcnow().strftime('%H:%M:%S')} {message}\")",
+            "self.state.finished_at = utcnow().isoformat()",
+        ],
+    }
+
+    for path in SERVICES_DIR.glob("*.py"):
+        filename = path.name
+        if filename not in allowed_patterns:
+            continue
+        content = path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        for idx, line in enumerate(lines, start=1):
+            stripped = line.strip()
+            if "utcnow()" in stripped and not stripped.startswith("#"):
+                allowed = any(p in stripped for p in allowed_patterns[filename])
+                assert allowed, (
+                    f"Forbidden utcnow() call in {filename}:{idx}:\n"
+                    f"  {line}\n"
+                    f"Farm-facing events must use clock.farm_now() per docs/SIMULATION_TIME.md."
+                )
