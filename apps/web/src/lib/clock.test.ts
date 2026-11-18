@@ -32,6 +32,12 @@ describe('virtual farm clock', () => {
     expect(state.paused).toBe(false);
     expect(state.isSimulated).toBe(true);
     expect(new Date(state.anchorSimMs).toISOString()).toBe('2026-11-19T12:00:00.000Z');
+
+    // Test with +00:00 timezone offset (FastAPI output)
+    useClockStore.getState().sync({
+      farm_now: '2026-11-19T14:30:00+00:00',
+    });
+    expect(new Date(useClockStore.getState().anchorSimMs).toISOString()).toBe('2026-11-19T14:30:00.000Z');
   });
 
   it('detects isSimulated if paused or speed != 1', () => {

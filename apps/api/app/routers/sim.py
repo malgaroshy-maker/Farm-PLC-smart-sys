@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.clock import clock
 from app.database import get_db
-from app.deps import Actor, get_actor, require_admin
+from app.deps import Actor, get_actor, require_admin, require_admin_or_service
 from app.schemas.clock import ClockResponse, ClockUpdateRequest
 from app.schemas.command import CommandCreate
 from app.services.commands import _supersede_starts
@@ -30,13 +30,15 @@ async def get_clock(_: Actor = Depends(get_actor)):
 @router.post("/clock", response_model=ClockResponse, dependencies=[Depends(_simulation_only)])
 async def update_clock(
     body: ClockUpdateRequest,
-    actor: Actor = Depends(require_admin),
+    actor: Actor = Depends(require_admin_or_service),
     db: AsyncSession = Depends(get_db),
 ):
     if clock.is_locked_real:
         raise HTTPException(409, "Clock is locked to real time in PLC controller mode")
 
+    action = "speed"
     if body.real is True:
+        action = "reset"
         if not body.confirm:
             raise HTTPException(
                 400,
@@ -56,6 +58,7 @@ async def update_clock(
             actor_id=actor.actor_id,
         )
     elif body.speed is not None:
+        action = "speed"
         old_speed = clock.speed
         clock.set_speed(body.speed)
         await clock.save(db)
@@ -70,6 +73,7 @@ async def update_clock(
         )
     elif body.pause is not None:
         if body.pause:
+            action = "pause"
             clock.pause()
             await clock.save(db)
             await log_event(
@@ -81,6 +85,7 @@ async def update_clock(
                 actor_id=actor.actor_id,
             )
         else:
+            action = "resume"
             clock.resume()
             await clock.save(db)
             await log_event(
@@ -93,6 +98,7 @@ async def update_clock(
                 payload={"speed": clock.speed},
             )
     elif body.step_min is not None:
+        action = "step"
         clock.step(body.step_min)
         await clock.save(db)
         await log_event(
@@ -105,6 +111,7 @@ async def update_clock(
             payload={"step_min": body.step_min, "farm_now": clock.farm_now().isoformat()},
         )
     elif body.jump_to is not None:
+        action = "jump"
         await _supersede_starts(db, CommandCreate(command_type="stop_all", target_type="system"))
         try:
             prev_sim, next_sim = clock.jump_to(body.jump_to)
@@ -127,7 +134,7 @@ async def update_clock(
     else:
         raise HTTPException(422, "No valid clock action supplied in request body")
 
-    res = ClockResponse(**clock.as_dict())
+    res = ClockResponse(**clock.as_dict(), action=action)
     await manager.broadcast("clock.changed", res)
     return res
 

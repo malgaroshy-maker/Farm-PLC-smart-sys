@@ -65,6 +65,9 @@ export const useFarmStore = create<FarmStore>((set, get) => {
         state.active_alarms.forEach((al) => seenAlarms.add(al.id));
         primed = true;
       }
+      if (state.farm_now) {
+        useClockStore.getState().sync(state);
+      }
       set({ state, link: get().link === 'live' ? 'live' : 'polling' });
     } catch {
       set({ link: 'offline' });

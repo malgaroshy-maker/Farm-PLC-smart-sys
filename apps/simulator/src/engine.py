@@ -16,6 +16,7 @@ import json
 import math
 import random
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 from .faults import FaultInjector
 from .state import AlarmCondition, FarmSimulationState, SimZoneState, utcnow
@@ -470,7 +471,9 @@ class SimulatorEngine:
 
     def _step_environment(self, dt: float) -> None:
         s = self.state
-        local_hour = (self.sim_time.hour + TRIPOLI_UTC_OFFSET_H + self.sim_time.minute / 60) % 24
+        tz = ZoneInfo("Africa/Tripoli")
+        local = self.sim_time.astimezone(tz)
+        local_hour = (local.hour + local.minute / 60.0 + local.second / 3600.0) % 24
         daylight = max(0.0, math.sin(math.pi * (local_hour - 6) / 12))
         dry_rate = 0.3 + 0.9 * daylight  # %/h evapotranspiration
         for zid, z in s.zones.items():
@@ -506,14 +509,22 @@ class SimulatorEngine:
     def jump(self, new_sim_time) -> None:
         """Monotonic jump: stop running zones, apply closed-form environment, log."""
         for zid in list(self.state.zones):
-            if self.state.zones[zid].state in ACTIVE_STATES:
-                self.abort_zone(zid, "clock.jumped", "Zone stopped due to virtual clock jump")
-                self.state.zones[zid].state = "off"
-                self.state.zones[zid].flow_m3h = 0.0
-                self.state.zones[zid].pressure_bar = 0.0
+            z = self.state.zones[zid]
+            if z.state in ACTIVE_STATES:
+                self._finish_cmd(zid, "failed", "Stopped due to virtual clock jump")
+                z.state = "off"
+                z.flow_m3h = 0.0
+                z.pressure_bar = 0.0
+                z.runtime_sec = 0
+                v = self.state.valve_for_zone(zid)
+                if v:
+                    v.status = "closed"
+                    v.last_command = "close"
         for pump in self.state.pumps.values():
             pump.state = "off"
             pump.run_fb = False
+        self.state.system.main_flow_m3h = 0.0
+        self.state.system.main_pressure_bar = 0.0
 
         delta_s = (new_sim_time - self.sim_time).total_seconds()
         if delta_s > 0:

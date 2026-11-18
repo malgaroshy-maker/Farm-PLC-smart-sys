@@ -27,6 +27,9 @@ def test_guard_no_forbidden_utcnow_in_services():
         "live_state.py": [
             "((now or utcnow()) - last).total_seconds() <= settings.state_stale_after_sec",  # link staleness
         ],
+        "realtime.py": [
+            '{"type": event_type, "ts": utcnow().isoformat(), "payload": jsonable_encoder(payload)}',  # real-time WS envelope timestamp
+        ],
         "telemetry.py": [
             "now_real = utcnow()",  # at most 1/s real rate limit
         ],
@@ -41,14 +44,13 @@ def test_guard_no_forbidden_utcnow_in_services():
 
     for path in SERVICES_DIR.glob("*.py"):
         filename = path.name
-        if filename not in allowed_patterns:
-            continue
         content = path.read_text(encoding="utf-8")
         lines = content.splitlines()
+        file_allowed = allowed_patterns.get(filename, [])
         for idx, line in enumerate(lines, start=1):
             stripped = line.strip()
             if "utcnow()" in stripped and not stripped.startswith("#"):
-                allowed = any(p in stripped for p in allowed_patterns[filename])
+                allowed = any(p in stripped for p in file_allowed)
                 assert allowed, (
                     f"Forbidden utcnow() call in {filename}:{idx}:\n"
                     f"  {line}\n"

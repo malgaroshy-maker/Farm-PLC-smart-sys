@@ -48,7 +48,10 @@ export const useClockStore = create<ClockStore>((set, get) => ({
     const paused = data.clock_paused !== undefined ? Boolean(data.clock_paused) : Boolean(data.paused);
     let simMs = get().anchorSimMs;
     if (data.farm_now) {
-      const s = data.farm_now.endsWith('Z') ? data.farm_now : `${data.farm_now}Z`;
+      const s =
+        data.farm_now.includes('Z') || /[+-]\d{2}(:\d{2})?$/.test(data.farm_now)
+          ? data.farm_now
+          : `${data.farm_now}Z`;
       const parsed = Date.parse(s);
       if (!Number.isNaN(parsed)) simMs = parsed;
     }

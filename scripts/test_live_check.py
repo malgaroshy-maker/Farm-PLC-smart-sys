@@ -87,6 +87,11 @@ with sync_playwright() as p:
     page.goto("http://localhost:5173/")
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2500)
+    # Check water tab
+    water_tab = page.locator('button:has-text("مياه اليوم"), button:has-text("Water today")').first
+    if water_tab.is_visible():
+        water_tab.click()
+        page.wait_for_timeout(1000)
     page.screenshot(path=str(SCREENSHOT_DIR / "05_dashboard_at_360x.png"))
     print("Dashboard rendered during high-speed simulation.")
 
@@ -109,6 +114,8 @@ with sync_playwright() as p:
     dawn_btn.click()
     page.wait_for_timeout(2000)
     page.screenshot(path=str(SCREENSHOT_DIR / "07_jumped_to_0530.png"))
+    clock_text = page.locator('span:has-text("05:30")').count()
+    assert clock_text > 0, "Clock must display 05:30 after jump"
     print("Jumped to 05:30. Verified clock display.")
 
     # Check Map at 05:30 Dawn
@@ -136,6 +143,9 @@ with sync_playwright() as p:
     confirm_btn.click()
     page.wait_for_timeout(2500)
     page.screenshot(path=str(SCREENSHOT_DIR / "10_back_to_real_time.png"))
+    # In real time at 1x, the amber simulated time badge must disappear
+    badge = page.locator('span:has-text("360×")')
+    assert badge.count() == 0, "SIMULATED TIME badge must disappear after reset to real time"
     print("Clock returned to real time and history reset successfully.")
 
     browser.close()

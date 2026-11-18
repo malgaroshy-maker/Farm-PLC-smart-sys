@@ -266,3 +266,32 @@ def test_api_clock_endpoints(client):
     assert r.status_code == 200
     assert r.json()["mode"] == "real"
     assert r.json()["speed"] == 1.0
+
+    # 9. POST clock allowed with simulator service token (sets initial timescale)
+    service_headers = {"Authorization": f"Bearer {settings.simulator_token}"}
+    r = client.post("/api/v1/sim/clock", json={"speed": 10}, headers=service_headers)
+    assert r.status_code == 200
+    assert r.json()["speed"] == 10.0
+    assert r.json()["mode"] == "sim"
+
+
+@pytest.mark.asyncio
+async def test_reset_history_resets_clock():
+    from app.models.clock import FarmClockModel
+    from app.reset_demo import reset_history
+
+    clock.set_speed(360.0)
+    async with async_session_factory() as db:
+        await clock.save(db)
+
+    # Call reset_history (same as run.bat reset)
+    await reset_history()
+
+    assert clock.mode == "real"
+    assert clock.speed == 1.0
+    async with async_session_factory() as db:
+        row = (await db.get(FarmClockModel, 1))
+        assert row is not None
+        assert row.mode == "real"
+        assert row.speed == 1.0
+

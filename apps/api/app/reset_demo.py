@@ -14,6 +14,7 @@ import asyncio
 
 from sqlalchemy import delete, func, select
 
+from app.core.clock import clock
 from app.database import async_session_factory
 from app.models.alarm import Alarm
 from app.models.command import Command
@@ -35,6 +36,8 @@ async def reset_history() -> dict[str, int]:
             n = (await db.execute(select(func.count()).select_from(model))).scalar_one()
             await db.execute(delete(model))
             removed[model.__tablename__] = n
+        clock.reset_to_real()
+        await clock.save(db)
         await db.commit()
     return removed
 

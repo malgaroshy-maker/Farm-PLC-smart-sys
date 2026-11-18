@@ -355,5 +355,6 @@ def test_jump_stops_running_zones_and_approximates(eng):
 
     assert eng.sim_time == t_jump
     assert eng.state.zones["zone_a"].state == "off"
+    assert eng.state.zones["zone_a"].health == "healthy"
     assert eng.state.zones["zone_a"].flow_m3h == 0.0
     assert eng.state.pumps["pump_booster_01"].state == "off"

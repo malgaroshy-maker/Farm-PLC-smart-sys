@@ -11,6 +11,7 @@ class ClockResponse(BaseModel):
     paused: bool
     farm_now: datetime
     real_now: datetime
+    action: str | None = None
 
 
 class ClockUpdateRequest(BaseModel):

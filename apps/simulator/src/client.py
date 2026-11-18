@@ -66,13 +66,15 @@ class APIClient:
         paused = payload.get("paused")
         if paused is None:
             paused = payload.get("clock_paused", False)
+        action = payload.get("action")
         farm_now_str = payload.get("farm_now")
         if farm_now_str:
             try:
                 s = farm_now_str.replace("Z", "+00:00")
                 dt = datetime.fromisoformat(s)
-                gap = abs((dt - self.engine.sim_time).total_seconds())
-                if gap > 15.0:
+                gap = (dt - self.engine.sim_time).total_seconds()
+                threshold = max(300.0, 5.0 * max(1.0, self.engine.timescale))
+                if action in ("jump", "step") or abs(gap) > threshold:
                     self.engine.jump(dt)
                 else:
                     self.engine.sim_time = dt

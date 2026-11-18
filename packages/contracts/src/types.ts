@@ -368,6 +368,7 @@ export interface FarmClockState {
   paused: boolean;
   farm_now: string;
   real_now: string;
+  action?: string;
 }
 
 export interface ClockUpdateRequest {

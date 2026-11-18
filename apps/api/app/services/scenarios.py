@@ -305,7 +305,9 @@ class ScenarioRunner:
         return self._task is not None and not self._task.done()
 
     def start(self, name: str) -> RunState:
-        scenario = SCENARIOS.get(name)
+        scenario = SCENARIOS.get(name) or (
+            SCENARIOS.get("normal_cycle") if name == "normal_day" else None
+        )
         if not scenario:
             raise HTTPException(404, f"Unknown scenario '{name}'")
         if self.busy:
