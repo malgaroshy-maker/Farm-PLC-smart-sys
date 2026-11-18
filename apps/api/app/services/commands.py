@@ -12,7 +12,6 @@ requests early and give the operator a clear reason.
 """
 
 import json
-from datetime import timedelta
 from itertools import combinations
 from uuid import uuid4
 
@@ -38,7 +37,7 @@ from app.services.events import log_event
 from app.services.live_state import Snapshot, is_fresh, load_snapshots
 from app.services.realtime import manager
 
-FAULT_TARGETS = {"pump", "valve", "system"}
+FAULT_TARGETS = {"pump", "valve", "zone", "system", "sensor", "tank", "comms"}
 
 
 class CommandRejected(Exception):
@@ -59,11 +58,19 @@ class _Interlock(Exception):
 # ── Validation ───────────────────────────────────────────
 
 
-def _check_permission(req: CommandCreate, actor: Actor) -> None:
+async def _check_permission(db: AsyncSession, req: CommandCreate, actor: Actor) -> None:
     if req.command_type in NOT_IMPLEMENTED_COMMANDS:
         raise HTTPException(422, f"Command '{req.command_type}' is not implemented yet")
     allowed = COMMAND_PERMISSIONS.get(req.command_type, frozenset())
     if actor.role not in allowed:
+        from app.services.alarms import engine as alarm_engine  # avoid import cycle
+
+        await alarm_engine.raise_event(
+            db,
+            "ALM-035",
+            detail=f"{actor.name or actor.actor_id} ({actor.role}) tried {req.command_type}",
+            zone_id=req.target_id if req.target_type == "zone" else None,
+        )
         raise HTTPException(403, f"Role '{actor.role}' may not issue '{req.command_type}'")
 
 
@@ -75,6 +82,12 @@ async def _validate_structure(db: AsyncSession, req: CommandCreate) -> Zone | No
         zone = await db.get(Zone, req.target_id)
         if not zone:
             raise HTTPException(404, f"Zone '{req.target_id}' not found")
+        duration = payload.get("duration_min")
+        if ct == "start_zone" and duration is not None:
+            if not isinstance(duration, int) or not 1 <= duration <= zone.max_runtime_min:
+                raise HTTPException(
+                    422, f"payload.duration_min must be 1–{zone.max_runtime_min} minutes"
+                )
         return zone
     if ct in ("stop_all", "set_mode"):
         if req.target_type != "system" or req.target_id:
@@ -88,7 +101,9 @@ async def _validate_structure(db: AsyncSession, req: CommandCreate) -> Zone | No
         if req.target_type != "simulator":
             raise HTTPException(422, "'inject_fault' requires target_type 'simulator'")
         if payload.get("target_type") not in FAULT_TARGETS or not payload.get("fault_type"):
-            raise HTTPException(422, "payload needs target_type (pump|valve|system) and fault_type")
+            raise HTTPException(
+                422, f"payload needs target_type ({'|'.join(sorted(FAULT_TARGETS))}) and fault_type"
+            )
         return None
     raise HTTPException(422, f"Unsupported command '{ct}'")
 
@@ -109,6 +124,14 @@ async def _check_start_interlocks(
     """Interlocks from PLC_CONTROL_LOGIC.md §5 that the backend can evaluate today."""
     if not zone.enabled:
         raise _Interlock("zone_disabled", f"Zone {zone.code} is disabled")
+    from app.services.alarms import blocking_critical, open_alarms  # avoid import cycle
+
+    critical = blocking_critical(await open_alarms(db))
+    if critical:
+        raise _Interlock(
+            "critical_alarm_active",
+            f"Critical alarm {critical.alarm_code} must be cleared and reset first",
+        )
     if not is_fresh(snapshots):
         raise _Interlock(
             "state_stale", "Live state is stale — cannot verify interlocks (is the simulator up?)"
@@ -173,11 +196,38 @@ async def _check_start_interlocks(
         )
 
 
+STOPS = ("stop_zone", "stop_all")
+
+
+async def _supersede_starts(db: AsyncSession, req: CommandCreate) -> list[Command]:
+    """A stop cancels any open start for the same zone(s).
+
+    Without this a start the controller never finished (e.g. it restarted
+    mid-sequence) would count as an active zone until the execution timeout.
+    """
+    open_starts = await _open_commands(db, "start_zone")
+    hit = [c for c in open_starts if req.command_type == "stop_all" or c.target_id == req.target_id]
+    now = utcnow()
+    for c in hit:
+        c.status = "failed"
+        c.completed_at = now
+        c.failure_reason = f"Superseded by {req.command_type}"
+        await log_event(
+            db,
+            "command.failed",
+            c.target_type,
+            c.target_id,
+            actor_type="system",
+            payload={"command_id": c.id, "reason": c.failure_reason},
+        )
+    return hit
+
+
 # ── Public API ───────────────────────────────────────────
 
 
 async def submit_command(db: AsyncSession, req: CommandCreate, actor: Actor) -> Command:
-    _check_permission(req, actor)
+    await _check_permission(db, req, actor)
     zone = await _validate_structure(db, req)
 
     cmd = Command(
@@ -202,6 +252,7 @@ async def submit_command(db: AsyncSession, req: CommandCreate, actor: Actor) -> 
             cmd.completed_at = cmd.requested_at
 
     db.add(cmd)
+    superseded = await _supersede_starts(db, req) if req.command_type in STOPS else []
     await log_event(
         db,
         "command.rejected" if rejection else "command.requested",
@@ -216,7 +267,8 @@ async def submit_command(db: AsyncSession, req: CommandCreate, actor: Actor) -> 
         },
     )
     await db.commit()
-    await manager.broadcast("command.updated", CommandResponse.model_validate(cmd))
+    for c in (*superseded, cmd):
+        await manager.broadcast("command.updated", CommandResponse.model_validate(c))
     if rejection:
         raise CommandRejected(rejection.code, rejection.message, cmd.id)
     return cmd
@@ -249,16 +301,24 @@ async def sync_command(db: AsyncSession, command_id: str, update: CommandSyncUpd
 
 
 async def expire_stale_commands(db: AsyncSession) -> list[Command]:
-    """Mark commands nobody picked up in time as timed_out."""
-    cutoff = utcnow() - timedelta(seconds=settings.command_timeout_sec)
+    """Time out commands nobody picked up (short) or that never finished (long)."""
+    now = utcnow()
     result = await db.execute(
         select(Command).where(Command.status.not_in(TERMINAL_COMMAND_STATUSES))
     )
-    expired = [c for c in result.scalars() if as_utc(c.requested_at) < cutoff]
-    for c in expired:
+    expired = []
+    for c in result.scalars():
+        limit = (
+            settings.command_timeout_sec
+            if c.status == "pending"
+            else settings.command_execution_timeout_sec
+        )
+        if (now - as_utc(c.requested_at)).total_seconds() > limit:
+            expired.append((c, limit))
+    for c, limit in expired:
         c.status = "timed_out"
-        c.completed_at = utcnow()
-        c.failure_reason = f"No response from controller within {settings.command_timeout_sec:.0f}s"
+        c.completed_at = now
+        c.failure_reason = f"No response from controller within {limit:.0f}s"
         await log_event(
             db,
             "command.timed_out",
@@ -269,6 +329,6 @@ async def expire_stale_commands(db: AsyncSession) -> list[Command]:
         )
     if expired:
         await db.commit()
-        for c in expired:
+        for c, _ in expired:
             await manager.broadcast("command.updated", CommandResponse.model_validate(c))
-    return expired
+    return [c for c, _ in expired]

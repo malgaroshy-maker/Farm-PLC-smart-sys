@@ -14,8 +14,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import DEFAULT_SECRET, settings
-from app.routers import auth, commands, devices, farm, health, state, websocket, zones
+from app.routers import (
+    alarms,
+    auth,
+    commands,
+    devices,
+    farm,
+    health,
+    sim,
+    state,
+    telemetry,
+    websocket,
+    zones,
+)
 from app.services.monitor import Monitor
+from app.services.scenarios import runner
 
 log = logging.getLogger("app")
 
@@ -29,6 +42,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await runner.stop()
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
@@ -53,7 +67,7 @@ app.add_middleware(
 app.include_router(health.router)
 
 API_V1 = "/api/v1"
-for r in (auth, farm, zones, devices, state, commands):
+for r in (auth, farm, zones, devices, state, commands, alarms, telemetry, sim):
     app.include_router(r.router, prefix=API_V1)
 
 app.include_router(websocket.router)

@@ -42,7 +42,9 @@ def is_fresh(snapshots: dict[str, Snapshot], now: datetime | None = None) -> boo
     return ((now or utcnow()) - last).total_seconds() <= settings.state_stale_after_sec
 
 
-def build_map_state(snapshots: dict[str, Snapshot]) -> FarmMapState:
+def build_map_state(
+    snapshots: dict[str, Snapshot], active_alarms: list[Any] | None = None
+) -> FarmMapState:
     zones, pumps, valves, sensors = [], [], [], []
     system_mode = "off"
     stats: dict[str, Any] = {}
@@ -59,6 +61,7 @@ def build_map_state(snapshots: dict[str, Snapshot]) -> FarmMapState:
             valves.append(snap.state)
         elif key.startswith("sensor_"):
             sensors.append(snap.state)
+        # plc_alarms is consumed by the alarm engine, not shown raw
 
     last = last_update(snapshots)
     return FarmMapState(
@@ -70,7 +73,7 @@ def build_map_state(snapshots: dict[str, Snapshot]) -> FarmMapState:
         tank_level_pct=stats.get("tank_level_pct", 0.0),
         main_pressure_bar=stats.get("main_pressure_bar", 0.0),
         main_flow_m3h=stats.get("main_flow_m3h", 0.0),
-        active_alarms=[],  # alarm engine arrives in Milestone B
+        active_alarms=active_alarms or [],
         data_fresh=is_fresh(snapshots),
         last_snapshot_ts=last,
     )
@@ -154,3 +157,9 @@ def diff_events(
                     )
                 )
     return events
+
+
+async def current_map_state(db: AsyncSession) -> FarmMapState:
+    from app.services.alarms import active_alarm_responses  # avoid import cycle
+
+    return build_map_state(await load_snapshots(db), await active_alarm_responses(db))

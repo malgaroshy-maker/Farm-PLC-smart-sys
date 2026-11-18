@@ -8,7 +8,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.database import async_session_factory
 from app.deps import resolve_token
-from app.services.live_state import build_map_state, load_snapshots
+from app.services.live_state import current_map_state
 from app.services.realtime import manager
 
 router = APIRouter(tags=["WebSockets"])
@@ -22,7 +22,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
             await websocket.close(code=4401)
             return
         await websocket.accept()
-        snapshot = build_map_state(await load_snapshots(db))
+        snapshot = await current_map_state(db)
 
     await manager.send(websocket, "state.snapshot", snapshot)
     await manager.connect(websocket)

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, AlertTriangle, LogOut, OctagonX } from 'lucide-react';
+import { Activity, AlertTriangle, FlaskConical, LogOut, OctagonX } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { session } from '../lib/api';
 import { useFarmStore } from '../store/farm';
 import type { LinkStatus } from '../store/farm';
+import { SEVERITY, topSeverity } from '../lib/alarms';
 
 const LINK_LABEL: Record<LinkStatus, { text: string; color: string }> = {
   idle: { text: 'SYS.IDLE', color: '#849396' },
@@ -30,7 +31,9 @@ export default function DashboardLayout() {
   const disconnect = useFarmStore((s) => s.disconnect);
   const link = useFarmStore((s) => s.link);
   const fresh = useFarmStore((s) => s.state?.data_fresh ?? false);
-  const alarmCount = useFarmStore((s) => s.state?.active_alarms.length ?? 0);
+  const alarms = useFarmStore((s) => s.state?.active_alarms);
+  const alarmCount = alarms?.length ?? 0;
+  const worst = alarms ? topSeverity(alarms) : null;
   const sendCommand = useFarmStore((s) => s.sendCommand);
   const [stopMsg, setStopMsg] = useState<string | null>(null);
   const now = useClock();
@@ -59,6 +62,7 @@ export default function DashboardLayout() {
   const navItems = [
     { name: 'Dashboard', path: '/', icon: Activity },
     { name: 'Alarm Center', path: '/alarms', icon: AlertTriangle },
+    { name: 'Simulator', path: '/simulator', icon: FlaskConical },
   ];
 
   return (
@@ -119,7 +123,11 @@ export default function DashboardLayout() {
           </span>
           <div className="flex items-center gap-6">
             {stopMsg && <span className="text-xs font-mono text-[#ffeb3b]">{stopMsg}</span>}
-            <Link to="/alarms" className={`flex items-center gap-2 ${alarmCount ? 'text-[#ffb4ab]' : 'text-[#849396]'}`}>
+            <Link
+              to="/alarms"
+              className={`flex items-center gap-2 ${worst === 'S3' ? 'animate-pulse' : ''}`}
+              style={{ color: worst ? SEVERITY[worst].color : '#849396' }}
+            >
               <AlertTriangle size={18} />
               <span className="text-sm font-bold font-mono">{alarmCount} ALARMS</span>
             </Link>

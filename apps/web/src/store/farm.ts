@@ -6,13 +6,16 @@
  */
 import { create } from 'zustand';
 import type {
+  Alarm,
   Command,
   CommandRejection,
   CommandRequest,
   FarmMapState,
   RealtimeEvent,
+  ScenarioRun,
 } from '@algaroshy/contracts';
 import { ApiError, apiFetch, wsUrl } from '../lib/api';
+import { upsertAlarm } from '../lib/alarms';
 
 export type LinkStatus = 'idle' | 'connecting' | 'live' | 'polling' | 'offline';
 
@@ -24,9 +27,11 @@ interface FarmStore {
   state: FarmMapState | null;
   link: LinkStatus;
   commands: Record<string, Command>;
+  scenario: ScenarioRun | null;
   connect: (token: string) => void;
   disconnect: () => void;
   sendCommand: (req: CommandRequest) => Promise<CommandOutcome>;
+  alarmAction: (alarmId: string, action: 'ack' | 'reset') => Promise<string | null>;
 }
 
 const POLL_MS = 2000;
@@ -69,6 +74,18 @@ export const useFarmStore = create<FarmStore>((set, get) => {
         set({ commands: { ...get().commands, [cmd.id]: cmd } });
         break;
       }
+      case 'alarm.active':
+      case 'alarm.updated':
+      case 'alarm.acknowledged':
+      case 'alarm.cleared':
+      case 'alarm.reset': {
+        const s = get().state;
+        if (s) set({ state: { ...s, active_alarms: upsertAlarm(s.active_alarms, evt.payload as Alarm) } });
+        break;
+      }
+      case 'scenario.updated':
+        set({ scenario: evt.payload as ScenarioRun });
+        break;
       case 'telemetry.stale': {
         const s = get().state;
         if (s) set({ state: { ...s, data_fresh: false } });
@@ -111,6 +128,7 @@ export const useFarmStore = create<FarmStore>((set, get) => {
     state: null,
     link: 'idle',
     commands: {},
+    scenario: null,
 
     connect(token) {
       if (wanted === token && socket) return;
@@ -126,7 +144,18 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       stopPolling();
       socket?.close();
       socket = null;
-      set({ link: 'idle', state: null, commands: {} });
+      set({ link: 'idle', state: null, commands: {}, scenario: null });
+    },
+
+    async alarmAction(alarmId, action) {
+      try {
+        const alarm = await apiFetch<Alarm>(`/api/v1/alarms/${alarmId}/${action}`, { method: 'POST' });
+        const s = get().state;
+        if (s) set({ state: { ...s, active_alarms: upsertAlarm(s.active_alarms, alarm) } });
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : 'Action failed';
+      }
     },
 
     async sendCommand(req) {

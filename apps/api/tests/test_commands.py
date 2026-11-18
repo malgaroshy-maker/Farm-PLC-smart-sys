@@ -178,3 +178,34 @@ def test_stale_pending_commands_time_out(client, monkeypatch):
     assert client.get("/api/v1/commands/pending", headers=SIM).json() == []
     cmds = client.get("/api/v1/commands", headers=login(client, "admin")).json()
     assert next(c for c in cmds if c["id"] == cid)["status"] == "timed_out"
+
+
+def test_stop_supersedes_orphaned_start(client):
+    """Regression: a start the controller never finished blocked every other zone."""
+    push_state(client)
+    op = login(client, "operator")
+    orphan = start(client, op).json()["id"]
+    client.patch(f"/api/v1/commands/{orphan}/sync", json={"status": "accepted"}, headers=SIM)
+    assert start(client, op, zone="zone_rumman_1").json()["code"] == "max_concurrent_zones"
+
+    r = client.post(
+        "/api/v1/commands", json={"command_type": "stop_all", "target_type": "system"}, headers=op
+    )
+    assert r.status_code == 201
+    cmds = {c["id"]: c for c in client.get("/api/v1/commands", headers=op).json()}
+    assert cmds[orphan]["status"] == "failed"
+    assert cmds[orphan]["failure_reason"] == "Superseded by stop_all"
+    assert start(client, op, zone="zone_rumman_1").status_code == 201
+
+
+def test_stop_zone_only_supersedes_that_zone(client):
+    push_state(client)
+    op = login(client, "operator")
+    keep = start(client, op).json()["id"]
+    client.post(
+        "/api/v1/commands",
+        json={"command_type": "stop_zone", "target_type": "zone", "target_id": "zone_rumman_1"},
+        headers=op,
+    )
+    cmds = {c["id"]: c for c in client.get("/api/v1/commands", headers=op).json()}
+    assert cmds[keep]["status"] == "pending"

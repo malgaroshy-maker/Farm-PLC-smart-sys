@@ -32,7 +32,9 @@ def test_ws_sends_snapshot_then_change_events(client):
             "previous_state": "off",
             "current_state": "running",
         }
-        assert ws.receive_json()["type"] == "state.snapshot"
+        # running at 0 bar also (correctly) raises the low-pressure warning
+        rest = [ws.receive_json()["type"] for _ in range(2)]
+        assert rest == ["alarm.active", "state.snapshot"]
 
 
 def test_ws_broadcasts_command_updates(client):

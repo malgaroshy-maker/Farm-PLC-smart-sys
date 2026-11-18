@@ -40,6 +40,8 @@ const ZONES_METADATA: Record<string, { name: string; x: number; y: number }> = {
   'zone_fruit_mix':     { name: 'خوخ+مشمش+كوبة', x: 30, y: 38 },
 };
 
+const TRANSITIONAL = new Set(['queued', 'starting_pump', 'opening_valve', 'validating_flow', 'stopping']);
+
 export default function LiveMap({
   onZoneSelect,
   zoneStates = []
@@ -53,6 +55,7 @@ export default function LiveMap({
     switch (state) {
       case 'running': return 'bg-[#00e5ff]/20 border-[#00e5ff] text-[#c3f5ff] shadow-[0_0_15px_rgba(0,229,255,0.4)]';
       case 'fault': return 'bg-[#ffb4ab]/20 border-[#ffb4ab] text-[#ffdad6] shadow-[0_0_15px_rgba(255,180,171,0.4)]';
+      case 'busy': return 'bg-[#ffeb3b]/10 border-[#ffeb3b]/70 text-[#fff8c4]';
       default: return 'bg-[#1c1b1b]/80 border-[#3b494c]/50 text-[#bac9cc]';
     }
   };
@@ -61,6 +64,7 @@ export default function LiveMap({
     switch (state) {
       case 'running': return 'bg-[#00e5ff] shadow-[0_0_8px_#00e5ff]';
       case 'fault': return 'bg-[#ffb4ab] shadow-[0_0_8px_#ffb4ab] animate-pulse';
+      case 'busy': return 'bg-[#ffeb3b] animate-pulse';
       default: return 'bg-[#849396]';
     }
   };
@@ -81,6 +85,7 @@ export default function LiveMap({
 
       <div className="absolute top-4 right-4 z-20 flex gap-4 text-xs font-mono bg-[#1c1b1b]/80 backdrop-blur-md border border-[#353534] p-3 rounded-lg shadow-lg pointer-events-none">
         <span className="flex items-center gap-2 text-[#00e5ff]"><div className="w-2 h-2 rounded-full bg-[#00e5ff] shadow-[0_0_5px_#00e5ff]" /> RUNNING</span>
+        <span className="flex items-center gap-2 text-[#ffeb3b]"><div className="w-2 h-2 rounded-full bg-[#ffeb3b]" /> STARTING/STOPPING</span>
         <span className="flex items-center gap-2 text-[#ffb4ab]"><div className="w-2 h-2 rounded-full bg-[#ffb4ab] shadow-[0_0_5px_#ffb4ab]" /> FAULT</span>
         <span className="flex items-center gap-2 text-[#849396]"><div className="w-2 h-2 rounded-full bg-[#849396]" /> IDLE</span>
       </div>
@@ -118,7 +123,12 @@ export default function LiveMap({
                 {Object.entries(ZONES_METADATA).map(([zoneId, meta]) => {
                   const stateNode = zoneStates.find(z => z.zone_id === zoneId);
                   const isActive = activeZone === zoneId;
-                  const uiState = stateNode?.state === 'running' ? 'running' : stateNode?.state === 'faulted' || stateNode?.health === 'critical' ? 'fault' : 'idle';
+                  const st = stateNode?.state;
+                  const uiState =
+                    st === 'faulted' || stateNode?.health === 'critical' ? 'fault'
+                    : st === 'running' ? 'running'
+                    : st && TRANSITIONAL.has(st) ? 'busy'
+                    : 'idle';
                   const moisture = stateNode?.moisture_pct != null ? stateNode.moisture_pct.toFixed(1) : '--';
 
                   return (

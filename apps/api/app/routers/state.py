@@ -8,13 +8,15 @@ from app.database import get_db
 from app.deps import Actor, get_actor, require_service
 from app.models.telemetry import DeviceStateSnapshot
 from app.schemas.state import FarmMapState, StateSyncPayload
+from app.services.alarms import engine as alarm_engine
 from app.services.live_state import (
-    build_map_state,
+    current_map_state,
     diff_events,
     load_snapshots,
     upsert_snapshots,
 )
 from app.services.realtime import manager
+from app.services.telemetry import recorder
 
 router = APIRouter(prefix="/state", tags=["State"])
 
@@ -22,7 +24,7 @@ router = APIRouter(prefix="/state", tags=["State"])
 @router.get("/map", response_model=FarmMapState)
 async def get_state_map(_: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
     """Current live state of the whole farm."""
-    return build_map_state(await load_snapshots(db))
+    return await current_map_state(db)
 
 
 @router.post("/sync")
@@ -38,7 +40,10 @@ async def sync_state(
 
     for event_type, payload in diff_events(before, payloads):
         await manager.broadcast(event_type, payload)
-    await manager.broadcast("state.snapshot", build_map_state(await load_snapshots(db)))
+    after = await load_snapshots(db)
+    await alarm_engine.on_state_sync(db, after)
+    await recorder.maybe_record(db, after)
+    await manager.broadcast("state.snapshot", await current_map_state(db))
     return {"success": True, "processed": len(payloads)}
 
 

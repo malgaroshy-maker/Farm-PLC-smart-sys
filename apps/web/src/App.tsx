@@ -3,6 +3,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import AlarmCenter from './pages/AlarmCenter';
+import SimulatorPanel from './pages/SimulatorPanel';
 import { AuthProvider } from './lib/auth';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<Dashboard />} />
             <Route path="alarms" element={<AlarmCenter />} />
+            <Route path="simulator" element={<SimulatorPanel />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

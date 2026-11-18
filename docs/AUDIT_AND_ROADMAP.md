@@ -70,7 +70,9 @@ Each milestone ends in something you can run and show. Estimates assume one deve
 7. **Migrations.** Create the first Alembic revision and stop relying on `create_all`.
 8. **Tests and CI.** Add pytest for the command service, interlocks and auth; one simulator scenario test; Vitest smoke for the web app. Add a GitHub Actions workflow running lint, typecheck, tests and build.
 
-### Milestone B — Credible simulator + real alarms (≈1.5–2 weeks)
+### Milestone B — Credible simulator + real alarms ✅ done 2026-11-18
+*Done as planned, with two changes. The scenario runner lives in the backend: it runs from the Simulator page or the API, not a CLI, so interlocks and the audit trail apply. Web unit tests (Vitest) carried over from A are added.*
+
 1. **Simulator loads everything** from the API: valves, sensors, sources, combinations.
 2. **Timed state machine per `PLC_CONTROL_LOGIC.md`:** off → requested → starting_pump → opening_valve (with travel time) → validating_flow → running → stopping → off. Add max runtime and completion at `default_duration_min`.
 3. **Physics.** Pump curve (pressure falls as more zones open), per-zone flow from `flow_min/max`, tank drain/refill from the well pump, moisture rising while irrigating and drying out over time (faster at midday), sensor noise. Seeded RNG keeps runs deterministic.

@@ -88,3 +88,6 @@ coverage/
 
 # Turborepo cache
 .turbo/
+*.db-journal
+*.db-wal
+*.db-shm

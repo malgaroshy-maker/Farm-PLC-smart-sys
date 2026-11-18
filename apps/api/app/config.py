@@ -49,10 +49,21 @@ class Settings(BaseSettings):
 
     # ── Live state / commands ────────────────────────────
     state_stale_after_sec: float = 5.0
-    command_timeout_sec: float = 15.0
+    comm_lost_after_sec: float = 30.0
+    command_timeout_sec: float = 15.0  # not picked up by the controller
+    command_execution_timeout_sec: float = 180.0  # accepted but never finished
     max_concurrent_zones: int = 1  # dual-zone disabled until commissioning (PLC_CONTROL_LOGIC §7)
     tank_critical_pct: float = 10.0
+    tank_warning_pct: float = 25.0
     monitor_interval_sec: float = 1.0
+
+    # ── Alarms & telemetry ───────────────────────────────
+    alarm_debounce_sec: float = 10.0  # derived pressure warnings
+    tank_warning_debounce_sec: float = 5.0
+    repeated_fault_threshold: int = 3  # ALM-036: major faults per zone per 24 h
+    telemetry_interval_sec: float = 10.0
+    telemetry_retention_days: int = 7
+    farm_id: str = "farm_algaroshy"
 
     # ── AI Services (not implemented yet — Milestone E) ──
     gemini_api_key: str = ""

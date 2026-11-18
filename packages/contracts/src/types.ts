@@ -76,6 +76,8 @@ export interface ZoneLiveState {
   flow_m3h: number | null;
   moisture_pct: number | null;
   runtime_sec: number;
+  /** planned run length for the current cycle */
+  target_runtime_sec?: number;
   active_alarm_count: number;
   last_updated: string;
 }
@@ -119,10 +121,12 @@ export interface Pump {
 
 export interface PumpLiveState {
   pump_id: string;
+  pump_type?: PumpType;
   state: PumpState;
   run_fb: boolean;
   fault: boolean;
   runtime_hours: number;
+  starts_today?: number;
   last_updated: string;
 }
 
@@ -139,6 +143,7 @@ export interface Valve {
 
 export interface ValveLiveState {
   valve_id: string;
+  zone_id?: string;
   status: ValveStatus;
   last_command: ValveCommand;
   last_updated: string;
@@ -240,6 +245,8 @@ export interface CommandRejection {
 export interface Alarm {
   id: string;
   alarm_code: string;
+  name: string;
+  name_ar: string | null;
   severity: AlarmSeverity;
   category: AlarmCategory;
   status: AlarmStatus;
@@ -255,11 +262,12 @@ export interface Alarm {
   cleared_at: string | null;
   reset_at: string | null;
   reset_by: string | null;
-  message_ar: string;
-  message_en: string;
-  guidance_ar: string;
-  guidance_en: string;
-  correlation_key: string | null;
+  message_ar: string | null;
+  message_en: string | null;
+  guidance_ar: string | null;
+  guidance_en: string | null;
+  /** true while the underlying condition is still present (false = latched) */
+  condition_active: boolean;
   requires_ack: boolean;
   requires_manual_reset: boolean;
 }
@@ -375,4 +383,42 @@ export interface PumpRuntimeReport {
   total_runtime_hours: number;
   start_count: number;
   fault_count: number;
+}
+
+// ─── Telemetry history (GET /telemetry/series) ─────────
+
+export interface SeriesPoint {
+  ts: string;
+  value: number;
+  min: number;
+  max: number;
+}
+
+export interface TelemetrySeries {
+  metric_key: string;
+  zone_id: string | null;
+  minutes: number;
+  points: SeriesPoint[];
+}
+
+// ─── Simulation scenarios (GET /sim/scenarios) ─────────
+
+export interface ScenarioInfo {
+  name: string;
+  title: string;
+  title_ar: string;
+  description: string;
+  expect: string[];
+  steps: number;
+}
+
+export interface ScenarioRun {
+  name: string | null;
+  status: "idle" | "running" | "passed" | "failed" | "stopped";
+  step: number;
+  total: number;
+  message: string;
+  started_at: string | null;
+  finished_at: string | null;
+  log: string[];
 }

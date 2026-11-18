@@ -176,6 +176,8 @@ export type EventType =
   | "command.updated"
   | "telemetry.stale"
   | "system.mode.changed"
+  | "alarm.updated"
+  | "scenario.updated"
   | "ai.suggestion.new"
   | "ai.anomaly.detected"
   | "ai.weather.advisory"

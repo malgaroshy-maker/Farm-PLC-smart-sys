@@ -12,6 +12,9 @@ os.environ["ADMIN_USERNAME"] = "admin"
 os.environ["ADMIN_PASSWORD"] = "admin-pass"
 os.environ["APP_ENV"] = "test"
 os.environ["MONITOR_INTERVAL_SEC"] = "3600"  # don't let the background loop interfere
+os.environ["ALARM_DEBOUNCE_SEC"] = "0"
+os.environ["TANK_WARNING_DEBOUNCE_SEC"] = "0"
+os.environ["TELEMETRY_INTERVAL_SEC"] = "0"
 
 import bcrypt  # noqa: E402
 import pytest  # noqa: E402
@@ -54,6 +57,11 @@ async def _reset_db() -> None:
 
 @pytest.fixture()
 def client():
+    from app.services.alarms import engine as alarm_engine
+    from app.services.telemetry import recorder
+
+    alarm_engine._pending_since.clear()
+    recorder._last = None
     asyncio.run(_reset_db())
     with TestClient(app) as c:
         yield c
@@ -74,17 +82,25 @@ def push_state(
     tank: float = 90.0,
     zone_states: dict[str, str] | None = None,
     pump_fault: bool = False,
+    plc_alarms: list[dict] | None = None,
+    pressure: float = 0.0,
+    updated_at: str | None = None,
 ) -> None:
     """Act as the simulator and push a live-state snapshot."""
-    now = utcnow().isoformat()
+    now = updated_at or utcnow().isoformat()
     zone_states = zone_states or {}
     payloads = [
         {"device_key": "system_mode", "state_json": {"mode": mode}, "updated_at": now},
         {
             "device_key": "simulation_stats",
-            "state_json": {"tank_level_pct": tank, "main_pressure_bar": 0, "main_flow_m3h": 0},
+            "state_json": {
+                "tank_level_pct": tank,
+                "main_pressure_bar": pressure,
+                "main_flow_m3h": 0,
+            },
             "updated_at": now,
         },
+        {"device_key": "plc_alarms", "state_json": {"active": plc_alarms or []}, "updated_at": now},
     ]
     for zid in ZONE_IDS:
         payloads.append(
@@ -94,6 +110,9 @@ def push_state(
                     "zone_id": zid,
                     "state": zone_states.get(zid, "off"),
                     "health": "healthy",
+                    "source_mode": "tank",
+                    "moisture_pct": 40.0,
+                    "flow_m3h": 5.0 if zone_states.get(zid) == "running" else 0.0,
                     "runtime_sec": 0,
                     "last_updated": now,
                 },
