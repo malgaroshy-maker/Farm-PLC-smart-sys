@@ -19,6 +19,7 @@ from app.routers import (
     auth,
     commands,
     devices,
+    events,
     farm,
     health,
     sim,
@@ -67,7 +68,7 @@ app.add_middleware(
 app.include_router(health.router)
 
 API_V1 = "/api/v1"
-for r in (auth, farm, zones, devices, state, commands, alarms, telemetry, sim):
+for r in (auth, farm, zones, devices, state, commands, alarms, telemetry, sim, events):
     app.include_router(r.router, prefix=API_V1)
 
 app.include_router(websocket.router)

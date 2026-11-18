@@ -1,0 +1,4 @@
+# Keep launcher scripts runnable on every OS regardless of core.autocrlf
+*.sh   text eol=lf
+*.mjs  text eol=lf
+*.bat  text eol=crlf

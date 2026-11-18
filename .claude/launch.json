@@ -6,9 +6,9 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": [
         "/c",
-        "cd apps\\api && .venv\\Scripts\\python.exe -m uvicorn app.main:app --port 8000"
+        "cd apps\\api && .venv\\Scripts\\python.exe -m uvicorn app.main:app --port 8010"
       ],
-      "port": 8000
+      "port": 8010
     },
     {
       "name": "web",

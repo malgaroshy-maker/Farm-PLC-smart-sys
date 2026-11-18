@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-18
-**Current milestone:** A ✅ · B ✅ → next is **C: demo-quality UI + PWA**
+**Current milestone:** A ✅ · B ✅ · C ✅ → next is **D: schedules, cycles, reports**
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -23,8 +23,13 @@
 | Alarm engine | ✅ | 20 codes from ALARM_MATRIX with AR/EN guidance, kept in sync with contracts by a test. Lifecycle ack → latched → reset → history. Derived rules for tank low, pressure while irrigating, modes, stale data, comms lost, repeated faults and unauthorized attempts. Ack: operator+. Reset: admin. |
 | Scenarios | ✅ | 13 scripted scenarios (SIMULATION_PLAN §5), run through the normal command path. Run from the Simulator page or `/sim/scenarios`. |
 | Telemetry history | ✅ | Sampled every 10 s and kept for 7 days. `/telemetry/series` drives the zone charts. |
+| Farm map | ✅ | Real zone shapes traced from the sketch (areas within ±12% of its legend, test-enforced). Photoreal crop textures per zone, rotated to the row direction. Dirt tracks, buried mainline + laterals, valves, tank (closed concrete roof + level gauge), booster pad, control room + wellhead. Animations: water flowing in pipes (speed follows flow), wet soil on irrigating zones, canopy yellowing when dry, pump rotors, valve open/close, day/night lighting from farm local time. |
+| Arabic-first UI | ✅ | Arabic by default with full RTL and an English toggle. Bundled IBM Plex Sans Arabic font (works offline). Logo + مزرعة الجروشي branding. Farm-local clock. Numbers stay Western digits. |
+| Pages | ✅ | Dashboard, Zones (cards + filters), Equipment (pumps, valves, sensors), Alarm Center, Event log (`GET /events`), Simulator. The Simulator is admin-only behind a **presenter mode** toggle. |
+| Start script | ✅ | `run.bat` / `run.sh` (dev) and `run.bat demo` (phones + PWA). One window, first-run self-setup, a single `API_PORT`, clean Ctrl+C shutdown, `stop.bat` safety net, `--smoke` self-test. |
+| Phone / PWA | ✅ | Responsive layout with bottom navigation and a slide-in menu. Installable (manifest, icons, service worker that never caches `/api` or `/ws`). |
 | Web MVP | ✅ | Real login, live map (incl. starting/stopping state), zone drawer with real history, start/stop with interlock feedback, global STOP ALL, Alarm Center (active/history, ack/reset, AR/EN guidance), Simulator page, honest connection status. |
-| Tests + CI | ✅ | 66 API + 22 simulator + 10 web (Vitest) tests. GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest.  |
+| Tests + CI | ✅ | 69 API + 22 simulator + 17 web + 3 map-model tests. GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest.  |
 
 ## Live scenario suite (2026-11-18)
 
@@ -34,12 +39,13 @@ All **13/13** scenarios pass against the running API + simulator (timescale 1×)
 
 | Gap | Planned in |
 |-----|-----------|
-| Arabic/RTL UI, real zone polygons, PWA/mobile layout, more pages | C |
 | Schedules, irrigation cycle log, reports | D |
 | All AI features (`/health` reports `ai: not_implemented`) | E |
 | PLC adapter, hosting, PostgreSQL in production, notifications/SMS | Production track |
 | Notifications (push/email/SMS) and escalation for alarms | Production track |
-| Scenario suite runs manually against a live stack, not in CI | C |
+| Scenario suite runs manually against a live stack, not in CI | D |
+| Pipe routes are a plausible guess. Edit `tools/map-geometry/network.py` with the real routes | Owner input |
+| Weather location: need the farm's longitude (the sketch only shows ≈32.51°N) | Owner input → E |
 | Dual-zone operation (`MAX_CONCURRENT_ZONES>1`) is supported by interlocks but not exercised by any scenario | After commissioning |
 
 ## Milestones
@@ -48,8 +54,8 @@ All **13/13** scenarios pass against the running API + simulator (timescale 1×)
 |-----------|--------|
 | **A: Foundations** | ✅ Done 2026-11-18 |
 | **B: Credible simulator + real alarms** | ✅ Done 2026-11-18 |
-| **C: Demo-quality UI + PWA** | ⬜ Next |
-| **D: Schedules, cycles, reports** | ⬜ |
+| **C: Demo-quality UI + PWA** | ✅ Done 2026-11-18 |
+| **D: Schedules, cycles, reports** | ⬜ Next |
 | **E: AI (alarm assistant, weather advisor, anomaly detection)** | ⬜ |
 | Production track (PLC adapter, hosting, hardening) | ⬜ After the demo |
 

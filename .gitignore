@@ -91,3 +91,10 @@ coverage/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Raw Codex image outputs (tens of MB). Web-ready WebP lives in apps/web/public/map;
+# regenerate with design/assets-raw/gen.sh + tools/map-geometry/optimize_assets.py
+design/assets-raw/*.png
+
+# launcher runtime state
+.run/

@@ -200,8 +200,8 @@ ZONES = [
     {
         "id": "zone_fruit_mix",
         "code": "FRUIT_MIX",
-        "name": "Peach + Apricot + Guava",
-        "name_ar": "خوخ + مشمش + كوبة",
+        "name": "Peach + Apricot + Plum",
+        "name_ar": "خوخ + مشمش + عوينة",
         "crop_type": "mixed_fruit",
         "area_ha": 1.09,
         "priority": 12,

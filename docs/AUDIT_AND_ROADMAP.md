@@ -81,7 +81,9 @@ Each milestone ends in something you can run and show. Estimates assume one deve
 6. **Scenario runner.** Scripted scenarios (`normal_day`, `pump_trip_mid_cycle`, `leak`, `low_tank`) runnable from the CLI and from an admin panel in the UI. These are what you show in a demo.
 7. **Telemetry history.** Store downsampled telemetry points so the charts show real data.
 
-### Milestone C — Demo-quality UI + PWA (≈1.5–2 weeks)
+### Milestone C — Demo-quality UI + PWA ✅ done 2026-11-18
+*Built to design/DESIGN_BRIEF.md (decided with the owner). Zone polygons come from the traced sketch rather than `geometry_ref`. Pipe routes are a plausible first version for the owner to correct.*
+
 1. **Remove every mock and hardcoded value.** Charts use the telemetry API. Header alarm counts and status are live.
 2. **Arabic/English toggle with full RTL layout** (i18n, Arabic font such as IBM Plex Sans Arabic or Cairo). Arabic is the default.
 3. **Better map.** Draw zones as real SVG polygons from `geometry_ref` instead of floating boxes, and animate flow along the pipes when a zone runs. Show pump and tank widgets on the map.

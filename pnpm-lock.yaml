@@ -26,6 +26,15 @@ importers:
       '@algaroshy/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@algaroshy/map-model':
+        specifier: workspace:^
+        version: link:../../packages/map-model
+      '@fontsource/ibm-plex-mono':
+        specifier: 5.2.6
+        version: 5.2.6
+      '@fontsource/ibm-plex-sans-arabic':
+        specifier: 5.2.6
+        version: 5.2.6
       '@tanstack/react-query':
         specifier: ^5.80.0
         version: 5.99.1(react@19.2.5)
@@ -112,7 +121,14 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
-  packages/map-model: {}
+  packages/map-model:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.32.0)
 
   packages/test-scenarios: {}
 
@@ -420,6 +436,12 @@ packages:
   '@eslint/plugin-kit@0.4.1':
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@fontsource/ibm-plex-mono@5.2.6':
+    resolution: {integrity: sha512-LTZJNTcpoT19fmwERZNMDI+ljHueuyhF2Qn+bICJ4Y4hxBLAAoJ2MRsGnyp0QNutW6t/25eyZpvaUK1LDrCo7Q==}
+
+  '@fontsource/ibm-plex-sans-arabic@5.2.6':
+    resolution: {integrity: sha512-bC8hGRCdPIs60kMRLGDPkoGT7G5oeOYaxqMo8pFi64JV8WO1B60TJtOdhTC4LqLQWwyLda872wbmq0sNm0C6ow==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2340,6 +2362,10 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
+  '@fontsource/ibm-plex-mono@5.2.6': {}
+
+  '@fontsource/ibm-plex-sans-arabic@5.2.6': {}
+
   '@humanfs/core@0.19.2':
     dependencies:
       '@humanfs/types': 0.15.0
@@ -3104,7 +3130,7 @@ snapshots:
 
   estree-walker@3.0.3:
     dependencies:
-      '@types/estree': 1.0.8
+      '@types/estree': 1.0.10
 
   esutils@2.0.3: {}
 

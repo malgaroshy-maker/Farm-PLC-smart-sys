@@ -8,6 +8,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Start script (2026-11-18)
+- New one-window launcher (`scripts/start.mjs`, wrapped by `run.bat` / `run.sh`). It starts the API, simulator and web app with tagged logs, waits until live data flows, then opens the browser.
+- First run sets itself up: `.env` with generated secrets (admin login printed once), Python venv and requirements (reinstalled when they change), `pnpm install`, database migration and seed.
+- **`API_PORT` in `.env` is now the single source** for the API port. Previously `run.bat` hardcoded 8000 while the simulator and web proxy read other settings, so they could disagree and nothing connected. The launcher stops early with a clear message if a port is taken.
+- Ctrl+C or closing the window kills every process tree it started. The old `--reload` setup could leave orphaned API workers holding the port. `stop.bat` / `stop.sh` act as a safety net and only touch this app's processes.
+- `run.bat demo`: production build, LAN/phone URLs printed, installable PWA.
+- `--smoke` self-test. Verified in this checkout (dev + demo) and in a fresh clone with nothing installed.
+- `.gitattributes` keeps `.sh` LF and `.bat` CRLF.
+
+### Milestone C — Demo-quality UI + PWA (2026-11-18)
+**Map**
+- Zone geometry traced from the owner's sketch by line colour and flood fill, and verified against the legend areas (all 15 features within ±12%). New `@algaroshy/map-model` package with tests. Tooling and README are in `tools/map-geometry/`.
+- Plausible mainline network, valves, dirt tracks and equipment positions, editable in `network.py`.
+- Photoreal assets generated through the owner's ChatGPT/Codex subscription: 4 crop textures, sand, track, tank, booster, control room, wellhead and logo. Optimised from 44 MB to 636 KB WebP.
+- New animated SVG map: per-zone crop texture rotated to the row direction, flow animation scaled to real flow, wet soil while irrigating, dry-canopy tint, pump rotors, valve symbols, tank gauge, day/night with lamps, zoom/pan.
+
+**UI**
+- Arabic by default with full RTL and an English toggle (`lib/i18n.ts`). Bundled Arabic font. Logo and branding. Farm-local clock.
+- New Zones, Equipment and Event log pages. New `GET /api/v1/events` endpoint (filters, pagination, actor names).
+- Presenter mode: the Simulator page is hidden unless an admin switches it on.
+- Responsive phone layout (bottom nav, slide-in menu) and an installable PWA. The service worker never caches `/api` or `/ws`.
+- The zone drawer closes on Escape. Redesigned KPI tiles. Bidi-safe numbers in RTL.
+
+**Data**
+- The mixed-fruit zone's third crop is **plum (عوينة)**, not guava. Fixed in the seed, the contracts and an Alembic data migration that only touches the untouched seed name.
+
+**Tests**: 69 API, 22 simulator, 17 web, 3 map-model.
+
 ### Milestone B — Credible simulator + real alarms (2026-11-18)
 **Simulator (acts as the PLC and the farm)**
 - Loads zones, pumps, valves and sensors from the API, with per-zone flow and pressure limits.

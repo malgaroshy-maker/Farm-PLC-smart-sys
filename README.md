@@ -2,7 +2,7 @@
 
 **Farm:** Algaroshy Farm  
 **Originator:** Mahamed Algaroshy — محمد عادل الجروشي  
-**Status:** Milestone A (foundations) done. See [PROJECT_STATUS.md](PROJECT_STATUS.md)  
+**Status:** Milestones A–C done (foundations, simulator + alarms, demo UI + PWA). See [PROJECT_STATUS.md](PROJECT_STATUS.md)  
 
 ---
 
@@ -69,40 +69,39 @@ Farm-PLC/
 ## Quick Start
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 20+ and pnpm 9 (`corepack enable`)
+- **Python 3.11+** (Windows: tick "Add python.exe to PATH" in the installer)
+- **Node.js 20+** and **pnpm 9** (`corepack enable` once)
 
-### 1. Configure
+### Run
 ```bash
-cp .env.example .env
+run.bat            # Windows, dev mode (hot reload)       → http://localhost:5173
+run.bat demo       # Windows, demo mode (phones + PWA)    → http://localhost:4173
+./run.sh           # macOS / Linux (same options)
 ```
-Then set `SECRET_KEY`, `ADMIN_PASSWORD` and `SIMULATOR_TOKEN` in `.env`. The API, simulator and web app all read this one file.
+That's all. On first run the launcher sets itself up:
+1. creates `.env` from `.env.example` with generated secrets, and prints the admin login once
+2. creates the Python venv and installs the requirements (and reinstalls when `requirements.txt` changes)
+3. runs `pnpm install` (and again when `pnpm-lock.yaml` changes)
+4. migrates and seeds the database
 
-### 2. Install
-```bash
-cd apps/api && python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Linux/macOS: .venv/bin/pip
-cd ../.. && pnpm install
-```
+It then starts the **API, simulator and web app in one window** with tagged logs (`[api] [sim] [web]`), waits until live data is flowing, and opens the browser. **Ctrl+C or closing the window stops everything.** If something is left over after a crash, run `stop.bat` / `./stop.sh`. It only stops this app's own processes.
 
-### 3. Run (Windows)
-```bash
-run.bat
-```
-This migrates and seeds the database, then opens the API (:8000), the simulator and the web app (:5173).
+| Setting (`.env`) | Default | Notes |
+|---|---|---|
+| `API_PORT` | 8000 | **The one place to change the API port.** The launcher points the simulator and the web proxy at it. If another program holds the port, the launcher stops with a clear message. |
+| `WEB_PORT` | 5173 (dev) / 4173 (demo) | |
+| `TIMESCALE` | 1 | Simulator speed. 60 = one simulated minute per real second. |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | admin / generated | Used when the database is first seeded |
 
-### 3. Run (manually, any OS)
-```bash
-cd apps/api && alembic upgrade head && python -m app.seed && uvicorn app.main:app --reload --port 8000
-cd apps/simulator && python -m src.main          # uses the API's venv
-pnpm --filter @algaroshy/web run dev             # http://localhost:5173 — add --host to open it from a phone
-```
-Log in as `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env`.
+**Demo mode** builds the production app, makes it reachable from phones on the same Wi-Fi (the launcher prints the URLs), and makes it installable ("Add to Home screen"). Admins can show the Simulator page with the **presenter mode** switch in the sidebar.
+
+`node scripts/start.mjs --smoke` starts everything, checks that it's healthy, and stops again. Use it as a quick self-test.
 
 ### Tests
 ```bash
-cd apps/api && pytest -q
-cd apps/simulator && pytest -q
-pnpm lint && pnpm build
+cd apps/api && .venv/Scripts/python -m pytest -q      # Linux/macOS: .venv/bin/python
+cd apps/simulator && ../api/.venv/Scripts/python -m pytest -q
+pnpm lint && pnpm build && pnpm test
 ```
 
 ---
@@ -110,7 +109,7 @@ pnpm lint && pnpm build
 ## Roadmap
 
 Progress is tracked in [PROJECT_STATUS.md](PROJECT_STATUS.md), and the plan is in [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md):
-**A** foundations ✅ → **B** simulator + alarms → **C** demo UI + PWA → **D** schedules + reports → **E** AI → production track (PLC adapter, hosting).
+**A** foundations ✅ → **B** simulator + alarms ✅ → **C** demo UI + PWA ✅ → **D** schedules + reports → **E** AI → production track (PLC adapter, hosting).
 
 ### 🧠 AI Features
 

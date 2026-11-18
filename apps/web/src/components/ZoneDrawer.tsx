@@ -9,6 +9,10 @@ import { useFarmStore } from '../store/farm';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { SEVERITY } from '../lib/alarms';
+import { pickName, useT, type MsgKey } from '../lib/i18n';
+import { ZONE_SEEDS } from '@algaroshy/contracts';
+
+const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
 
 interface ZoneDrawerProps {
   zoneId: string | null;
@@ -69,6 +73,12 @@ export default function ZoneDrawer(props: ZoneDrawerProps) {
 
 function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerProps & { zoneId: string }) {
   const { can } = useAuth();
+  const { t, lang } = useT();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const canControl = can('owner_admin', 'operator');
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -86,15 +96,15 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
     setBusy(false);
     setFeedback(
       res.ok
-        ? { kind: 'ok', text: `${action === 'start' ? 'Start' : 'Stop'} command accepted` }
-        : { kind: 'error', text: `Blocked: ${res.message}` },
+        ? { kind: 'ok', text: t(action === 'start' ? 'drawer.startOk' : 'drawer.stopOk') }
+        : { kind: 'error', text: `${t('drawer.blocked')}: ${res.message}` },
     );
   };
 
   const state = zoneState?.state ?? 'unknown';
   const isRunning = state === 'running';
   const isFault = state === 'faulted' || zoneState?.health === 'critical';
-  const stateLabel = state.replace(/_/g, ' ').toUpperCase();
+  const stateLabel = t(`state.${state}` as MsgKey);
   const moisture = zoneState?.moisture_pct != null ? zoneState.moisture_pct.toFixed(1) : '--';
   const pressure = zoneState?.pressure_bar ? zoneState.pressure_bar.toFixed(2) : '0.00';
   const flow = zoneState?.flow_m3h ? Math.round(zoneState.flow_m3h * (1000 / 60)) : 0; // L/min
@@ -107,28 +117,28 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
     <>
       <div className="fixed inset-0 bg-[#0e0e0e]/80 backdrop-blur-sm z-40 transition-opacity" onClick={onClose} />
 
-      <div className="fixed top-0 right-0 h-full w-[450px] max-w-full bg-[#1c1b1b] border-l border-[#353534] shadow-2xl z-50 flex flex-col font-sans text-[#e5e2e1]">
+      <div className="fixed top-0 end-0 h-full w-[450px] max-w-full bg-[#1c1b1b] border-s border-[#353534] shadow-2xl z-50 flex flex-col font-sans text-[#e5e2e1]">
         {/* Header */}
         <div className="p-6 border-b border-[#353534] flex justify-between items-start bg-[#0e0e0e]">
           <div>
-            <h2 className="text-2xl font-bold text-[#00e5ff] uppercase tracking-widest font-mono">
-              {zoneId.replace('zone_', '').replace(/_/g, ' ')}
+            <h2 className="text-2xl font-bold text-[#00e5ff]">
+              {pickName(lang, SEED[zoneId]?.name, SEED[zoneId]?.name_ar) || zoneId}
             </h2>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <span
                 className="px-2 py-0.5 rounded text-xs font-bold font-mono tracking-wider border"
                 style={{ color: badgeColor, borderColor: `${badgeColor}55`, backgroundColor: `${badgeColor}15` }}
               >
-                STATE: {stateLabel}
+                {t('drawer.state')}: {stateLabel}
               </span>
-              <span className="text-xs text-[#849396] font-mono border-l border-[#353534] pl-2">
-                SOURCE: {zoneState?.source_mode === 'well_direct' ? 'DIRECT WELL' : zoneState?.source_mode ? 'TANK' : '—'}
+              <span className="text-xs text-[#849396] border-s border-[#353534] ps-2">
+                {t('drawer.source')}: {zoneState?.source_mode ? t(`source.${zoneState.source_mode}` as MsgKey) : '—'}
               </span>
             </div>
           </div>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t('drawer.close')}
             className="text-[#849396] bg-[#1c1b1b] hover:bg-[#ffb4ab] hover:text-[#410002] p-2 rounded transition-colors"
           >
             <X size={20} />
@@ -144,17 +154,17 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                   disabled={busy}
                   onClick={() => run('start')}
                   className="flex-1 bg-[#1c1b1b] hover:bg-[#353534] disabled:opacity-50 border border-[#353534] hover:border-[#00e5ff] text-[#00e5ff] py-3 rounded flex items-center justify-center gap-2 font-bold font-mono tracking-wider transition-colors">
-                  <Play size={18} /> START CYCLE
+                  <Play size={18} /> {t('drawer.start')}
                 </button>
                 <button
                   disabled={busy}
                   onClick={() => run('stop')}
                   className="flex-1 bg-[#1c1b1b] hover:bg-[#353534] disabled:opacity-50 border border-[#353534] hover:border-[#ffb4ab] text-[#ffb4ab] py-3 rounded flex items-center justify-center gap-2 font-bold font-mono tracking-wider transition-colors">
-                  <Square size={18} /> STOP ZONE
+                  <Square size={18} /> {t('drawer.stop')}
                 </button>
               </div>
             ) : (
-              <p className="text-xs font-mono text-[#849396]">VIEW ONLY — your role cannot issue commands.</p>
+              <p className="text-xs text-[#849396]">{t('drawer.viewOnly')}</p>
             )}
             {feedback && (
               <p role="status" className={`text-xs font-mono ${feedback.kind === 'ok' ? 'text-[#00e5ff]' : 'text-[#ffb4ab]'}`}>
@@ -164,8 +174,8 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
             {target > 0 && (state === 'running' || state === 'stopping') && (
               <div>
                 <div className="flex justify-between text-xs font-mono text-[#849396] mb-1">
-                  <span>CYCLE {hhmmss(runtime)}</span>
-                  <span>{hhmmss(target)}</span>
+                  <span>{t('drawer.cycle')} <span dir="ltr">{hhmmss(runtime)}</span></span>
+                  <span dir="ltr">{hhmmss(target)}</span>
                 </div>
                 <div className="h-1.5 bg-[#353534] rounded overflow-hidden">
                   <div className="h-full bg-[#00e5ff] transition-all" style={{ width: `${progress}%` }} />
@@ -179,7 +189,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
             <div className="space-y-2">
               {zoneAlarms.map((a) => (
                 <div key={a.id} className="p-3 rounded border text-xs font-mono" style={{ borderColor: SEVERITY[a.severity].color, color: SEVERITY[a.severity].color }}>
-                  {a.alarm_code} {a.name} — {a.condition_active ? 'ACTIVE' : 'LATCHED'}
+                  {a.alarm_code} {pickName(lang, a.name, a.name_ar)} — {t(a.condition_active ? 'drawer.active' : 'drawer.latched')}
                 </div>
               ))}
             </div>
@@ -187,16 +197,16 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
 
           {/* Live metrics */}
           <div className="grid grid-cols-2 gap-4">
-            <MetricCard icon={<Droplet />} label="MOISTURE" value={moisture} unit="%" />
-            <MetricCard icon={<Gauge />} label="PRESSURE" value={pressure} unit="BAR" />
-            <MetricCard icon={<Activity />} label="FLOW RATE" value={flow} unit="L/MIN" />
-            <MetricCard icon={<Clock />} label="RUNTIME" value={hhmmss(runtime)} />
+            <MetricCard icon={<Droplet />} label={t('drawer.moisture')} value={moisture} unit="%" />
+            <MetricCard icon={<Gauge />} label={t('drawer.pressure')} value={pressure} unit="BAR" />
+            <MetricCard icon={<Activity />} label={t('drawer.flow')} value={flow} unit="L/MIN" />
+            <MetricCard icon={<Clock />} label={t('drawer.runtime')} value={hhmmss(runtime)} />
           </div>
 
           {/* History */}
           <div className="bg-[#0e0e0e] border border-[#353534] rounded p-4">
             <h3 className="text-xs text-[#bac9cc] font-bold font-mono tracking-widest mb-4 flex justify-between items-center">
-              <span>MOISTURE % · FLOW m³/h</span>
+              <span>{t('drawer.history')}</span>
               <span className="flex gap-1">
                 {RANGES.map((r) => (
                   <button
@@ -212,7 +222,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
             <div className="h-48 w-full">
               {history.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs font-mono text-[#849396]">
-                  NO HISTORY YET — data is sampled every 10 s
+                  {t('drawer.noHistory')}
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -240,17 +250,17 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
 
           {/* Hardware */}
           <div className="bg-[#0e0e0e] border border-[#353534] rounded p-4">
-            <h3 className="text-xs text-[#bac9cc] font-bold font-mono tracking-widest mb-4">HARDWARE STATUS</h3>
+            <h3 className="text-xs text-[#bac9cc] font-bold font-mono tracking-widest mb-4">{t('drawer.hardware')}</h3>
             <div className="space-y-3 font-mono text-sm">
-              <Row label="VALVE ID" value={valve?.valve_id ?? '—'} />
+              <Row label={t('drawer.valveId')} value={valve?.valve_id ?? '—'} />
               <Row
-                label="VALVE STATE"
-                value={(valve?.status ?? 'unknown').toUpperCase()}
+                label={t('drawer.valveState')}
+                value={t(`valve.${valve?.status ?? 'unknown'}` as MsgKey)}
                 color={valve?.status === 'fault' ? '#ffb4ab' : valve?.status === 'open' ? '#00e5ff' : undefined}
               />
               <Row
-                label="HEALTH"
-                value={(zoneState?.health ?? 'unknown').toUpperCase()}
+                label={t('drawer.health')}
+                value={t(`health.${zoneState?.health ?? 'unknown'}` as MsgKey)}
                 color={isFault ? '#ffb4ab' : '#00e5ff'}
               />
             </div>
@@ -273,10 +283,10 @@ function Row({ label, value, color }: { label: string; value: string; color?: st
 function MetricCard({ icon, label, value, unit = '' }: { icon: React.ReactNode; label: string; value: string | number; unit?: string }) {
   return (
     <div className="bg-[#0e0e0e] border border-[#353534] rounded p-4 flex flex-col pt-5 relative overflow-hidden">
-      <div className="absolute left-0 top-0 w-1 h-full bg-[#00e5ff] opacity-50" />
+      <div className="absolute start-0 top-0 w-1 h-full bg-[#00e5ff] opacity-50" />
       <div className="text-[#00e5ff] mb-3 bg-[#1c1b1b] p-2 rounded self-start border border-[#353534]">{icon}</div>
-      <div className="text-xs text-[#849396] font-bold font-mono mb-1 tracking-wider uppercase">{label}</div>
-      <div className="text-2xl font-bold font-mono text-[#e5e2e1]">
+      <div className="text-xs text-[#849396] font-bold mb-1">{label}</div>
+      <div className="text-2xl font-bold font-mono text-[#e5e2e1]" dir="ltr">
         {value} <span className="text-sm text-[#bac9cc]">{unit}</span>
       </div>
     </div>

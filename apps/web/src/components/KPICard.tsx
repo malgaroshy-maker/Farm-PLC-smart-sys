@@ -5,36 +5,27 @@ interface KPICardProps {
   value: string | number;
   unit?: string;
   icon: React.ReactNode;
-  trend?: string;
-  trendUp?: boolean;
-  statusColor?: string;
+  /** CSS colour for the accent bar, icon and value */
+  color?: string;
 }
 
-export default function KPICard({ title, value, unit, icon, trend, trendUp, statusColor = 'text-[#00e5ff]' }: KPICardProps) {
+/** Compact KPI tile. Logical (start/end) spacing so it mirrors correctly in RTL. */
+export default function KPICard({ title, value, unit, icon, color = '#849396' }: KPICardProps) {
   return (
-    <div className="bg-[#1c1b1b] border border-[#353534] rounded-xl p-5 flex flex-col relative overflow-hidden shadow-lg backdrop-blur-md">
-      <div className={`absolute left-0 top-0 w-1 h-full bg-current ${statusColor} opacity-50`} />
-      
-      <div className="flex justify-between items-start mb-4">
-        <h3 className="text-sm font-bold text-[#bac9cc] tracking-widest font-mono uppercase truncate pr-4">{title}</h3>
-        <div className={`p-2 rounded bg-[#0e0e0e] border border-[#353534] ${statusColor}`}>
-          {icon}
-        </div>
+    <div className="bg-[#1c1b1b] border border-[#353534] rounded-xl px-4 py-3 flex items-center gap-3 relative overflow-hidden min-w-0">
+      <div className="absolute inset-y-0 start-0 w-1 opacity-70" style={{ backgroundColor: color }} />
+      <div className="p-2 rounded-lg bg-[#0e0e0e] border border-[#353534] shrink-0" style={{ color }}>
+        {icon}
       </div>
-      
-      <div className="flex items-end gap-2 mt-auto">
-        <span className="text-3xl font-bold text-[#e5e2e1] leading-none font-mono tracking-tight drop-shadow-md">{value}</span>
-        {unit && <span className="text-sm text-[#849396] font-bold mb-1">{unit}</span>}
-      </div>
-
-      {trend && (
-        <div className="mt-3 text-[10px] font-mono flex items-center gap-1 uppercase tracking-wider">
-          <span className={trendUp ? 'text-[#ffc948]' : 'text-[#ffb4ab]'}>
-            {trendUp ? '▲' : '▼'} {trend}
+      <div className="min-w-0">
+        <div className="text-xs font-bold text-[#bac9cc] truncate">{title}</div>
+        <div className="flex items-baseline gap-1.5" dir="ltr">
+          <span className={`${String(value).length > 6 ? "text-base sm:text-lg" : "text-2xl"} font-bold font-mono leading-tight whitespace-nowrap`} style={{ color: value === '--' ? '#849396' : '#e5e2e1' }}>
+            {value}
           </span>
-          <span className="text-[#849396]">vs avg baseline</span>
+          {unit && <span className="text-xs text-[#849396] font-bold">{unit}</span>}
         </div>
-      )}
+      </div>
     </div>
   );
 }

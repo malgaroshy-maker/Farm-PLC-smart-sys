@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ShieldAlert } from 'lucide-react';
+import { Languages } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { ApiError } from '../lib/api';
+import { useI18nStore, useT } from '../lib/i18n';
 
 export default function Login() {
   const navigate = useNavigate();
   const { user, login } = useAuth();
+  const { t } = useT();
+  const toggleLang = useI18nStore((s) => s.toggle);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,82 +25,57 @@ export default function Login() {
       await login(username.trim(), password);
       navigate('/');
     } catch (err) {
-      setError(
-        err instanceof ApiError && err.status === 401
-          ? 'ACCESS DENIED: Invalid credentials'
-          : 'CANNOT REACH SERVER: Is the API running?',
-      );
+      setError(err instanceof ApiError && err.status === 401 ? t('login.denied') : t('login.unreachable'));
     } finally {
       setBusy(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#0e0e0e] text-[#e5e2e1] flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-md bg-[#1c1b1b] border border-[#353534] p-8 shadow-2xl relative overflow-hidden">
-        {/* Decorative corner brackets for industrial feel */}
-        <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-[#00e5ff]/30 m-4" />
-        <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-[#00e5ff]/30 m-4" />
-        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-[#00e5ff]/30 m-4" />
-        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-[#00e5ff]/30 m-4" />
+  const input =
+    'w-full bg-[#0e0e0e] border border-[#353534] rounded-lg p-3 text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff] transition-colors';
 
-        <div className="flex flex-col items-center mb-8">
-          <ShieldAlert size={48} className="text-[#00e5ff] mb-4" />
-          <h1 className="text-2xl font-bold tracking-widest text-center">FARM-PLC <br/> <span className="text-[#00e5ff]">HMI TERMINAL</span></h1>
-          <p className="text-sm text-[#849396] mt-2 font-mono">SECURE AUTHENTICATION REQUIRED</p>
+  return (
+    <div
+      className="min-h-dvh text-[#e5e2e1] flex items-center justify-center p-4 bg-[#0e0e0e] bg-cover bg-center"
+      style={{ backgroundImage: 'linear-gradient(rgba(14,14,14,0.82), rgba(14,14,14,0.92)), url(/map/tex_pomegranate.webp)' }}
+    >
+      <button
+        onClick={toggleLang}
+        className="fixed top-4 end-4 flex items-center gap-2 px-3 py-2 rounded-lg border border-[#353534] bg-[#1c1b1b]/80 text-sm text-[#bac9cc] hover:text-[#e5e2e1]"
+      >
+        <Languages size={16} /> {t('common.lang')}
+      </button>
+
+      <div className="w-full max-w-sm bg-[#1c1b1b]/95 border border-[#353534] rounded-2xl p-8 shadow-2xl backdrop-blur">
+        <div className="flex flex-col items-center mb-8 text-center">
+          <img src="/map/logo.webp" alt="" className="w-20 h-20 object-contain mb-3" />
+          <h1 className="text-2xl font-bold">{t('app.name')}</h1>
+          <p className="text-sm text-[#849396] mt-1">{t('app.tagline')}</p>
         </div>
 
         {error && (
-          <div role="alert" className="mb-6 p-3 bg-[#ffb4ab]/10 border border-[#ffb4ab] text-[#ffb4ab] text-sm font-mono text-center">
+          <div role="alert" className="mb-5 p-3 rounded-lg bg-[#ffb4ab]/10 border border-[#ffb4ab] text-[#ffb4ab] text-sm text-center">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-6 relative z-10">
+        <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label htmlFor="username" className="block text-xs font-bold text-[#bac9cc] mb-2 tracking-widest font-mono">
-              [OPERATOR ID]
+            <label htmlFor="username" className="block text-xs font-bold text-[#bac9cc] mb-1.5">
+              {t('login.username')}
             </label>
-            <input
-              id="username"
-              type="text"
-              autoComplete="username"
-              required
-              className="w-full bg-[#0e0e0e] border border-[#353534] p-3 text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff] transition-colors font-mono"
-              placeholder="Enter ID"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
+            <input id="username" type="text" autoComplete="username" required dir="ltr" className={input} value={username} onChange={(e) => setUsername(e.target.value)} />
           </div>
-
           <div>
-            <label htmlFor="password" className="block text-xs font-bold text-[#bac9cc] mb-2 tracking-widest font-mono">
-              [PASSCODE]
+            <label htmlFor="password" className="block text-xs font-bold text-[#bac9cc] mb-1.5">
+              {t('login.password')}
             </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="w-full bg-[#0e0e0e] border border-[#353534] p-3 text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff] transition-colors font-mono"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <input id="password" type="password" autoComplete="current-password" required dir="ltr" className={input} value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full bg-[#00e5ff] hover:bg-[#00c9e0] disabled:opacity-60 text-[#0e0e0e] font-bold py-3 uppercase tracking-widest transition-colors font-mono mt-4"
-          >
-            {busy ? 'AUTHORIZING…' : 'AUTHORIZE & CONNECT'}
+          <button type="submit" disabled={busy} className="w-full bg-[#00e5ff] hover:bg-[#00c9e0] disabled:opacity-60 text-[#0e0e0e] font-bold py-3 rounded-lg transition-colors mt-2">
+            {busy ? t('login.busy') : t('login.submit')}
           </button>
         </form>
-
-        <div className="mt-8 pt-4 border-t border-[#353534] text-center">
-          <p className="text-xs text-[#849396] font-mono">SYS.VERSION 0.2.0</p>
-        </div>
       </div>
     </div>
   );

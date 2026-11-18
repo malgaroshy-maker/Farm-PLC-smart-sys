@@ -13,6 +13,9 @@
   },
   "dependencies": {
     "@algaroshy/contracts": "workspace:*",
+    "@algaroshy/map-model": "workspace:^",
+    "@fontsource/ibm-plex-mono": "5.2.6",
+    "@fontsource/ibm-plex-sans-arabic": "5.2.6",
     "@tanstack/react-query": "^5.80.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.8.0",
