@@ -8,6 +8,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone A — Foundations (2026-11-18)
+**Security**
+- Real authentication: bcrypt password hashes, JWT login (`/auth/login`, `/auth/me`), role checks on every endpoint, and a service token for the simulator. Removed the credentials that were hardcoded in the frontend.
+- CORS limited to configured origins. The app refuses to start in production with default secrets.
+
+**Commands & safety**
+- New command service: whitelisted types, target/payload validation, role permissions and interlocks (stale state, system mode, zone already active, duplicate, max concurrent zones, zone combinations, pump health, critical tank level).
+- Rejected commands are persisted for the audit trail. Stuck commands time out after 15 s. Every step is written to `event_log`.
+
+**Real-time**
+- The WebSocket now actually broadcasts: `state.snapshot`, `zone.state.changed`, `pump.state.changed`, `system.mode.changed`, `command.updated` and `telemetry.stale`.
+- The web app uses one shared WebSocket connection with a polling fallback and honest LIVE / POLLING / STALE / OFFLINE status.
+
+**Platform**
+- First Alembic migration. Tables no longer come from `create_all`.
+- Timezone-aware UTC everywhere. Dialect-agnostic state upsert (ready for PostgreSQL).
+- Vite dev proxy for `/api` and `/ws`, so the app works from other devices on the LAN.
+- The web app now uses `@algaroshy/contracts` types. This exposed a bug: zones were checked against a `"fault"` health value that doesn't exist, so faulted zones were never highlighted.
+
+**Honesty fixes**
+- Removed the mock alarms, the fake KPI and moisture trends, the hardcoded soil temperature and the "2 WARNINGS" badge. Labelled the sample chart.
+- `/health` no longer claims AI features are enabled.
+- "EMERGENCY STOP" in the zone drawer was really a zone stop and is now labelled as one. Added a real global STOP ALL.
+
+**Fixes**
+- `pnpm build` and ESLint pass. `run.bat` starts the web app (wrong package filter) and now migrates and seeds first. The seed no longer crashes on Windows consoles. Fixed a simulator signal handler that captured the loop variable.
+
+**Tooling**
+- 46 tests (API + simulator), ruff lint/format, and a GitHub Actions CI workflow.
+
 ### Added — Phase 1: Domain + Database
 - 🗄️ 22 SQLAlchemy models (farm, zones, pumps, valves, sensors, schedules, commands, alarms, cycles, event_log, telemetry, users, 6 AI models)
 - 🔧 Pydantic schemas for all entities (response + update)

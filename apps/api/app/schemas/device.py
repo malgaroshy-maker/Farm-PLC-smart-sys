@@ -4,8 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-
 # ── Pumps ────────────────────────────────────────────────
+
 
 class PumpResponse(BaseModel):
     id: str
@@ -35,6 +35,7 @@ class PumpUpdate(BaseModel):
 
 # ── Valves ───────────────────────────────────────────────
 
+
 class ValveResponse(BaseModel):
     id: str
     zone_id: str
@@ -52,6 +53,7 @@ class ValveUpdate(BaseModel):
 
 
 # ── Sensors ──────────────────────────────────────────────
+
 
 class SensorResponse(BaseModel):
     id: str

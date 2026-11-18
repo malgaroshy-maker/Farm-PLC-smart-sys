@@ -2,7 +2,7 @@
 
 **Farm:** Algaroshy Farm  
 **Originator:** Mahamed Algaroshy — محمد عادل الجروشي  
-**Status:** Phase 1 — Domain + Database  
+**Status:** Milestone A (foundations) done. See [PROJECT_STATUS.md](PROJECT_STATUS.md)  
 
 ---
 
@@ -32,7 +32,7 @@ A PLC-driven, sensor-backed, remotely observable and controllable smart irrigati
 | **AI / ML** | Google Gemini 2.5 API, NumPy, APScheduler |
 | **Database** | SQLite (dev/sim) → PostgreSQL (staging/prod) |
 | **Web App** | React 19, Vite 8, TypeScript, Tailwind CSS v4, Zustand, React Query |
-| **Mobile App** | React Native + Expo + TypeScript |
+| **Mobile** | PWA from the web app (installable on Android) |
 | **Simulator** | Python engine (shared domain models, deterministic tick loop) |
 | **Real-Time** | WebSocket (apps), MQTT (edge/PLC integration) |
 | **PLC** | Siemens-oriented (Modbus/OPC UA adapter) |
@@ -46,7 +46,6 @@ Farm-PLC/
 ├── apps/
 │   ├── api/               # FastAPI backend
 │   ├── web/               # React + Vite web dashboard
-│   ├── mobile/            # React Native + Expo Android app
 │   └── simulator/         # Python simulation engine
 ├── packages/
 │   ├── contracts/          # Shared schemas, enums, types
@@ -70,72 +69,48 @@ Farm-PLC/
 ## Quick Start
 
 ### Prerequisites
-
 - Python 3.11+
-- Node.js 20+ (LTS)
-- npm or pnpm
-- Git
+- Node.js 20+ and pnpm 9 (`corepack enable`)
 
-### 1. Clone & Setup
-
+### 1. Configure
 ```bash
-git clone <repo-url>
-cd Farm-PLC
+cp .env.example .env
+```
+Then set `SECRET_KEY`, `ADMIN_PASSWORD` and `SIMULATOR_TOKEN` in `.env`. The API, simulator and web app all read this one file.
+
+### 2. Install
+```bash
+cd apps/api && python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Linux/macOS: .venv/bin/pip
+cd ../.. && pnpm install
 ```
 
-### 2. Backend (API + Simulator)
-
+### 3. Run (Windows)
 ```bash
-cd apps/api
-python -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-alembic upgrade head
-python seed.py
-uvicorn main:app --reload --port 8000
+run.bat
 ```
+This migrates and seeds the database, then opens the API (:8000), the simulator and the web app (:5173).
 
-### 3. Simulator
-
+### 3. Run (manually, any OS)
 ```bash
-cd apps/simulator
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python run_simulator.py
+cd apps/api && alembic upgrade head && python -m app.seed && uvicorn app.main:app --reload --port 8000
+cd apps/simulator && python -m src.main          # uses the API's venv
+pnpm --filter @algaroshy/web run dev             # http://localhost:5173 — add --host to open it from a phone
 ```
+Log in as `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env`.
 
-### 4. Web Dashboard
-
+### Tests
 ```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-### 5. Mobile App
-
-```bash
-cd apps/mobile
-npm install
-npx expo start
+cd apps/api && pytest -q
+cd apps/simulator && pytest -q
+pnpm lint && pnpm build
 ```
 
 ---
 
-## Build Phases
+## Roadmap
 
-| Phase | Name | Status |
-|-------|------|--------|
-| **0** | Contracts & Repo Setup | ✅ Done |
-| **1** | Domain + Database | ⬜ Pending |
-| **2** | Simulator + Live State | ⬜ Pending |
-| **3** | Web MVP | ⬜ Pending |
-| **4** | Android MVP | ⬜ Pending |
-| **5** | Schedules + Reports | ⬜ Pending |
-| **6** | Alarm Completion | ⬜ Pending |
-| **7** | 🧠 AI Integration | ⬜ Pending |
-| **8** | PLC Adapter | ⬜ Pending |
+Progress is tracked in [PROJECT_STATUS.md](PROJECT_STATUS.md), and the plan is in [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md):
+**A** foundations ✅ → **B** simulator + alarms → **C** demo UI + PWA → **D** schedules + reports → **E** AI → production track (PLC adapter, hosting).
 
 ### 🧠 AI Features
 

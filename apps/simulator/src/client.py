@@ -1,85 +1,91 @@
-"""HTTP and WebSocket client connecting simulator to backend API."""
+"""HTTP client connecting the simulator to the backend API (acts as the PLC bridge)."""
 
 import asyncio
-import json
 
 import httpx
 
 from .engine import SimulatorEngine
-from .state import FarmSimulationState, SimZoneState, SimPumpState
+from .state import SimPumpState, SimZoneState, utcnow
 
 
 class APIClient:
-    """Client for pulling pending commands and pushing live state."""
-    
-    def __init__(self, engine: SimulatorEngine, base_url: str = "http://127.0.0.1:8000/api/v1"):
+    """Pulls pending commands and pushes live state, authenticated with the service token."""
+
+    def __init__(
+        self,
+        engine: SimulatorEngine,
+        base_url: str = "http://127.0.0.1:8000/api/v1",
+        token: str = "dev-simulator-token",
+    ):
         self.engine = engine
         self.base_url = base_url
-        self.client = httpx.AsyncClient(base_url=self.base_url)
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5.0,
+        )
         self.running = False
-        
-    async def fetch_initial_layout(self):
-        """Fetch real zones/pumps from DB to seed simulation state."""
-        try:
-            resp = await self.client.get("/zones")
-            if resp.status_code == 200:
-                zones = resp.json()
-                for z in zones:
-                    self.engine.state.zones[z["id"]] = SimZoneState(
-                        zone_id=z["id"],
-                        last_updated=self.engine.state.system.last_updated if hasattr(self.engine.state.system, 'last_updated') else __import__('datetime').datetime.utcnow()
-                    )
-            
-            resp_p = await self.client.get("/pumps")
-            if resp_p.status_code == 200:
-                pumps = resp_p.json()
-                for p in pumps:
-                    self.engine.state.pumps[p["id"]] = SimPumpState(
-                        pump_id=p["id"],
-                        last_updated=__import__('datetime').datetime.utcnow()
-                    )
-            print(f"Seeded simulator: {len(self.engine.state.zones)} zones, {len(self.engine.state.pumps)} pumps.")
-        except Exception as e:
-            print(f"Could not fetch initial layout: {e}")
 
-    async def poll_commands(self):
-        """Poll API for pending commands and dispatch to engine."""
+    async def fetch_initial_layout(self) -> bool:
+        """Seed simulation state from the API's zones and pumps. Returns True on success."""
+        try:
+            zones = await self.client.get("/zones")
+            pumps = await self.client.get("/pumps")
+            zones.raise_for_status()
+            pumps.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (401, 403):
+                print("API rejected the simulator token — check SIMULATOR_TOKEN matches the API.")
+            else:
+                print(f"Could not fetch layout: {e}")
+            return False
+        except httpx.HTTPError as e:
+            print(f"API not reachable yet ({e.__class__.__name__}); retrying…")
+            return False
+
+        now = utcnow()
+        for z in zones.json():
+            self.engine.state.zones.setdefault(
+                z["id"], SimZoneState(zone_id=z["id"], last_updated=now)
+            )
+        for p in pumps.json():
+            self.engine.state.pumps.setdefault(
+                p["id"], SimPumpState(pump_id=p["id"], last_updated=now)
+            )
+        print(
+            f"Seeded simulator: {len(self.engine.state.zones)} zones, "
+            f"{len(self.engine.state.pumps)} pumps."
+        )
+        return True
+
+    async def poll_commands(self) -> None:
         try:
             resp = await self.client.get("/commands/pending")
-            if resp.status_code == 200:
-                commands = resp.json()
-                if not commands:
-                    return
-                # Process strictly internally
-                results = self.engine.process_commands(commands)
-                # Sync results back to API
-                for res in results:
-                    cid = res.pop("command_id")
-                    await self.client.patch(f"/commands/{cid}/sync", json=res)
-        except Exception as e:
+            resp.raise_for_status()
+            commands = resp.json()
+            if not commands:
+                return
+            for res in self.engine.process_commands(commands):
+                cid = res.pop("command_id")
+                await self.client.patch(f"/commands/{cid}/sync", json=res)
+        except httpx.HTTPError as e:
             print(f"Error polling commands: {e}")
 
-    async def push_state(self):
-        """Push memory state to /api/v1/state/sync."""
+    async def push_state(self) -> None:
         try:
-            payloads = self.engine.state.get_sync_payloads()
-            await self.client.post("/state/sync", json=payloads)
-        except Exception as e:
+            resp = await self.client.post("/state/sync", json=self.engine.state.get_sync_payloads())
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
             print(f"Error pushing state: {e}")
 
-    async def run_loop(self):
-        """Worker loop managing communications."""
+    async def run_loop(self) -> None:
         self.running = True
         print(f"API Client started, connecting to {self.base_url}")
-        
-        await self.fetch_initial_layout()
-        
+
+        while self.running and not await self.fetch_initial_layout():
+            await asyncio.sleep(2.0)
+
         while self.running:
-            # Poll commands
             await self.poll_commands()
-            
-            # Push state
             await self.push_state()
-            
-            # Rate limit the API interactions to 1Hz
             await asyncio.sleep(1.0)

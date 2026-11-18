@@ -18,7 +18,6 @@ import type {
   InsightDelivery,
   VoiceIntent,
   AILanguage,
-  ActorType,
 } from "./enums.js";
 
 // ─── AI Service Config ──────────────────────────────────

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.deps import Actor, get_actor, require_admin
 from app.models.zone import Zone
 from app.schemas.zone import ZoneResponse, ZoneUpdate
 
@@ -12,14 +13,14 @@ router = APIRouter(prefix="/zones", tags=["Zones"])
 
 
 @router.get("", response_model=list[ZoneResponse])
-async def list_zones(db: AsyncSession = Depends(get_db)):
+async def list_zones(_: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
     """List all zones."""
     result = await db.execute(select(Zone).order_by(Zone.priority))
     return result.scalars().all()
 
 
 @router.get("/{zone_id}", response_model=ZoneResponse)
-async def get_zone(zone_id: str, db: AsyncSession = Depends(get_db)):
+async def get_zone(zone_id: str, _: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
     """Get zone by ID."""
     zone = await db.get(Zone, zone_id)
     if not zone:
@@ -31,6 +32,7 @@ async def get_zone(zone_id: str, db: AsyncSession = Depends(get_db)):
 async def update_zone(
     zone_id: str,
     update: ZoneUpdate,
+    _: Actor = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Partially update zone configuration."""

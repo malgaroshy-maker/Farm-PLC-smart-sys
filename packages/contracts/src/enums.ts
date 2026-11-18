@@ -109,7 +109,9 @@ export type CommandType =
   | "ack_alarm"
   | "reset_alarm"
   | "force_valve"
-  | "source_override";
+  | "source_override"
+  /** Simulation only — rejected by the API outside deployment_mode=simulation */
+  | "inject_fault";
 
 /** Command lifecycle status (DOMAIN_MODEL.md §2) */
 export type CommandStatus =

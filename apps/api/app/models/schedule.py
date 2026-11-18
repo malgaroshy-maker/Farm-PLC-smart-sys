@@ -1,6 +1,6 @@
 """Schedule model."""
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, IdentityMixin, TimestampMixin

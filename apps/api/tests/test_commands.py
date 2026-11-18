@@ -1,0 +1,180 @@
+from datetime import timedelta
+
+import pytest
+from conftest import SIM, login, push_state
+
+from app.core.timeutil import utcnow
+
+START = {"command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab"}
+
+
+def start(client, headers, zone="zone_enab"):
+    return client.post("/api/v1/commands", json={**START, "target_id": zone}, headers=headers)
+
+
+# ── Validation ───────────────────────────────────────────
+
+
+def test_unknown_command_type_rejected(client):
+    r = client.post(
+        "/api/v1/commands",
+        json={"command_type": "delete_everything", "target_type": "zone", "target_id": "x"},
+        headers=login(client, "admin"),
+    )
+    assert r.status_code == 422
+
+
+def test_unknown_zone_is_404(client):
+    push_state(client)
+    assert start(client, login(client, "admin"), zone="zone_nope").status_code == 404
+
+
+def test_wrong_target_type_is_422(client):
+    r = client.post(
+        "/api/v1/commands",
+        json={"command_type": "start_zone", "target_type": "pump", "target_id": "zone_enab"},
+        headers=login(client, "admin"),
+    )
+    assert r.status_code == 422
+
+
+def test_set_mode_validates_mode(client):
+    admin = login(client, "admin")
+    body = {"command_type": "set_mode", "target_type": "system", "payload": {"mode": "turbo"}}
+    assert client.post("/api/v1/commands", json=body, headers=admin).status_code == 422
+    body["payload"]["mode"] = "manual"
+    assert client.post("/api/v1/commands", json=body, headers=admin).status_code == 201
+
+
+def test_not_implemented_commands_are_explicit(client):
+    r = client.post(
+        "/api/v1/commands",
+        json={"command_type": "force_valve", "target_type": "valve", "target_id": "v"},
+        headers=login(client, "admin"),
+    )
+    assert r.status_code == 422
+    assert "not implemented" in r.json()["detail"]
+
+
+# ── Permissions ──────────────────────────────────────────
+
+
+def test_viewer_cannot_control(client):
+    push_state(client)
+    assert start(client, login(client, "viewer")).status_code == 403
+
+
+def test_operator_can_start_but_not_change_mode(client):
+    push_state(client)
+    op = login(client, "operator")
+    assert start(client, op).status_code == 201
+    body = {"command_type": "set_mode", "target_type": "system", "payload": {"mode": "off"}}
+    assert client.post("/api/v1/commands", json=body, headers=op).status_code == 403
+
+
+# ── Interlocks ───────────────────────────────────────────
+
+
+def test_start_accepted_records_actor_and_event(client):
+    push_state(client)
+    r = start(client, login(client, "operator"))
+    assert r.status_code == 201
+    body = r.json()
+    assert body["status"] == "pending"
+    assert body["requested_by"] == "user_operator"
+    assert body["actor_type"] == "user"
+
+
+@pytest.mark.parametrize(
+    ("state_kwargs", "code"),
+    [
+        ({"mode": "off"}, "mode_blocks_start"),
+        ({"mode": "maintenance"}, "mode_blocks_start"),
+        ({"zone_states": {"zone_enab": "running"}}, "zone_already_active"),
+        ({"zone_states": {"zone_rumman_1": "running"}}, "max_concurrent_zones"),
+        ({"pump_fault": True}, "no_pump_available"),
+    ],
+)
+def test_interlocks_block_start(client, state_kwargs, code):
+    push_state(client, **state_kwargs)
+    r = start(client, login(client, "operator"))
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == code
+
+
+def test_low_tank_blocks_only_zones_without_direct_well(client):
+    push_state(client, tank=5.0)
+    op = login(client, "operator")
+    r = start(client, op, zone="zone_rumman_1")  # allows_direct_well = False
+    assert r.status_code == 409 and r.json()["code"] == "tank_critically_low"
+    assert start(client, op, zone="zone_enab").status_code == 201  # allows_direct_well = True
+
+
+def test_no_live_state_blocks_start(client):
+    r = start(client, login(client, "operator"))
+    assert r.status_code == 409
+    assert r.json()["code"] == "state_stale"
+
+
+def test_duplicate_pending_start_blocked(client):
+    push_state(client)
+    op = login(client, "operator")
+    assert start(client, op).status_code == 201
+    r = start(client, op)
+    assert r.status_code == 409 and r.json()["code"] == "duplicate_command"
+
+
+def test_rejected_command_is_persisted_for_audit(client):
+    push_state(client, mode="off")
+    op = login(client, "operator")
+    cid = start(client, op).json()["command_id"]
+    cmds = client.get("/api/v1/commands", headers=op).json()
+    rejected = next(c for c in cmds if c["id"] == cid)
+    assert rejected["status"] == "rejected"
+    assert rejected["failure_reason"].startswith("mode_blocks_start")
+
+
+def test_stop_is_always_allowed(client):
+    push_state(client, mode="off", pump_fault=True)
+    r = client.post(
+        "/api/v1/commands",
+        json={"command_type": "stop_zone", "target_type": "zone", "target_id": "zone_enab"},
+        headers=login(client, "operator"),
+    )
+    assert r.status_code == 201
+
+
+# ── Simulator round-trip & timeouts ──────────────────────
+
+
+def test_simulator_picks_up_and_completes(client):
+    push_state(client)
+    cid = start(client, login(client, "operator")).json()["id"]
+    pending = client.get("/api/v1/commands/pending", headers=SIM).json()
+    assert [c["id"] for c in pending] == [cid]
+
+    r = client.patch(f"/api/v1/commands/{cid}/sync", json={"status": "completed"}, headers=SIM)
+    assert r.status_code == 200 and r.json()["completed_at"]
+    assert client.get("/api/v1/commands/pending", headers=SIM).json() == []
+    # terminal commands cannot be re-synced
+    r = client.patch(f"/api/v1/commands/{cid}/sync", json={"status": "failed"}, headers=SIM)
+    assert r.status_code == 409
+
+
+def test_invalid_sync_status_rejected(client):
+    push_state(client)
+    cid = start(client, login(client, "operator")).json()["id"]
+    r = client.patch(f"/api/v1/commands/{cid}/sync", json={"status": "done-ish"}, headers=SIM)
+    assert r.status_code == 422
+
+
+def test_stale_pending_commands_time_out(client, monkeypatch):
+    push_state(client)
+    cid = start(client, login(client, "operator")).json()["id"]
+    from app.services import commands as svc
+
+    future = utcnow() + timedelta(seconds=60)
+    monkeypatch.setattr(svc, "utcnow", lambda: future)
+    assert client.get("/api/v1/commands/pending", headers=SIM).json() == []
+    cmds = client.get("/api/v1/commands", headers=login(client, "admin")).json()
+    assert next(c for c in cmds if c["id"] == cid)["status"] == "timed_out"

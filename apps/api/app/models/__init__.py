@@ -2,28 +2,28 @@
 SQLAlchemy models — re-export all for Alembic and app use.
 """
 
-from .base import Base
-from .farm import Farm
-from .zone import Zone, ZoneCombination
-from .pump import Pump
-from .valve import Valve
-from .sensor import Sensor
-from .water_source import WaterSource
-from .schedule import Schedule
-from .command import Command
-from .alarm import Alarm
-from .irrigation_cycle import IrrigationCycle
-from .event_log import EventLog
-from .telemetry import TelemetryPoint, DeviceStateSnapshot
-from .user import User
 from .ai import (
+    AIInsight,
     AISuggestion,
     DetectedAnomaly,
-    WeatherCache,
-    WeatherAdvisory,
-    AIInsight,
     MaintenancePrediction,
+    WeatherAdvisory,
+    WeatherCache,
 )
+from .alarm import Alarm
+from .base import Base
+from .command import Command
+from .event_log import EventLog
+from .farm import Farm
+from .irrigation_cycle import IrrigationCycle
+from .pump import Pump
+from .schedule import Schedule
+from .sensor import Sensor
+from .telemetry import DeviceStateSnapshot, TelemetryPoint
+from .user import User
+from .valve import Valve
+from .water_source import WaterSource
+from .zone import Zone, ZoneCombination
 
 __all__ = [
     "Base",

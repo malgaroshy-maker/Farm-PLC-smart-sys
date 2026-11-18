@@ -18,7 +18,9 @@ class IrrigationCycle(Base, IdentityMixin, TimestampMixin):
     actual_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     planned_duration_min: Mapped[int | None] = mapped_column(Integer)
     actual_duration_min: Mapped[int | None] = mapped_column(Integer)
-    outcome: Mapped[str | None] = mapped_column(String(20))  # completed | aborted | faulted | manual_stop
+    outcome: Mapped[str | None] = mapped_column(
+        String(20)
+    )  # completed | aborted | faulted | manual_stop
     initiated_by_type: Mapped[str] = mapped_column(String(20), default="user")
     initiated_by_id: Mapped[str | None] = mapped_column(String(64))
     water_estimate_m3: Mapped[float | None] = mapped_column(Float)

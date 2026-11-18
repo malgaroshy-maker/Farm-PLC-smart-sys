@@ -42,7 +42,6 @@ export default function Dashboard() {
           unit="L/min" 
           icon={<Droplet />} 
           statusColor={flowRate > 0 ? "text-[#00e5ff]" : "text-[#849396]"}
-          trend="4.2%" trendUp={true}
         />
         <KPICard 
           title="TANK LEVEL" 

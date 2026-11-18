@@ -1,69 +1,77 @@
-"""Command endpoints — Dispatch and Sync /api/v1/commands."""
+"""Command endpoints — /api/v1/commands."""
 
-import json
-from datetime import datetime
-from uuid import uuid4
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.deps import Actor, get_actor, require_service, require_user
 from app.models.command import Command
-from app.schemas.command import CommandCreate, CommandResponse, CommandSyncUpdate
+from app.schemas.command import (
+    CommandCreate,
+    CommandRejection,
+    CommandResponse,
+    CommandSyncUpdate,
+)
+from app.services import commands as svc
 
 router = APIRouter(prefix="/commands", tags=["Commands"])
 
 
-@router.post("", response_model=CommandResponse)
-async def dispatch_command(cmd_req: CommandCreate, db: AsyncSession = Depends(get_db)):
-    """Dispatch a new command to the simulator/PLC."""
-    cmd = Command(
-        id=uuid4().hex,
-        command_type=cmd_req.command_type,
-        target_type=cmd_req.target_type,
-        target_id=cmd_req.target_id,
-        payload_json=json.dumps(cmd_req.payload) if cmd_req.payload else None,
-        status="pending",
-        requested_at=datetime.utcnow()
-    )
-    db.add(cmd)
-    await db.flush()
-    await db.refresh(cmd)
-    
+@router.post(
+    "",
+    response_model=CommandResponse,
+    status_code=201,
+    responses={409: {"model": CommandRejection, "description": "Blocked by an interlock"}},
+)
+async def dispatch_command(
+    req: CommandCreate,
+    actor: Actor = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Validate a command, run interlocks, and queue it for the simulator/PLC."""
+    try:
+        cmd = await svc.submit_command(db, req, actor)
+    except svc.CommandRejected as exc:
+        return JSONResponse(
+            status_code=409,
+            content=CommandRejection(
+                code=exc.code, message=exc.message, command_id=exc.command_id
+            ).model_dump(),
+        )
     return CommandResponse.model_validate(cmd)
 
 
+@router.get("", response_model=list[CommandResponse])
+async def list_commands(
+    limit: int = Query(20, ge=1, le=200),
+    _: Actor = Depends(get_actor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Most recent commands first."""
+    result = await db.execute(select(Command).order_by(Command.requested_at.desc()).limit(limit))
+    return [CommandResponse.model_validate(c) for c in result.scalars()]
+
+
 @router.get("/pending", response_model=list[CommandResponse])
-async def get_pending_commands(db: AsyncSession = Depends(get_db)):
-    """Simulator polls for pending commands to execute."""
+async def get_pending_commands(
+    _: Actor = Depends(require_service), db: AsyncSession = Depends(get_db)
+):
+    """Simulator/PLC bridge polls for commands to execute."""
+    await svc.expire_stale_commands(db)
     result = await db.execute(
-        select(Command)
-        .where(Command.status == "pending")
-        .order_by(Command.requested_at)
+        select(Command).where(Command.status == "pending").order_by(Command.requested_at)
     )
-    return result.scalars().all()
+    return [CommandResponse.model_validate(c) for c in result.scalars()]
 
 
 @router.patch("/{command_id}/sync", response_model=CommandResponse)
 async def sync_command_status(
-    command_id: str, 
-    update: CommandSyncUpdate, 
-    db: AsyncSession = Depends(get_db)
+    command_id: str,
+    update: CommandSyncUpdate,
+    _: Actor = Depends(require_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Simulator updates the status of an executing command."""
-    cmd = await db.get(Command, command_id)
-    if not cmd:
-        raise HTTPException(status_code=404, detail="Command not found")
-        
-    cmd.status = update.status
-    if update.acknowledged_at:
-        cmd.acknowledged_at = update.acknowledged_at
-    if update.completed_at:
-        cmd.completed_at = update.completed_at
-    if update.failure_reason:
-        cmd.failure_reason = update.failure_reason
-        
-    await db.flush()
-    await db.refresh(cmd)
-    return CommandResponse.model_validate(cmd)
+    """Simulator/PLC bridge reports command progress."""
+    return CommandResponse.model_validate(await svc.sync_command(db, command_id, update))

@@ -40,7 +40,9 @@ target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = ["E", "F", "I", "UP", "B"]
+# Line length is handled by `ruff format`; long data/comment lines are fine.
+ignore = ["E501", "B008"]
 
 [tool.black]
 line-length = 100
@@ -48,3 +50,5 @@ target-version = ["py311"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]

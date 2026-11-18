@@ -85,3 +85,6 @@ coverage/
 *.bak
 *.tmp
 *.temp
+
+# Turborepo cache
+.turbo/

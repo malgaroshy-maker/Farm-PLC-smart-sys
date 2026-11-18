@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle, RefreshCw, Activity } from 'lucide-react';
+import { AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
+import type { Alarm } from '@algaroshy/contracts';
 import { useFarmConnector } from '../hooks/useFarmConnector';
 
-interface AlarmEvent {
+interface AlarmRow {
   id: string;
   timestamp: string;
   source: string;
@@ -11,29 +12,31 @@ interface AlarmEvent {
   status: 'active' | 'acknowledged' | 'cleared';
 }
 
-const MOCK_ALARMS: AlarmEvent[] = [
-  { id: 'ALM-1049', timestamp: '2026-04-19T08:34:12Z', source: 'PUMP-A', message: 'Pressure drop detected. Possible leak.', severity: 'critical', status: 'active' },
-  { id: 'ALM-1048', timestamp: '2026-04-19T08:30:00Z', source: 'ZONE-8', message: 'Valve timeout. Did not reach open state.', severity: 'critical', status: 'active' },
-  { id: 'ALM-1047', timestamp: '2026-04-19T07:15:22Z', source: 'SENSOR-M12', message: 'Moisture reading stale (>4h).', severity: 'warning', status: 'acknowledged' },
-  { id: 'ALM-1046', timestamp: '2026-04-19T06:00:00Z', source: 'SYS', message: 'Daily cycle started successfully.', severity: 'info', status: 'cleared' },
-];
+// Contract severities S0 (critical) … S3 (info) → display buckets.
+const SEVERITY: Record<Alarm['severity'], AlarmRow['severity']> = {
+  S0: 'critical',
+  S1: 'critical',
+  S2: 'warning',
+  S3: 'info',
+};
+
+function toRow(a: Alarm): AlarmRow {
+  return {
+    id: a.id,
+    timestamp: a.triggered_at,
+    source: a.zone_id ?? a.device_id ?? 'SYSTEM',
+    message: a.message_en ?? a.alarm_code,
+    severity: SEVERITY[a.severity] ?? 'warning',
+    status: a.status === 'active_unacked' || a.status === 'pending' ? 'active' : a.status === 'active_acked' ? 'acknowledged' : 'cleared',
+  };
+}
 
 export default function AlarmCenter() {
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning'>('all');
   const { state } = useFarmConnector();
-  
-  // Combine mock alarms with any live backend structure that might come through
-  const liveAlarms: AlarmEvent[] = (state?.active_alarms || []).map((a: any, i) => ({
-    id: `LIVE-${i}`,
-    timestamp: new Date().toISOString(),
-    source: a.source || 'UNKNOWN',
-    message: a.message || JSON.stringify(a),
-    severity: a.severity || 'warning',
-    status: 'active'
-  }));
 
-  const combinedAlarms = [...liveAlarms, ...MOCK_ALARMS];
-  const filteredAlarms = combinedAlarms.filter(a => filter === 'all' || a.severity === filter);
+  const alarms = (state?.active_alarms ?? []).map(toRow);
+  const filteredAlarms = alarms.filter(a => filter === 'all' || a.severity === filter);
 
   return (
     <div className="space-y-6 h-full flex flex-col font-sans">
@@ -104,12 +107,12 @@ export default function AlarmCenter() {
               </div>
               <div className="col-span-2 flex justify-end gap-2">
                 {alarm.status === 'active' && (
-                  <button className="p-1.5 bg-[#1c1b1b] border border-[#353534] rounded hover:border-[#ffeb3b] text-[#ffeb3b] transition-colors" title="Acknowledge">
+                  <button disabled className="p-1.5 bg-[#1c1b1b] border border-[#353534] rounded text-[#ffeb3b] opacity-50 cursor-not-allowed" title="Acknowledge (coming with the alarm engine)">
                     <CheckCircle size={16} />
                   </button>
                 )}
                 {alarm.status !== 'cleared' && (
-                  <button className="p-1.5 bg-[#1c1b1b] border border-[#353534] rounded hover:border-[#00e5ff] text-[#00e5ff] transition-colors" title="Reset/Clear">
+                  <button disabled className="p-1.5 bg-[#1c1b1b] border border-[#353534] rounded text-[#00e5ff] opacity-50 cursor-not-allowed" title="Reset (coming with the alarm engine)">
                     <RefreshCw size={16} />
                   </button>
                 )}
@@ -118,7 +121,9 @@ export default function AlarmCenter() {
           ))}
           {filteredAlarms.length === 0 && (
             <div className="p-8 text-center text-[#849396] font-mono">
-              NO ALARMS MATCHING CRITERIA
+              {alarms.length === 0
+                ? 'NO ACTIVE ALARMS — the alarm engine is not built yet (Milestone B)'
+                : 'NO ALARMS MATCHING CRITERIA'}
             </div>
           )}
         </div>

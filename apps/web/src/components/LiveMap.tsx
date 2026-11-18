@@ -118,7 +118,7 @@ export default function LiveMap({
                 {Object.entries(ZONES_METADATA).map(([zoneId, meta]) => {
                   const stateNode = zoneStates.find(z => z.zone_id === zoneId);
                   const isActive = activeZone === zoneId;
-                  const uiState = stateNode?.state === 'running' ? 'running' : stateNode?.health === 'fault' ? 'fault' : 'idle';
+                  const uiState = stateNode?.state === 'running' ? 'running' : stateNode?.state === 'faulted' || stateNode?.health === 'critical' ? 'fault' : 'idle';
                   const moisture = stateNode?.moisture_pct != null ? stateNode.moisture_pct.toFixed(1) : '--';
 
                   return (

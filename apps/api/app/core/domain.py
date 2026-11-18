@@ -1,0 +1,61 @@
+"""
+Domain vocabularies mirrored from packages/contracts/src/enums.ts.
+
+tests/test_contracts_sync.py fails if these drift from the TypeScript source,
+so update both sides together.
+"""
+
+from typing import Literal, get_args
+
+SystemMode = Literal["off", "auto", "manual", "maintenance"]
+UserRole = Literal["owner_admin", "operator", "viewer"]
+ActorType = Literal["user", "system", "scheduler", "plc", "ai"]
+CommandType = Literal[
+    "start_zone",
+    "stop_zone",
+    "stop_all",
+    "set_mode",
+    "ack_alarm",
+    "reset_alarm",
+    "force_valve",
+    "source_override",
+    "inject_fault",
+]
+CommandStatus = Literal[
+    "pending", "accepted", "rejected", "executing", "completed", "failed", "timed_out"
+]
+ZoneState = Literal[
+    "off",
+    "queued",
+    "starting_pump",
+    "opening_valve",
+    "validating_flow",
+    "running",
+    "stopping",
+    "completed",
+    "warning",
+    "faulted",
+]
+
+SYSTEM_MODES: tuple[str, ...] = get_args(SystemMode)
+USER_ROLES: tuple[str, ...] = get_args(UserRole)
+COMMAND_TYPES: tuple[str, ...] = get_args(CommandType)
+COMMAND_STATUSES: tuple[str, ...] = get_args(CommandStatus)
+ZONE_STATES: tuple[str, ...] = get_args(ZoneState)
+
+TERMINAL_COMMAND_STATUSES = frozenset({"rejected", "completed", "failed", "timed_out"})
+# Zone states that occupy hydraulic capacity.
+ACTIVE_ZONE_STATES = frozenset(
+    {"queued", "starting_pump", "opening_valve", "validating_flow", "running", "warning"}
+)
+
+# Which roles may issue which command types (PRD §6).
+COMMAND_PERMISSIONS: dict[str, frozenset[str]] = {
+    "start_zone": frozenset({"owner_admin", "operator"}),
+    "stop_zone": frozenset({"owner_admin", "operator"}),
+    "stop_all": frozenset({"owner_admin", "operator"}),
+    "set_mode": frozenset({"owner_admin"}),
+    "inject_fault": frozenset({"owner_admin"}),
+}
+# Known command types that have no implementation yet.
+NOT_IMPLEMENTED_COMMANDS = frozenset({"ack_alarm", "reset_alarm", "force_valve", "source_override"})

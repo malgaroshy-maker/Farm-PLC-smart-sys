@@ -1,15 +1,18 @@
 """Pydantic schemas for Commands."""
 
+import json
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.core.domain import CommandStatus, CommandType
 
 
 class CommandCreate(BaseModel):
-    command_type: str
-    target_type: str
-    target_id: str | None = None
+    command_type: CommandType
+    target_type: str = Field(max_length=20)
+    target_id: str | None = Field(default=None, max_length=64)
     payload: dict[str, Any] | None = None
 
 
@@ -18,7 +21,9 @@ class CommandResponse(BaseModel):
     command_type: str
     target_type: str
     target_id: str | None = None
-    payload_json: str | None = None
+    payload: dict[str, Any] | None = None
+    requested_by: str | None = None
+    actor_type: str
     status: str
     requested_at: datetime
     acknowledged_at: datetime | None = None
@@ -27,9 +32,26 @@ class CommandResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _decode_payload(cls, data: Any) -> Any:
+        raw = getattr(data, "payload_json", None)
+        if raw is None or isinstance(data, dict):
+            return data
+        # ORM object → dict with decoded payload
+        fields = {k: getattr(data, k, None) for k in cls.model_fields if k != "payload"}
+        fields["payload"] = json.loads(raw)
+        return fields
+
+
+class CommandRejection(BaseModel):
+    code: str
+    message: str
+    command_id: str
+
 
 class CommandSyncUpdate(BaseModel):
-    status: str
+    status: CommandStatus
     acknowledged_at: datetime | None = None
     completed_at: datetime | None = None
     failure_reason: str | None = None

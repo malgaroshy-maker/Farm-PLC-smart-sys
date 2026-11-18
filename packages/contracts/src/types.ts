@@ -209,9 +209,10 @@ export interface Command {
   id: string;
   command_type: CommandType;
   target_type: string;
-  target_id: string;
-  payload: Record<string, unknown>;
-  requested_by: string;
+  target_id: string | null;
+  payload: Record<string, unknown> | null;
+  requested_by: string | null;
+  actor_type: ActorType;
   status: CommandStatus;
   requested_at: string;
   acknowledged_at: string | null;
@@ -219,12 +220,19 @@ export interface Command {
   failure_reason: string | null;
 }
 
-export interface CommandResponse {
-  success: boolean;
-  command_id: string;
-  status: CommandStatus;
+/** Body sent with POST /commands */
+export interface CommandRequest {
+  command_type: CommandType;
+  target_type: string;
+  target_id?: string | null;
+  payload?: Record<string, unknown> | null;
+}
+
+/** 409 body when an interlock blocks a command (the command is still recorded as rejected) */
+export interface CommandRejection {
+  code: string;
   message: string;
-  error_code?: string;
+  command_id: string;
 }
 
 // ─── Alarm ──────────────────────────────────────────────
@@ -292,6 +300,7 @@ export interface User {
   name: string;
   email: string | null;
   phone: string | null;
+  username: string;
   role: UserRole;
   is_active: boolean;
   created_at: string;
@@ -304,7 +313,15 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   access_token: string;
-  user: Pick<User, "id" | "name" | "role">;
+  token_type: "bearer";
+  user: AuthUser;
+}
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  name: string;
+  role: UserRole;
 }
 
 // ─── Real-Time Event Envelope ───────────────────────────
@@ -328,7 +345,7 @@ export interface FarmMapState {
   main_flow_m3h: number;
   active_alarms: Alarm[];
   data_fresh: boolean;
-  last_snapshot_ts: string;
+  last_snapshot_ts: string | null;
 }
 
 // ─── Reports ────────────────────────────────────────────

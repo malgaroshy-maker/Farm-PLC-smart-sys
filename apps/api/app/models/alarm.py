@@ -18,7 +18,9 @@ class Alarm(Base, IdentityMixin):
     zone_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("zones.id"))
     device_type: Mapped[str | None] = mapped_column(String(20))
     device_id: Mapped[str | None] = mapped_column(String(64))
-    source_layer: Mapped[str] = mapped_column(String(10), default="backend")  # plc | backend | derived
+    source_layer: Mapped[str] = mapped_column(
+        String(10), default="backend"
+    )  # plc | backend | derived
     current_value: Mapped[float | None] = mapped_column(Float)
     threshold_value: Mapped[float | None] = mapped_column(Float)
     triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

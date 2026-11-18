@@ -1,48 +1,36 @@
-"""WebSocket Server for Real-Time Events."""
+"""WebSocket endpoint for real-time events.
 
-import json
-from typing import Any
+Connect with  ws://<host>/ws?token=<access token>
+On connect the server sends a `state.snapshot`, then pushes events as they happen.
+"""
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-router = APIRouter(prefix="/ws", tags=["WebSockets"])
+from app.database import async_session_factory
+from app.deps import resolve_token
+from app.services.live_state import build_map_state, load_snapshots
+from app.services.realtime import manager
+
+router = APIRouter(tags=["WebSockets"])
 
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, token: str = ""):
+    async with async_session_factory() as db:
+        actor = await resolve_token(token, db) if token else None
+        if actor is None:
+            await websocket.close(code=4401)
+            return
         await websocket.accept()
-        self.active_connections.append(websocket)
+        snapshot = build_map_state(await load_snapshots(db))
 
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-    async def broadcast(self, event_type: str, payload: dict[str, Any]):
-        message = {
-            "type": event_type,
-            "payload": payload
-        }
-        text_message = json.dumps(message)
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(text_message)
-            except Exception:
-                pass
-
-
-manager = ConnectionManager()
-
-
-@router.websocket("")
-async def websocket_endpoint(websocket: WebSocket):
-    """Subscribe to all real-time farm events."""
+    await manager.send(websocket, "state.snapshot", snapshot)
     await manager.connect(websocket)
     try:
         while True:
-            # wait for messages from the client if needed (e.g., ping/pong or sub filters)
-            data = await websocket.receive_text()
+            if await websocket.receive_text() == "ping":
+                await manager.send(websocket, "pong", {})
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(websocket)
