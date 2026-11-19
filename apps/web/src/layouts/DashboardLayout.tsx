@@ -11,8 +11,10 @@ import {
   SimulatorIcon,
   StopAllIcon,
   ZonesIcon,
+  AiSparklesIcon,
   type IconProps,
 } from '../components/icons/FarmIcons';
+import FloatingAssistant from '../components/ai/FloatingAssistant';
 import { usePrefs } from '../lib/prefs';
 import { useAuth } from '../lib/auth';
 import { session } from '../lib/api';
@@ -82,6 +84,7 @@ export default function DashboardLayout() {
     { key: 'nav.events', path: '/events', icon: EventsIcon },
     { key: 'nav.reports', path: '/reports', icon: ReportsIcon },
     ...(showTech ? [{ key: 'nav.simulator' as MsgKey, path: '/simulator', icon: SimulatorIcon }] : []),
+    ...(isAdmin ? [{ key: 'nav.aiSettings' as MsgKey, path: '/settings/ai', icon: AiSparklesIcon }] : []),
   ];
 
   const sidebar = (
@@ -222,6 +225,7 @@ export default function DashboardLayout() {
         <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-20 lg:pb-6">
           <Outlet />
         </main>
+        <FloatingAssistant />
 
         {/* mobile bottom navigation */}
         <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 h-16 bg-[#141416]/95 backdrop-blur-xl border-t border-white/10 grid grid-cols-4">

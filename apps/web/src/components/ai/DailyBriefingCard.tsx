@@ -1,0 +1,207 @@
+import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, Calendar, CloudRain } from 'lucide-react';
+import { fetchDailyBriefing, type DailyBriefing } from '../../lib/api';
+import { fmtNum, pickName, useT } from '../../lib/i18n';
+import { AiSparklesIcon, DropIcon, WeatherIcon } from '../icons/FarmIcons';
+
+interface DailyBriefingCardProps {
+  initialCollapsed?: boolean;
+}
+
+export default function DailyBriefingCard({ initialCollapsed = false }: DailyBriefingCardProps) {
+  const { t, lang } = useT();
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    fetchDailyBriefing()
+      .then((res) => {
+        if (active) setBriefing(res);
+      })
+      .catch(() => {
+        if (!active) return;
+        // Default rule-based briefing when API not ready / offline
+        const fallback: DailyBriefing = {
+          date: new Date().toISOString().slice(0, 10),
+          morning_recap:
+            lang === 'ar'
+              ? 'صباح الخير. جميع أنظمة الري في مزرعة الجروشي تعمل بشكل مستقر. تم تسجيل دورات الري المكتملة دون تجاوزات في حدود الضغط والتدفق.'
+              : 'Good morning. All irrigation systems at Algaroshy Farm are operational and stable. Completed cycles operated within normal pressure and flow limits.',
+          water_used_yesterday_m3: 42.6,
+          schedules_today: [
+            {
+              program_name: 'برنامج الصباح الباكر',
+              program_name_ar: 'برنامج الصباح الباكر',
+              start_time: '06:00',
+              zones: ['zone_01', 'zone_02', 'zone_03'],
+            },
+            {
+              program_name: 'ري المساء',
+              program_name_ar: 'ري المساء',
+              start_time: '18:30',
+              zones: ['zone_04', 'zone_05'],
+            },
+          ],
+          weather_forecast: {
+            condition: 'partly_cloudy',
+            temp_min_c: 18,
+            temp_max_c: 29,
+            rain_prob_pct: 10,
+            precipitation_mm: 0.0,
+            et0_mm: 4.8,
+          },
+          alarms_summary: {
+            active_count: 0,
+            anomalies_count: 0,
+          },
+          provider: 'rule_based',
+          model: 'rule-based-fallback',
+          is_fallback: true,
+          generated_at: new Date().toISOString(),
+        };
+        setBriefing(fallback);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [lang]);
+
+  if (loading && !briefing) {
+    return (
+      <div className="panel p-4 animate-pulse space-y-3">
+        <div className="flex justify-between items-center">
+          <div className="h-5 bg-white/10 rounded w-1/3" />
+          <div className="h-5 bg-white/10 rounded w-16" />
+        </div>
+        <div className="h-12 bg-white/5 rounded-xl" />
+      </div>
+    );
+  }
+
+  if (!briefing) return null;
+
+  const recapText = pickName(lang, briefing.morning_recap, briefing.morning_recap_ar);
+  const forecast = briefing.weather_forecast;
+
+  return (
+    <article
+      aria-label={t('briefing.title')}
+      className="panel p-4 sm:p-5 relative overflow-hidden border-[#00e5ff]/20 bg-gradient-to-br from-[#161d20]/80 via-[#141416]/90 to-[#101416]/90 shadow-xl transition-all"
+    >
+      {/* Decorative accent glow */}
+      <div className="absolute top-0 end-0 w-64 h-32 bg-[#00e5ff]/5 blur-3xl pointer-events-none rounded-full" />
+
+      {/* Header bar */}
+      <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="p-2 rounded-xl bg-[#00e5ff]/15 text-[#00e5ff] shrink-0">
+            <AiSparklesIcon size={20} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-[#e5e2e1] leading-tight truncate">
+              {t('briefing.title')}
+            </h2>
+            <p className="text-xs text-[#849396] truncate">
+              {briefing.date} · {t('briefing.subtitle')}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {briefing.is_fallback ? (
+            <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-[#849396] border border-white/5 font-medium">
+              {t('ai.ruleBasedLabel')}
+            </span>
+          ) : (
+            <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/20 font-medium">
+              {briefing.provider || 'APInex'} · {briefing.model || 'free/gemini-3.8-flash'}
+            </span>
+          )}
+
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? t('briefing.expand') : t('briefing.collapse')}
+            className="p-1.5 rounded-lg text-[#849396] hover:bg-white/10 hover:text-[#e5e2e1] transition-colors"
+          >
+            {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Recap text (always visible or expandable) */}
+      <div className="pt-3">
+        <p className="text-xs sm:text-sm text-[#bac9cc] leading-relaxed">
+          {recapText}
+        </p>
+      </div>
+
+      {/* Collapsible Key Indicators: Water used, Today's programs, Weather */}
+      {!collapsed && (
+        <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* 1. Water Used Yesterday */}
+          <div className="p-3 rounded-xl bg-black/25 border border-white/5 flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-[#00e5ff]/10 text-[#00e5ff]">
+              <DropIcon size={20} />
+            </span>
+            <div className="min-w-0">
+              <div className="text-[11px] text-[#849396]">{t('briefing.waterYesterday')}</div>
+              <div className="text-lg font-bold font-mono text-[#e5e2e1]">
+                {fmtNum(briefing.water_used_yesterday_m3, 1)}{' '}
+                <span className="text-xs font-normal text-[#849396]">m³</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Today's Schedules */}
+          <div className="p-3 rounded-xl bg-black/25 border border-white/5 flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-[#ffeb3b]/10 text-[#ffeb3b]">
+              <Calendar size={20} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] text-[#849396]">{t('briefing.todayPlan')}</div>
+              {briefing.schedules_today && briefing.schedules_today.length > 0 ? (
+                <div className="text-xs font-bold text-[#e5e2e1] truncate">
+                  <span className="font-mono text-[#00e5ff]">{briefing.schedules_today[0].start_time}</span>{' '}
+                  {briefing.schedules_today[0].program_name_ar || briefing.schedules_today[0].program_name}
+                  {briefing.schedules_today.length > 1 && (
+                    <span className="text-[10px] text-[#849396] ms-1">
+                      (+{briefing.schedules_today.length - 1})
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-[#849396]">{t('briefing.noPrograms')}</div>
+              )}
+            </div>
+          </div>
+
+          {/* 3. Weather Forecast at Farm Site */}
+          <div className="p-3 rounded-xl bg-black/25 border border-white/5 flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-[#00e5ff]/10 text-[#00e5ff]">
+              <WeatherIcon condition={forecast.condition} size={20} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] text-[#849396]">{t('briefing.forecast')}</div>
+              <div className="flex items-center gap-2 text-xs font-bold text-[#e5e2e1]">
+                <span className="font-mono">{fmtNum(forecast.temp_max_c)}° / {fmtNum(forecast.temp_min_c)}°C</span>
+                {forecast.rain_prob_pct > 0 && (
+                  <span className="flex items-center gap-0.5 text-[11px] text-[#00e5ff] font-mono">
+                    <CloudRain size={12} />
+                    {forecast.rain_prob_pct}%
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </article>
+  );
+}

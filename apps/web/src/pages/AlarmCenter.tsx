@@ -9,6 +9,8 @@ import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { SEVERITY, availableActions, sortAlarms } from '../lib/alarms';
 import { pickName, useT, type MsgKey } from '../lib/i18n';
+import { AiSparklesIcon } from '../components/icons/FarmIcons';
+import ExplainAlarmDrawer from '../components/ai/ExplainAlarmDrawer';
 
 const NO_ALARMS: Alarm[] = [];
 const ZONE_NAME = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
@@ -40,6 +42,7 @@ export default function AlarmCenter() {
   const [sev, setSev] = useState<SevFilter>('all');
   const [history, setHistory] = useState<Alarm[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [explainingAlarm, setExplainingAlarm] = useState<Alarm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeRaw = useFarmStore((s) => s.state?.active_alarms);
   const active = activeRaw ?? NO_ALARMS;
@@ -180,7 +183,15 @@ export default function AlarmCenter() {
                       {stateText(alarm)}
                     </span>
                   </div>
-                  <div className="md:col-span-1 flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="md:col-span-1 flex justify-end gap-1.5 items-center" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setExplainingAlarm(alarm)}
+                      className="p-1.5 bg-[#00e5ff]/10 border border-[#00e5ff]/30 rounded hover:bg-[#00e5ff]/20 text-[#00e5ff] transition-colors"
+                      title={t('ai.explain')}
+                      aria-label={`${t('ai.explain')} ${alarm.alarm_code}`}
+                    >
+                      <AiSparklesIcon size={16} accent="#00e5ff" />
+                    </button>
                     {actions.includes('ack') && can('owner_admin', 'operator') && (
                       <button
                         onClick={() => act(alarm, 'ack')}
@@ -216,6 +227,15 @@ export default function AlarmCenter() {
                       </div>
                     ))}
                     {alarm.alarm_code === 'ALM-036' && alarm.zone_id && alarm.status !== 'cleared' && <MaintenanceDone zoneId={alarm.zone_id} />}
+                    <div className="pt-1">
+                      <button
+                        onClick={() => setExplainingAlarm(alarm)}
+                        className="px-3 py-1.5 bg-[#00e5ff]/10 border border-[#00e5ff]/30 rounded-xl hover:bg-[#00e5ff]/20 text-[#00e5ff] text-xs font-bold flex items-center gap-1.5 transition-colors"
+                      >
+                        <AiSparklesIcon size={14} accent="#00e5ff" />
+                        <span>{t('ai.explain')}</span>
+                      </button>
+                    </div>
                     <p className="text-xs text-[#849396] flex flex-wrap gap-x-3 gap-y-1">
                       {alarm.current_value != null && <span>{t('al.value')} <bdi className="font-mono">{alarm.current_value}</bdi></span>}
                       {alarm.threshold_value != null && <span>{t('al.threshold')} <bdi className="font-mono">{alarm.threshold_value}</bdi></span>}
@@ -235,6 +255,8 @@ export default function AlarmCenter() {
           )}
         </div>
       </div>
+
+      <ExplainAlarmDrawer alarm={explainingAlarm} onClose={() => setExplainingAlarm(null)} />
     </div>
   );
 }

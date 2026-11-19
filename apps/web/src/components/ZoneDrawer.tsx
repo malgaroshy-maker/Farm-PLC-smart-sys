@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Play, Square, X } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { IrrigationCycle, TelemetrySeries, Zone } from '@algaroshy/contracts';
+import type { IrrigationCycle, TelemetrySeries, Zone, Alarm } from '@algaroshy/contracts';
 import { ZONE_SEEDS } from '@algaroshy/contracts';
 
 import type { ZoneLiveState } from '../hooks/useFarmConnector';
@@ -11,10 +11,12 @@ import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { SEVERITY } from '../lib/alarms';
 import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
-import { DropIcon, FlowIcon, GaugeIcon, ValveIcon } from './icons/FarmIcons';
+import { DropIcon, FlowIcon, GaugeIcon, ValveIcon, AiSparklesIcon } from './icons/FarmIcons';
 import { CROP_ICON } from './icons/cropIcon';
 import MaintenanceDone from './MaintenanceDone';
 import { parseUtcDate, useClockStore } from '../lib/clock';
+import BaselineSection from './ai/BaselineSection';
+import ExplainAlarmDrawer from './ai/ExplainAlarmDrawer';
 
 interface ZoneDrawerProps {
   zoneId: string | null;
@@ -97,6 +99,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const [explainingAlarm, setExplainingAlarm] = useState<Alarm | null>(null);
   const [range, setRange] = useState(RANGES[0]);
   const history = useZoneHistory(zoneId, range.minutes);
   const [recentCycles, setRecentCycles] = useState<IrrigationCycle[]>([]);
@@ -215,13 +218,30 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
             {zoneAlarms.map((a) => {
               const c = SEVERITY[a.severity].color;
               return (
-                <div key={a.id} className="rounded-lg px-3 py-2 text-xs border" style={{ borderColor: `${c}66`, color: c, background: `${c}10` }}>
-                  <bdi className="font-mono">{a.alarm_code}</bdi> {pickName(lang, a.name, a.name_ar)} — {t(a.condition_active ? 'drawer.active' : 'drawer.latched')}
+                <div key={a.id} className="rounded-lg px-3 py-2 text-xs border flex items-center justify-between gap-2" style={{ borderColor: `${c}66`, color: c, background: `${c}10` }}>
+                  <div className="truncate">
+                    <bdi className="font-mono">{a.alarm_code}</bdi> {pickName(lang, a.name, a.name_ar)} — {t(a.condition_active ? 'drawer.active' : 'drawer.latched')}
+                  </div>
+                  <button
+                    onClick={() => setExplainingAlarm(a)}
+                    className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[#00e5ff] text-[11px] font-bold flex items-center gap-1 shrink-0 transition-colors"
+                    title={t('ai.explain')}
+                  >
+                    <AiSparklesIcon size={12} accent="#00e5ff" />
+                    <span>{t('ai.explain')}</span>
+                  </button>
                 </div>
               );
             })}
             {zoneAlarms.some((a) => a.alarm_code === 'ALM-036') && <MaintenanceDone zoneId={zoneId} />}
           </section>
+
+          {/* 1.5 — Baseline Section (Normal Flow & Pressure Band) */}
+          <BaselineSection
+            zoneId={zoneId}
+            currentFlow={zoneState?.flow_m3h}
+            currentPressure={zoneState?.pressure_bar}
+          />
 
           {/* 2 — controls */}
           <section className="panel p-4 space-y-3">
@@ -398,6 +418,8 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
           </section>
         </div>
       </div>
+
+      <ExplainAlarmDrawer alarm={explainingAlarm} onClose={() => setExplainingAlarm(null)} />
     </>
   );
 }

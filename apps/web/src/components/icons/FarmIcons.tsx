@@ -297,3 +297,140 @@ export const StoneFruitIcon = (p: IconProps) => (
     )}
   </Icon>
 );
+
+// ── weather & AI (Milestone E) ───────────────────────────────────────────
+
+export const SunIcon = (p: IconProps) => (
+  <Icon {...p} accent={p.accent ?? '#ffeb3b'}>
+    {(a) => (
+      <>
+        <circle cx="12" cy="12" r="4.5" stroke={a} {...soft(a)} />
+        <path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" />
+      </>
+    )}
+  </Icon>
+);
+
+export const CloudIcon = (p: IconProps) => (
+  <Icon {...p} accent={p.accent ?? '#bac9cc'}>
+    {(a) => (
+      <path
+        d="M17.5 19H7a4.5 4.5 0 0 1-.8-8.9 5.5 5.5 0 0 1 10.6-1.6A4 4 0 0 1 17.5 19z"
+        stroke={a}
+        {...soft(a)}
+      />
+    )}
+  </Icon>
+);
+
+export const CloudSunIcon = (p: IconProps) => (
+  <Icon {...p} accent={p.accent ?? '#ffeb3b'}>
+    {(a) => (
+      <>
+        <path d="M12 3v2M18.4 5.6l-1.4 1.4M21 11h-2" stroke={a} />
+        <circle cx="15.5" cy="8.5" r="3" stroke={a} {...soft(a)} />
+        <path
+          d="M17 19H7a4 4 0 0 1-.5-7.9 5 5 0 0 1 9.3-1.6A3.5 3.5 0 0 1 17 19z"
+          stroke="currentColor"
+          fill="currentColor"
+          fillOpacity={0.15}
+        />
+      </>
+    )}
+  </Icon>
+);
+
+export const RainIcon = (p: IconProps) => (
+  <Icon {...p} accent={p.accent ?? '#00e5ff'}>
+    {(a) => (
+      <>
+        <path
+          d="M17.5 15H7a4.5 4.5 0 0 1-.8-8.9 5.5 5.5 0 0 1 10.6-1.6A4 4 0 0 1 17.5 15z"
+          stroke="currentColor"
+          fill="currentColor"
+          fillOpacity={0.15}
+        />
+        <path d="M8 18l-1.5 3M12 18l-1.5 3M16 18l-1.5 3" stroke={a} strokeWidth={2} />
+      </>
+    )}
+  </Icon>
+);
+
+export const StormIcon = (p: IconProps) => (
+  <Icon {...p} accent={p.accent ?? '#ffeb3b'}>
+    {(a) => (
+      <>
+        <path
+          d="M17.5 14H7a4.5 4.5 0 0 1-.8-8.9 5.5 5.5 0 0 1 10.6-1.6A4 4 0 0 1 17.5 14z"
+          stroke="currentColor"
+          fill="currentColor"
+          fillOpacity={0.15}
+        />
+        <path d="M12 14l-2 4h3l-1.5 4" stroke={a} strokeWidth={1.9} strokeLinejoin="miter" />
+      </>
+    )}
+  </Icon>
+);
+
+export const WindIcon = (p: IconProps) => (
+  <Icon {...p} accent={p.accent ?? '#00e5ff'}>
+    {(a) => (
+      <>
+        <path d="M4 8h11.5a2.5 2.5 0 1 0-2.5-2.5" />
+        <path d="M3 13h14.5a2.5 2.5 0 1 0-2.5-2.5" stroke={a} />
+        <path d="M6 18h7a2 2 0 1 0-2-2" />
+      </>
+    )}
+  </Icon>
+);
+
+export const HeatIcon = (p: IconProps) => (
+  <Icon {...p} accent={p.accent ?? '#ff9f43'}>
+    {(a) => (
+      <>
+        <path d="M10 14.5V4a2 2 0 1 1 4 0v10.5a4 4 0 1 1-4 0z" />
+        <circle cx="12" cy="16.5" r="2.2" stroke={a} fill={a} />
+        <path d="M12 9v5M18 6l1.5-1M19 10h1.5M18 14l1.5 1" stroke={a} />
+      </>
+    )}
+  </Icon>
+);
+
+export const AiSparklesIcon = (p: IconProps) => (
+  <Icon {...p} accent={p.accent ?? '#00e5ff'}>
+    {(a) => (
+      <>
+        <path
+          d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"
+          stroke={a}
+          {...soft(a)}
+        />
+        <path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z" stroke={a} strokeWidth={1.3} />
+        <path d="M5 19l.5 1.5L7 21l-1.5.5L5 23l-.5-1.5L3 21l1.5-.5z" stroke={a} strokeWidth={1.2} />
+      </>
+    )}
+  </Icon>
+);
+
+export function WeatherIcon({ condition, ...rest }: IconProps & { condition?: string | null }) {
+  const c = (condition || '').toLowerCase().replace(/[\s_-]+/g, '');
+  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower') || c.includes('precip')) {
+    return <RainIcon {...rest} />;
+  }
+  if (c.includes('storm') || c.includes('thunder')) {
+    return <StormIcon {...rest} />;
+  }
+  if (c.includes('wind')) {
+    return <WindIcon {...rest} />;
+  }
+  if (c.includes('heat') || c.includes('hot') || c.includes('dry')) {
+    return <HeatIcon {...rest} />;
+  }
+  if (c.includes('partly') || c.includes('variable')) {
+    return <CloudSunIcon {...rest} />;
+  }
+  if (c.includes('cloud') || c.includes('overcast')) {
+    return <CloudIcon {...rest} />;
+  }
+  return <SunIcon {...rest} />;
+}

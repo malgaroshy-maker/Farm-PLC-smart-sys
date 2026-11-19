@@ -5,8 +5,10 @@ import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { pickName, useT, type MsgKey } from '../lib/i18n';
-import { ScheduleIcon } from '../components/icons/FarmIcons';
+import { ScheduleIcon, AiSparklesIcon } from '../components/icons/FarmIcons';
 import { CROP_ICON } from '../components/icons/cropIcon';
+import SuggestionCard from '../components/ai/SuggestionCard';
+import { fetchAiSuggestions, type AdvisorSuggestion } from '../lib/api';
 
 const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
 const CYAN = '#00e5ff';
@@ -47,9 +49,22 @@ export default function SchedulesPage() {
   const canToggle = can('owner_admin', 'operator');
 
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [suggestions, setSuggestions] = useState<AdvisorSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchAiSuggestions()
+      .then((data) => {
+        if (active && Array.isArray(data)) setSuggestions(data);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -120,6 +135,29 @@ export default function SchedulesPage() {
           </button>
         )}
       </div>
+
+      {/* Advisor suggestions if present */}
+      {suggestions.filter((s) => s.status === 'pending' || s.status === 'approved').length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#bac9cc]">
+            <AiSparklesIcon size={16} accent="#00e5ff" />
+            <span>{t('advisor.title')}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {suggestions
+              .filter((s) => s.status === 'pending' || s.status === 'approved')
+              .map((sug) => (
+                <SuggestionCard
+                  key={sug.id}
+                  suggestion={sug}
+                  onStatusChange={(updated) =>
+                    setSuggestions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)))
+                  }
+                />
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* 24-Hour Weekly Timeline Bar */}
       <div className="panel p-4 space-y-4">

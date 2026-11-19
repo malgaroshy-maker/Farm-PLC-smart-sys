@@ -12,6 +12,7 @@ import { AuthProvider } from './lib/auth';
 const SchedulesPage = lazy(() => import('./pages/Schedules'));
 const ReportsPage = lazy(() => import('./pages/Reports'));
 const SimulatorPanel = lazy(() => import('./pages/SimulatorPanel'));
+const AiSettingsPage = lazy(() => import('./pages/AiSettings'));
 
 function PageLoader() {
   return (
@@ -40,6 +41,7 @@ function App() {
               <Route path="events" element={<EventsPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="simulator" element={<SimulatorPanel />} />
+              <Route path="settings/ai" element={<AiSettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
