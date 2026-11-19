@@ -80,16 +80,68 @@ class SuggestionActionRequest(BaseModel):
     notes: str | None = None
 
 
+class AICallRecord(BaseModel):
+    id: str
+    timestamp: str
+    feature: str
+    provider: str
+    model: str
+    latency_ms: float
+    fallback_reason: str | None = None
+
+
 class AISettingsResponse(BaseModel):
+    global_enabled: bool = True
     primary_provider: str = "apinex"
     fallback_provider: str = "gemini"
     apinex_base_url: str
     apinex_model: str
+    apinex_fallback_model: str = "free/glm-5.3-flash"
     gemini_model: str
+    model_alarm: str | None = None
+    model_advisor: str | None = None
+    model_briefing: str | None = None
+    model_chat: str | None = None
+    alarm_assistant_enabled: bool = True
+    smart_scheduling_enabled: bool = True
+    predictive_maintenance_enabled: bool = True
+    anomaly_detection_enabled: bool = True
+    weather_advisor_enabled: bool = True
+    water_optimizer_enabled: bool = True
+    daily_insights_enabled: bool = True
     offline_fallback: bool
     timeout_sec: float
+    advisor_timeout_sec: float = 90.0
     token_budget: int
     daily_briefing_time: str
     weather_provider: str
     weather_coordinates: dict[str, float]
     weather_timezone: str
+    key_status: dict[str, bool] = Field(default_factory=dict)
+    recent_calls: list[AICallRecord] = Field(default_factory=list)
+
+
+class AISettingsUpdateRequest(BaseModel):
+    global_enabled: bool | None = None
+    primary_provider: str | None = None
+    fallback_provider: str | None = None
+    apinex_base_url: str | None = None
+    apinex_model: str | None = None
+    apinex_fallback_model: str | None = None
+    gemini_model: str | None = None
+    model_alarm: str | None = None
+    model_advisor: str | None = None
+    model_briefing: str | None = None
+    model_chat: str | None = None
+    alarm_assistant_enabled: bool | None = None
+    smart_scheduling_enabled: bool | None = None
+    predictive_maintenance_enabled: bool | None = None
+    anomaly_detection_enabled: bool | None = None
+    weather_advisor_enabled: bool | None = None
+    water_optimizer_enabled: bool | None = None
+    daily_insights_enabled: bool | None = None
+    offline_fallback: bool | None = None
+    timeout_sec: float | None = None
+    advisor_timeout_sec: float | None = None
+    token_budget: int | None = None
+    daily_briefing_time: str | None = None

@@ -67,38 +67,61 @@ async def fetch_apinex_models(
         log.warning("Could not fetch models dynamically from APInex (%s): %s", models_endpoint, exc)
 
     # Fallback to configured model or standard default
-    default = settings.apinex_model or "gpt-4o-mini"
+    default = settings.apinex_model or "free/gemini-3.8-flash"
     return [default]
 
 
-def get_primary_model(model_name: str | None = None) -> OpenAIChatModel:
+def get_primary_model(
+    model_name: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> OpenAIChatModel:
     """Build APInex OpenAI-compatible Chat Model."""
-    name = model_name or settings.apinex_model or "gpt-4o-mini"
+    name = model_name or settings.apinex_model or "free/gemini-3.8-flash"
     provider = OpenAIProvider(
-        base_url=settings.apinex_base_url,
-        api_key=settings.apinex_api_key or "no-key",
+        base_url=base_url or settings.apinex_base_url,
+        api_key=api_key or settings.apinex_api_key or "no-key",
     )
     return OpenAIChatModel(name, provider=provider)
 
 
-def get_fallback_model(model_name: str | None = None) -> GoogleModel:
+def get_apinex_fallback_model(
+    model_name: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> OpenAIChatModel:
+    """Build secondary APInex fallback model (e.g. free/glm-5.3-flash)."""
+    name = model_name or settings.apinex_fallback_model or "free/glm-5.3-flash"
+    provider = OpenAIProvider(
+        base_url=base_url or settings.apinex_base_url,
+        api_key=api_key or settings.apinex_api_key or "no-key",
+    )
+    return OpenAIChatModel(name, provider=provider)
+
+
+def get_fallback_model(
+    model_name: str | None = None,
+    api_key: str | None = None,
+) -> GoogleModel:
     """Build Google Gemini Fallback Model."""
     name = model_name or settings.gemini_model or "gemini-2.5-flash"
     provider = GoogleProvider(
-        api_key=settings.gemini_api_key or "no-key",
+        api_key=api_key or settings.gemini_api_key or "no-key",
     )
     return GoogleModel(name, provider=provider)
 
 
 def build_fallback_chain(
     primary_model: Model | None = None,
+    secondary_model: Model | None = None,
     fallback_model: Model | None = None,
 ) -> FallbackModel:
-    """Construct Pydantic AI FallbackModel chain (APInex -> Gemini)."""
+    """Construct Pydantic AI FallbackModel chain (APInex -> APInex Fallback -> Gemini)."""
     p_model = primary_model or get_primary_model()
+    s_model = secondary_model or get_apinex_fallback_model()
     f_model = fallback_model or get_fallback_model()
 
-    return FallbackModel(p_model, f_model, fallback_on=(Exception,))
+    return FallbackModel(p_model, s_model, f_model, fallback_on=(Exception,))
 
 
 def identify_provider_label(response_obj: Any) -> str:
@@ -110,10 +133,12 @@ def identify_provider_label(response_obj: Any) -> str:
     p_name = str(getattr(response_obj, "provider_name", "")).lower()
     m_name = str(getattr(response_obj, "model_name", "")).lower()
 
-    if "google" in p_name or "gemini" in m_name:
-        return "gemini"
-    elif "openai" in p_name or "apinex" in p_name or "gpt" in m_name:
-        return "apinex"
-    elif "test" in p_name or "test" in m_name or "function" in p_name:
+    if "test" in p_name or "test" in m_name or "function" in p_name:
         return "test"
+    if "openai" in p_name or "apinex" in p_name:
+        return "apinex"
+    if "google" in p_name:
+        return "gemini"
+    if "gemini" in m_name and "openai" not in p_name:
+        return "gemini"
     return "apinex"

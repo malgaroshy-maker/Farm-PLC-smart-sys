@@ -173,7 +173,7 @@ class SchedulerService:
         try:
             from app.services.ai.briefing import check_scheduled_briefing
 
-            await check_scheduled_briefing(db)
+            await check_scheduled_briefing(db, prev_farm=prev_farm, now_farm=now_farm)
         except Exception:
             log.exception("Error checking scheduled morning briefing")
 

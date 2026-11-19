@@ -17,10 +17,14 @@ from app.services.ai.agent import (
     advisor_agent,
     alarm_agent,
     briefing_agent,
+    build_farm_context_block,
     chat,
     chat_agent,
     clear_ai_cache,
     explain_alarm,
+    get_recent_ai_calls,
+    is_primary_degraded,
+    reset_call_history,
     run_daily_briefing,
     run_weather_advisor,
 )
@@ -39,7 +43,9 @@ from app.services.ai.redaction import redact_payload, redact_text
 from app.services.ai.rules import RuleBasedService, rule_service
 from app.services.ai.schemas import (
     AdvisorSuggestion,
+    AICallRecord,
     AISettingsResponse,
+    AISettingsUpdateRequest,
     AlarmExplainRequest,
     AlarmExplanation,
     ChatRequest,
@@ -81,6 +87,12 @@ __all__ = [
     "ChatRequest",
     "SuggestionActionRequest",
     "AISettingsResponse",
+    "AISettingsUpdateRequest",
+    "AICallRecord",
     "AI_TOOLS",
     "AIDeps",
+    "build_farm_context_block",
+    "get_recent_ai_calls",
+    "is_primary_degraded",
+    "reset_call_history",
 ]

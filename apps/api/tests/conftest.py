@@ -23,6 +23,7 @@ _gensalt = bcrypt.gensalt
 bcrypt.gensalt = lambda rounds=4, prefix=b"2b": _gensalt(4, prefix)  # fast hashes in tests
 
 from fastapi.testclient import TestClient  # noqa: E402
+from pydantic_ai import models  # noqa: E402
 
 from app.core.security import hash_password  # noqa: E402
 from app.core.timeutil import utcnow  # noqa: E402
@@ -32,14 +33,24 @@ from app.models import Base  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.seed import ZONES, seed_database  # noqa: E402
 
+models.ALLOW_MODEL_REQUESTS = False
+
 SIM = {"Authorization": "Bearer test-sim-token"}
 ZONE_IDS = [z["id"] for z in ZONES]
 
 
 async def _reset_db() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+    for attempt in range(5):
+        try:
+            await engine.dispose()
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
+            break
+        except Exception:
+            if attempt == 4:
+                raise
+            await asyncio.sleep(0.3)
     await seed_database(admin_password="admin-pass", verbose=False)
     async with async_session_factory() as s:
         for uid, role in (("user_operator", "operator"), ("user_viewer", "viewer")):
@@ -57,7 +68,9 @@ async def _reset_db() -> None:
 
 @pytest.fixture()
 def client():
-    from app.services.ai.agent import clear_ai_cache
+    from app.config import settings
+    from app.routers.ai import reset_ai_rate_limits
+    from app.services.ai.agent import clear_ai_cache, reset_call_history
     from app.services.alarms import engine as alarm_engine
     from app.services.anomaly import anomaly_detector
     from app.services.telemetry import recorder
@@ -68,6 +81,10 @@ def client():
     recorder._last = None
     weather_service.reset_cache()
     clear_ai_cache()
+    reset_call_history()
+    reset_ai_rate_limits()
+    settings.apinex_api_key = ""
+    settings.gemini_api_key = ""
     asyncio.run(_reset_db())
     with TestClient(app) as c:
         yield c

@@ -187,18 +187,35 @@ class RuleBasedService:
     def daily_briefing(
         self,
         date_str: str,
-        cycles: list[dict[str, Any]],
-        alarms: list[dict[str, Any]],
-        forecast: WeatherForecast,
+        cycles: list[dict[str, Any]] | None = None,
+        alarms: list[dict[str, Any]] | None = None,
+        forecast: WeatherForecast | None = None,
         lang: str = "ar",
+        cycles_summary: Any | None = None,
+        alarms_summary: Any | None = None,
     ) -> DailyBriefing:
         """Synthesize daily farm operations summary, alarms, and weather."""
-        total_water = sum(c.get("water_volume_m3", 0.0) for c in cycles)
-        completed = [c for c in cycles if c.get("outcome") == "completed"]
-        aborted = [c for c in cycles if c.get("outcome") in ("aborted", "faulted")]
+        c_list = (
+            cycles
+            if cycles is not None
+            else (cycles_summary if isinstance(cycles_summary, list) else [])
+        )
+        if not isinstance(c_list, list):
+            c_list = []
+        a_list = (
+            alarms
+            if alarms is not None
+            else (alarms_summary if isinstance(alarms_summary, list) else [])
+        )
+        if not isinstance(a_list, list):
+            a_list = []
 
-        cur_temp = forecast.current.temperature_c
-        today_fc = forecast.daily[0] if forecast.daily else None
+        total_water = sum(c.get("water_volume_m3", 0.0) for c in c_list)
+        completed = [c for c in c_list if c.get("outcome") == "completed"]
+        aborted = [c for c in c_list if c.get("outcome") in ("aborted", "faulted")]
+
+        cur_temp = forecast.current.temperature_c if forecast and forecast.current else 22.0
+        today_fc = forecast.daily[0] if forecast and forecast.daily else None
         t_max = today_fc.temp_max_c if today_fc else cur_temp
         p_prob = today_fc.precipitation_probability_pct if today_fc else 0.0
 
@@ -275,6 +292,8 @@ class RuleBasedService:
             references=["docs/AI_FEATURES.md", "docs/ALARM_MATRIX.md"],
             provider_used="rule_based",
         )
+
+    chat_reply = chat
 
 
 rule_service = RuleBasedService()

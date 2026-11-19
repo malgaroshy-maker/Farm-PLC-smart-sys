@@ -6,7 +6,7 @@ Caches and persists reports in the DB (ai_briefings and ai_insights tables).
 
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import desc, select
@@ -188,17 +188,28 @@ async def get_or_generate_daily_briefing(
     return record
 
 
-async def check_scheduled_briefing(db: AsyncSession) -> AIBriefing | None:
+async def check_scheduled_briefing(
+    db: AsyncSession,
+    prev_farm: datetime | None = None,
+    now_farm: datetime | None = None,
+) -> AIBriefing | None:
     """Invoked on farm monitor ticks to trigger morning briefing at 06:00 farm time."""
-    now_farm = clock.farm_now()
-    farm_time_hm = now_farm.strftime("%H:%M")
+    current_farm = now_farm or clock.farm_now()
+    farm_time_hm = current_farm.strftime("%H:%M")
     target_time_hm = settings.ai_daily_briefing_time  # "06:00"
 
-    # Only run once the farm clock reaches or passes 06:00
-    if farm_time_hm < target_time_hm:
-        return None
+    # If called from scheduler tick with prev_farm and now_farm, check if target time crossed
+    if prev_farm is not None and now_farm is not None:
+        target_h, target_m = (int(x) for x in target_time_hm.split(":"))
+        target_dt = now_farm.replace(hour=target_h, minute=target_m, second=0, microsecond=0)
+        if not (prev_farm < target_dt <= now_farm):
+            return None
+    else:
+        # Only run once the farm clock reaches or passes target time
+        if farm_time_hm < target_time_hm:
+            return None
 
-    today_date = now_farm.strftime("%Y-%m-%d")
+    today_date = current_farm.strftime("%Y-%m-%d")
 
     # Check if today's briefing is already generated
     stmt = select(AIBriefing.id).where(AIBriefing.date == today_date).limit(1)

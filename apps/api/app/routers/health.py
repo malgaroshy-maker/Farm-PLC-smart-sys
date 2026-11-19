@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.config import settings
+from app.services.ai.agent import is_primary_degraded
 from app.services.weather import weather_service
 
 router = APIRouter(tags=["Health"])
@@ -11,13 +12,14 @@ router = APIRouter(tags=["Health"])
 @router.get("/health")
 async def health_check():
     weather_health = weather_service.health()
+    ai_status = "degraded" if is_primary_degraded() else "ready"
     return {
         "status": "healthy",
         "version": "0.3.0",
         "environment": settings.app_env,
         "deployment_mode": settings.deployment_mode,
         "ai": {
-            "status": "ready",
+            "status": ai_status,
             "primary_provider": "apinex",
             "fallback_provider": "gemini",
             "offline_fallback": settings.ai_offline_fallback,

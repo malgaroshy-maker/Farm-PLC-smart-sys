@@ -180,3 +180,120 @@ def test_weather_and_settings_endpoints(client):
     m_data = r_mod.json()
     assert "models" in m_data
     assert "selected" in m_data
+
+
+def test_ai_settings_put_and_model_switching(client):
+    """PUT /api/v1/ai/settings is admin-only and updates persistent AI configuration."""
+    admin = login(client, "admin")
+    operator = login(client, "operator")
+
+    # Operator is forbidden to update settings
+    r_forbidden = client.put(
+        "/api/v1/ai/settings",
+        headers=operator,
+        json={"model_alarm": "free/glm-5.3-flash"},
+    )
+    assert r_forbidden.status_code == 403
+
+    # Admin updates model per feature and global settings
+    r_put = client.put(
+        "/api/v1/ai/settings",
+        headers=admin,
+        json={
+            "model_alarm": "free/glm-5.3-flash",
+            "model_chat": "free/gemini-3.8-flash",
+            "timeout_sec": 40.0,
+            "global_enabled": True,
+        },
+    )
+    assert r_put.status_code == 200, r_put.text
+    put_data = r_put.json()
+    assert put_data["model_alarm"] == "free/glm-5.3-flash"
+    assert put_data["model_chat"] == "free/gemini-3.8-flash"
+    assert put_data["timeout_sec"] == 40.0
+    assert put_data["global_enabled"] is True
+
+    # GET returns updated configuration
+    r_get = client.get("/api/v1/ai/settings", headers=operator)
+    assert r_get.status_code == 200
+    get_data = r_get.json()
+    assert get_data["model_alarm"] == "free/glm-5.3-flash"
+    assert "recent_calls" in get_data
+    assert "key_status" in get_data
+
+
+def test_global_ai_toggle_offline_fallback(client):
+    """When global AI is disabled via settings, all requests gracefully fallback to rule-based."""
+    admin = login(client, "admin")
+
+    # Disable AI globally
+    client.put("/api/v1/ai/settings", headers=admin, json={"global_enabled": False})
+
+    # Call /explain-alarm -> should succeed with rule_based provider
+    resp = client.post(
+        "/api/v1/ai/explain-alarm",
+        headers=admin,
+        json={"alarm_code": "ALM-004", "language": "ar"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["provider_used"] == "rule_based"
+
+    # Re-enable AI
+    client.put("/api/v1/ai/settings", headers=admin, json={"global_enabled": True})
+
+
+def test_ai_rate_limiting(client):
+    """Per-user sliding window rate limiting blocks spamming after threshold."""
+    operator = login(client, "operator")
+    from app.routers.ai import AI_RATE_LIMIT_MAX, reset_ai_rate_limits
+
+    reset_ai_rate_limits()
+
+    # Issue requests up to the limit
+    for _ in range(AI_RATE_LIMIT_MAX):
+        r = client.post(
+            "/api/v1/ai/explain-alarm",
+            headers=operator,
+            json={"alarm_code": "ALM-004"},
+        )
+        assert r.status_code == 200
+
+    # Next request must be rate limited (429)
+    r_exceeded = client.post(
+        "/api/v1/ai/explain-alarm",
+        headers=operator,
+        json={"alarm_code": "ALM-004"},
+    )
+    assert r_exceeded.status_code == 429
+    assert "Rate limit exceeded" in r_exceeded.json()["detail"]
+
+    reset_ai_rate_limits()
+
+
+def test_health_degraded_when_primary_fails(client):
+    """Health check reports ai: degraded when recent calls fall back due to primary failure."""
+    from app.services.ai.agent import record_ai_call, reset_call_history
+
+    reset_call_history()
+
+    # Normal health check -> ready
+    r1 = client.get("/health")
+    assert r1.status_code == 200
+    assert r1.json()["ai"]["status"] == "ready"
+
+    # Record primary failure fallback
+    record_ai_call(
+        feature="explain_alarm",
+        provider="rule_based",
+        model="offline_rules",
+        latency_ms=120.0,
+        fallback_reason="APInex 503 Service Unavailable",
+    )
+
+    # Health check -> degraded
+    r2 = client.get("/health")
+    assert r2.status_code == 200
+    assert r2.json()["ai"]["status"] == "degraded"
+
+    reset_call_history()

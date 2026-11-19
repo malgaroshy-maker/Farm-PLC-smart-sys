@@ -9,10 +9,13 @@ Endpoints:
   - POST /api/v1/ai/suggestions/{id}/reject
   - GET  /api/v1/ai/briefing (and /insights/daily)
   - GET  /api/v1/ai/weather/forecast & /current
-  - GET  /api/v1/ai/settings & /models
+  - GET  /api/v1/ai/settings & PUT /api/v1/ai/settings
+  - GET  /api/v1/ai/models
 """
 
 import json
+import time
+from collections import deque
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -20,12 +23,15 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.clock import clock
 from app.database import get_db
 from app.deps import Actor, get_actor, require_roles
-from app.models.ai import AISuggestion
+from app.models.ai import AISettings, AISuggestion
 from app.models.alarm import Alarm
 from app.services.ai import (
+    AICallRecord,
     AISettingsResponse,
+    AISettingsUpdateRequest,
     AlarmExplainRequest,
     AlarmExplanation,
     ChatRequest,
@@ -36,12 +42,46 @@ from app.services.ai import (
     explain_alarm,
     fetch_apinex_models,
     get_or_generate_daily_briefing,
+    get_recent_ai_calls,
     reject_suggestion,
 )
 from app.services.weather import WeatherForecast, weather_service
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 require_operator = require_roles("owner_admin", "operator")
+require_admin = require_roles("owner_admin")
+
+# ── Per-User Rate Limiting (30 requests/minute) ─────────────
+
+_RATE_LIMIT_STORE: dict[str, deque[float]] = {}
+AI_RATE_LIMIT_MAX = 30
+AI_RATE_LIMIT_WINDOW_SEC = 60.0
+
+
+def enforce_ai_rate_limit(actor: Actor = Depends(get_actor)) -> Actor:
+    """Enforce per-user sliding window rate limit on AI endpoints."""
+    now = time.monotonic()
+    key = str(actor.actor_id or actor.name or "anonymous")
+    if key not in _RATE_LIMIT_STORE:
+        _RATE_LIMIT_STORE[key] = deque()
+
+    q = _RATE_LIMIT_STORE[key]
+    while q and (now - q[0]) > AI_RATE_LIMIT_WINDOW_SEC:
+        q.popleft()
+
+    if len(q) >= AI_RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded for AI endpoints. Please wait before submitting more requests.",
+        )
+
+    q.append(now)
+    return actor
+
+
+def reset_ai_rate_limits() -> None:
+    """Reset rate limit store (for tests)."""
+    _RATE_LIMIT_STORE.clear()
 
 
 # ── Feature 1: Alarm Explanation ────────────────────────────
@@ -52,7 +92,7 @@ require_operator = require_roles("owner_admin", "operator")
 async def api_explain_alarm(
     body: AlarmExplainRequest,
     db: AsyncSession = Depends(get_db),
-    actor: Actor = Depends(get_actor),
+    actor: Actor = Depends(enforce_ai_rate_limit),
 ):
     """Diagnose an alarm and return structured explanation and fix guidance."""
     alarm_data: dict[str, Any] = {}
@@ -71,9 +111,9 @@ async def api_explain_alarm(
                 "name": alarm.name,
                 "name_ar": alarm.name_ar,
                 "severity": alarm.severity,
-                "category": alarm.category,
                 "current_value": alarm.current_value,
                 "threshold_value": alarm.threshold_value,
+                "zone_id": alarm.zone_id,
                 "guidance_en": alarm.guidance_en,
                 "guidance_ar": alarm.guidance_ar,
             }
@@ -97,7 +137,7 @@ async def api_explain_alarm(
 async def api_chat(
     body: ChatRequest,
     db: AsyncSession = Depends(get_db),
-    actor: Actor = Depends(get_actor),
+    actor: Actor = Depends(enforce_ai_rate_limit),
 ):
     """Interactive bilingual farm assistant."""
     return await chat(
@@ -141,8 +181,9 @@ async def api_list_suggestions(
             "description_ar": s.description_ar,
             "reasoning": s.reasoning,
             "reasoning_ar": s.reasoning_ar,
-            "action_payload": json.loads(s.action_payload_json) if s.action_payload_json else None,
+            "action_payload": json.loads(s.action_payload_json) if s.action_payload_json else {},
             "zone_id": s.zone_id,
+            "device_id": s.device_id,
             "confidence": s.confidence,
             "created_at": s.created_at.isoformat(),
             "expires_at": s.expires_at.isoformat() if s.expires_at else None,
@@ -156,25 +197,38 @@ async def api_list_suggestions(
 @router.post("/suggestions/evaluate")
 async def api_evaluate_advisor(
     target_date: str | None = Query(None),
-    force_refresh: bool = Query(False),
+    program_id: str | None = Query(None),
+    lang: str = Query("ar"),
     db: AsyncSession = Depends(get_db),
     actor: Actor = Depends(require_operator),
 ):
-    """Trigger weather advisor evaluation now."""
+    """Trigger on-demand weather advisor evaluation for target date."""
+    target = target_date or clock.farm_now().strftime("%Y-%m-%d")
     suggestion = await evaluate_weather_advisor(
         db=db,
-        target_date=target_date,
-        force_refresh=force_refresh,
+        target_date=target,
+        lang=lang,
     )
+
     if not suggestion:
-        return {"message": "Weather conditions are normal. No adjustment suggestions needed."}
+        return {
+            "status": "no_suggestion",
+            "message": "Weather conditions normal; no irrigation adjustments required.",
+        }
 
     return {
-        "id": suggestion.id,
-        "title": suggestion.title,
-        "title_ar": suggestion.title_ar,
         "status": suggestion.status,
-        "action_payload": json.loads(suggestion.action_payload_json or "{}"),
+        "id": suggestion.id,
+        "suggestion": {
+            "id": suggestion.id,
+            "title": suggestion.title,
+            "title_ar": suggestion.title_ar,
+            "description": suggestion.description,
+            "description_ar": suggestion.description_ar,
+            "action_payload": json.loads(suggestion.action_payload_json or "{}"),
+            "priority": suggestion.priority,
+            "confidence": suggestion.confidence,
+        },
     }
 
 
@@ -184,12 +238,12 @@ async def api_approve_suggestion(
     db: AsyncSession = Depends(get_db),
     actor: Actor = Depends(require_operator),
 ):
-    """Operator approves suggestion -> creates one-day ProgramOverride for scheduler."""
+    """Operator approves suggestion and creates one-day scheduler override."""
     try:
         override = await approve_suggestion(db, suggestion_id, operator_name=actor.name)
         return {
             "status": "approved",
-            "suggestion_id": suggestion_id,
+            "suggestion_id": override.suggestion_id,
             "override_id": override.id,
             "target_date": override.target_date,
             "action": override.action,
@@ -222,16 +276,17 @@ async def api_reject_suggestion(
 @router.get("/briefing")
 @router.get("/insights/daily")
 async def api_get_daily_briefing(
-    date: str | None = Query(None),
+    target_date: str | None = Query(None, alias="date"),
     force_refresh: bool = Query(False),
     lang: str = Query("ar"),
     db: AsyncSession = Depends(get_db),
     actor: Actor = Depends(get_actor),
 ):
-    """Retrieve or generate daily operations briefing for specified farm date."""
+    """Retrieve or generate daily operations briefing for target date."""
+    target = target_date or clock.farm_now().strftime("%Y-%m-%d")
     record = await get_or_generate_daily_briefing(
         db=db,
-        target_date=date,
+        target_date=target,
         force_refresh=force_refresh,
         lang=lang,
     )
@@ -282,25 +337,157 @@ async def api_get_current_weather(
 # ── Settings & Models ────────────────────────────────────────
 
 
+async def _get_or_create_settings(db: AsyncSession) -> AISettings:
+    stmt = select(AISettings).where(AISettings.id == "default")
+    res = await db.execute(stmt)
+    entry = res.scalar_one_or_none()
+    if not entry:
+        entry = AISettings(
+            id="default",
+            global_enabled=True,
+            primary_provider="apinex",
+            fallback_provider="gemini",
+            apinex_base_url=settings.apinex_base_url,
+            apinex_model=settings.apinex_model or "free/gemini-3.8-flash",
+            apinex_fallback_model=settings.apinex_fallback_model or "free/glm-5.3-flash",
+            gemini_model=settings.gemini_model,
+            model_alarm="",
+            model_advisor="",
+            model_briefing="",
+            model_chat="",
+            alarm_assistant_enabled=True,
+            smart_scheduling_enabled=True,
+            predictive_maintenance_enabled=True,
+            anomaly_detection_enabled=True,
+            weather_advisor_enabled=True,
+            water_optimizer_enabled=True,
+            daily_insights_enabled=True,
+            offline_fallback=settings.ai_offline_fallback,
+            timeout_sec=settings.ai_timeout_sec,
+            advisor_timeout_sec=settings.ai_advisor_timeout_sec,
+            token_budget=settings.ai_token_budget,
+            daily_briefing_time=settings.ai_daily_briefing_time,
+            updated_at=clock.farm_now(),
+        )
+        db.add(entry)
+        await db.commit()
+        await db.refresh(entry)
+    return entry
+
+
 @router.get("/settings", response_model=AISettingsResponse)
-async def api_get_ai_settings(actor: Actor = Depends(get_actor)):
-    """Retrieve AI configuration, active models, coordinates, and thresholds."""
+async def api_get_ai_settings(
+    db: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(get_actor),
+):
+    """Retrieve AI configuration, active models, coordinates, thresholds, and recent calls."""
+    entry = await _get_or_create_settings(db)
+    recent_calls = [AICallRecord(**c) for c in get_recent_ai_calls()]
+    key_status = {
+        "apinex": bool(settings.apinex_api_key),
+        "gemini": bool(settings.gemini_api_key),
+    }
+
     return AISettingsResponse(
-        primary_provider="apinex",
-        fallback_provider="gemini",
-        apinex_base_url=settings.apinex_base_url,
-        apinex_model=settings.apinex_model or "gpt-4o-mini",
-        gemini_model=settings.gemini_model,
-        offline_fallback=settings.ai_offline_fallback,
-        timeout_sec=settings.ai_timeout_sec,
-        token_budget=settings.ai_token_budget,
-        daily_briefing_time=settings.ai_daily_briefing_time,
+        global_enabled=entry.global_enabled,
+        primary_provider=entry.primary_provider,
+        fallback_provider=entry.fallback_provider,
+        apinex_base_url=entry.apinex_base_url,
+        apinex_model=entry.apinex_model,
+        apinex_fallback_model=entry.apinex_fallback_model,
+        gemini_model=entry.gemini_model,
+        model_alarm=entry.model_alarm,
+        model_advisor=entry.model_advisor,
+        model_briefing=entry.model_briefing,
+        model_chat=entry.model_chat,
+        alarm_assistant_enabled=entry.alarm_assistant_enabled,
+        smart_scheduling_enabled=entry.smart_scheduling_enabled,
+        predictive_maintenance_enabled=entry.predictive_maintenance_enabled,
+        anomaly_detection_enabled=entry.anomaly_detection_enabled,
+        weather_advisor_enabled=entry.weather_advisor_enabled,
+        water_optimizer_enabled=entry.water_optimizer_enabled,
+        daily_insights_enabled=entry.daily_insights_enabled,
+        offline_fallback=entry.offline_fallback,
+        timeout_sec=entry.timeout_sec,
+        advisor_timeout_sec=entry.advisor_timeout_sec,
+        token_budget=entry.token_budget,
+        daily_briefing_time=entry.daily_briefing_time,
         weather_provider=settings.weather_api_provider,
         weather_coordinates={
             "latitude": settings.weather_latitude,
             "longitude": settings.weather_longitude,
         },
         weather_timezone=settings.weather_timezone,
+        key_status=key_status,
+        recent_calls=recent_calls,
+    )
+
+
+@router.put("/settings", response_model=AISettingsResponse)
+async def api_update_ai_settings(
+    body: AISettingsUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(require_admin),
+):
+    """Update AI persistent configuration and feature toggles (Admin only)."""
+    entry = await _get_or_create_settings(db)
+
+    update_data = body.model_dump(exclude_unset=True)
+    for k, v in update_data.items():
+        if hasattr(entry, k) and v is not None:
+            setattr(entry, k, v)
+    entry.updated_at = clock.farm_now()
+    await db.commit()
+    await db.refresh(entry)
+
+    # Sync runtime settings
+    if body.apinex_model:
+        settings.apinex_model = body.apinex_model
+    if body.gemini_model:
+        settings.gemini_model = body.gemini_model
+    if body.timeout_sec is not None:
+        settings.ai_timeout_sec = body.timeout_sec
+    if body.advisor_timeout_sec is not None:
+        settings.ai_advisor_timeout_sec = body.advisor_timeout_sec
+
+    recent_calls = [AICallRecord(**c) for c in get_recent_ai_calls()]
+    key_status = {
+        "apinex": bool(settings.apinex_api_key),
+        "gemini": bool(settings.gemini_api_key),
+    }
+
+    return AISettingsResponse(
+        global_enabled=entry.global_enabled,
+        primary_provider=entry.primary_provider,
+        fallback_provider=entry.fallback_provider,
+        apinex_base_url=entry.apinex_base_url,
+        apinex_model=entry.apinex_model,
+        apinex_fallback_model=entry.apinex_fallback_model,
+        gemini_model=entry.gemini_model,
+        model_alarm=entry.model_alarm,
+        model_advisor=entry.model_advisor,
+        model_briefing=entry.model_briefing,
+        model_chat=entry.model_chat,
+        alarm_assistant_enabled=entry.alarm_assistant_enabled,
+        smart_scheduling_enabled=entry.smart_scheduling_enabled,
+        predictive_maintenance_enabled=entry.predictive_maintenance_enabled,
+        anomaly_detection_enabled=entry.anomaly_detection_enabled,
+        weather_advisor_enabled=entry.weather_advisor_enabled,
+        water_optimizer_enabled=entry.water_optimizer_enabled,
+        daily_insights_enabled=entry.daily_insights_enabled,
+        offline_fallback=entry.offline_fallback,
+        timeout_sec=entry.timeout_sec,
+        advisor_timeout_sec=entry.advisor_timeout_sec,
+        token_budget=entry.token_budget,
+        daily_briefing_time=entry.daily_briefing_time,
+        weather_provider=settings.weather_api_provider,
+        weather_coordinates={
+            "latitude": settings.weather_latitude,
+            "longitude": settings.weather_longitude,
+        },
+        weather_timezone=settings.weather_timezone,
+        key_status=key_status,
+        recent_calls=recent_calls,
     )
 
 
@@ -310,6 +497,6 @@ async def api_get_models(actor: Actor = Depends(get_actor)):
     models = await fetch_apinex_models()
     return {
         "models": models,
-        "selected": settings.apinex_model or (models[0] if models else "gpt-4o-mini"),
+        "selected": settings.apinex_model or (models[0] if models else "free/gemini-3.8-flash"),
         "fallback": settings.gemini_model,
     }

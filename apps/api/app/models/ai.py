@@ -172,3 +172,51 @@ class AIBriefing(Base, IdentityMixin):
     payload_json: Mapped[str | None] = mapped_column(Text)
     provider_used: Mapped[str] = mapped_column(String(30), default="rule_based")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AISettings(Base):
+    """Persistent AI system configuration and feature toggles."""
+
+    __tablename__ = "ai_settings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default="default")
+    global_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    primary_provider: Mapped[str] = mapped_column(String(32), default="apinex", nullable=False)
+    fallback_provider: Mapped[str] = mapped_column(String(32), default="gemini", nullable=False)
+    apinex_base_url: Mapped[str] = mapped_column(
+        String(255), default="https://api.apinex.bond/v1", nullable=False
+    )
+    apinex_model: Mapped[str] = mapped_column(
+        String(100), default="free/gemini-3.8-flash", nullable=False
+    )
+    apinex_fallback_model: Mapped[str] = mapped_column(
+        String(100), default="free/glm-5.3-flash", nullable=False
+    )
+    gemini_model: Mapped[str] = mapped_column(
+        String(100), default="gemini-2.5-flash", nullable=False
+    )
+
+    # Per-feature models
+    model_alarm: Mapped[str | None] = mapped_column(String(100), default="")
+    model_advisor: Mapped[str | None] = mapped_column(String(100), default="")
+    model_briefing: Mapped[str | None] = mapped_column(String(100), default="")
+    model_chat: Mapped[str | None] = mapped_column(String(100), default="")
+
+    # Feature toggles
+    alarm_assistant_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    smart_scheduling_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    predictive_maintenance_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    anomaly_detection_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    weather_advisor_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    water_optimizer_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    daily_insights_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Resilience & Limits
+    offline_fallback: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    timeout_sec: Mapped[float] = mapped_column(Float, default=45.0, nullable=False)
+    advisor_timeout_sec: Mapped[float] = mapped_column(Float, default=90.0, nullable=False)
+    token_budget: Mapped[int] = mapped_column(Integer, default=2048, nullable=False)
+    daily_briefing_time: Mapped[str] = mapped_column(String(10), default="06:00", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

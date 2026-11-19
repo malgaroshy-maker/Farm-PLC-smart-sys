@@ -5,6 +5,7 @@ SQLAlchemy models — re-export all for Alembic and app use.
 from .ai import (
     AIBriefing,
     AIInsight,
+    AISettings,
     AISuggestion,
     DetectedAnomaly,
     MaintenancePrediction,
@@ -58,4 +59,5 @@ __all__ = [
     "MaintenancePrediction",
     "ProgramOverride",
     "AIBriefing",
+    "AISettings",
 ]

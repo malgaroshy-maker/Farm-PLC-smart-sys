@@ -68,16 +68,18 @@ class Settings(BaseSettings):
 
     # ── AI Services (Milestone E) ────────────────────────
     # Primary: APInex (OpenAI-compatible)
-    apinex_base_url: str = "https://api.apinex.dev/v1"
+    apinex_base_url: str = "https://api.apinex.bond/v1"
     apinex_api_key: str = ""
-    apinex_model: str = "gpt-4o-mini"
+    apinex_model: str = "free/gemini-3.8-flash"
+    apinex_fallback_model: str = "free/glm-5.3-flash"
 
     # Fallback: Google Gemini
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
     # AI General & Resilience
-    ai_timeout_sec: float = 15.0
+    ai_timeout_sec: float = 45.0
+    ai_advisor_timeout_sec: float = 90.0
     ai_max_retries: int = 2
     ai_token_budget: int = 2048
     ai_offline_fallback: bool = True
