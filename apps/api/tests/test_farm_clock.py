@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from conftest import login
+from conftest import SIM, login, push_state
 
 from app.config import settings
 from app.core.clock import FarmClock, clock
@@ -376,3 +376,100 @@ async def test_reset_history_resets_clock():
         assert row is not None
         assert row.mode == "real"
         assert row.speed == 1.0
+
+
+def test_command_sync_at_360x_stamps_farm_time(client):
+    op = login(client, "operator")
+    push_state(client)
+    clock.set_speed(360.0)
+
+    # Start zone command
+    r = client.post(
+        "/api/v1/commands",
+        json={"command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab"},
+        headers=op,
+    )
+    assert r.status_code == 201
+    cid = r.json()["id"]
+    req_at = datetime.fromisoformat(r.json()["requested_at"])
+
+    # Simulate controller sending real-time timestamps in the past
+    fake_real_time = "2026-11-19T06:00:00+00:00"
+    r_sync = client.patch(
+        f"/api/v1/commands/{cid}/sync",
+        json={
+            "status": "completed",
+            "completed_at": fake_real_time,
+            "acknowledged_at": fake_real_time,
+        },
+        headers=SIM,
+    )
+    assert r_sync.status_code == 200
+    synced = r_sync.json()
+    ack_at = datetime.fromisoformat(synced["acknowledged_at"])
+    comp_at = datetime.fromisoformat(synced["completed_at"])
+
+    # Must ignore controller timestamps and stamp farm time >= requested_at
+    assert ack_at >= req_at
+    assert comp_at >= req_at
+    assert ack_at.isoformat() != fake_real_time
+    assert comp_at.isoformat() != fake_real_time
+    clock.reset_to_real()
+
+
+@pytest.mark.asyncio
+async def test_water_today_at_1x_drops_10min_outage(client):
+    clock.reset_to_real()
+    now = clock.farm_now()
+    async with async_session_factory() as db:
+        # Two points 10 s apart (6 m³/h for 10 s = 6 * 10 / 3600 = 0.01667 m³)
+        # Then a 10-minute (600 s) outage gap
+        # Then two points 10 s apart (6 * 10 / 3600 = 0.01667 m³)
+        # Total integrated should be ~0.033 m³, NOT including the 600 s outage (~1.0 m³)
+        for offset in [-620, -610, -10, 0]:
+            db.add(
+                TelemetryPoint(
+                    metric_key="zone.flow_m3h",
+                    farm_id="farm_algaroshy",
+                    zone_id="zone_enab",
+                    ts=now + timedelta(seconds=offset),
+                    value_numeric=6.0,
+                    value_text="1.0",
+                )
+            )
+        await db.commit()
+
+        zones = await telem_svc.water_today(db)
+        enab = next((z for z in zones if z["zone_id"] == "zone_enab"), None)
+        assert enab is not None
+        # ~0.033 m³ (10s + 10s flow), outage was rejected
+        assert round(enab["m3"], 2) == 0.03
+
+
+@pytest.mark.asyncio
+async def test_water_today_at_360x_integrates_normal_spacing(client):
+    clock.set_speed(360.0)
+    now = clock.farm_now()
+    async with async_session_factory() as db:
+        # At 360x, throttling yields ~1 sample per real second = 360 farm-seconds.
+        # Two consecutive samples 360 s apart: 6 m³/h for 360 s = 0.6 m³.
+        # Plus an outage of 2000 farm seconds (> 1080 s limit) which must NOT be integrated.
+        for offset in [-2720, -2360, -360, 0]:
+            db.add(
+                TelemetryPoint(
+                    metric_key="zone.flow_m3h",
+                    farm_id="farm_algaroshy",
+                    zone_id="zone_rumman_1",
+                    ts=now + timedelta(seconds=offset),
+                    value_numeric=6.0,
+                    value_text="360.0",
+                )
+            )
+        await db.commit()
+
+        zones = await telem_svc.water_today(db)
+        rumman = next((z for z in zones if z["zone_id"] == "zone_rumman_1"), None)
+        assert rumman is not None
+        # Two 360s intervals = 0.6 + 0.6 = 1.2 m³. The 2000s gap (-2360 to -360) is NOT integrated!
+        assert round(rumman["m3"], 1) == 1.2
+    clock.reset_to_real()

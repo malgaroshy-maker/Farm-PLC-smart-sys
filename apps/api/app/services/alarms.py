@@ -462,7 +462,6 @@ class AlarmEngine:
             a.reset_at, a.reset_by, a.status = now, actor.actor_id, "cleared"
         await self._publish(db, [("alarm.reset", a) for a in latched])
         return len(latched)
-        return len(latched)
 
 
 def blocking_critical(alarms: Iterable[Alarm]) -> Alarm | None:

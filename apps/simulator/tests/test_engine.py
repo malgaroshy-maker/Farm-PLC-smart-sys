@@ -357,7 +357,43 @@ def test_jump_stops_running_zones_and_approximates(eng):
     assert eng.state.zones["zone_a"].state == "off"
     assert eng.state.zones["zone_a"].health == "healthy"
     assert eng.state.zones["zone_a"].flow_m3h == 0.0
-    assert eng.state.pumps["pump_booster_01"].state == "off"
+    assert eng.state.pumps["pump_booster_01"].state == "stopped"
+
+
+def test_pumps_restart_after_forward_and_backward_jump(eng):
+    from datetime import timedelta
+
+    # 1. Start zone and get it to running
+    assert start(eng)["status"] == "accepted"
+    run(eng, 40)
+    assert eng.state.zones["zone_a"].state == "running"
+    assert eng.state.pumps["pump_booster_01"].state == "running"
+
+    # 2. Forward jump
+    t_forward = eng.sim_time + timedelta(hours=4)
+    eng.jump(t_forward)
+    assert eng.state.zones["zone_a"].state == "off"
+    assert eng.state.pumps["pump_booster_01"].state == "stopped"
+
+    # 3. Start zone after forward jump -> must reach running with pump running
+    res_fwd = start(eng)
+    assert res_fwd["status"] == "accepted"
+    run(eng, 40)
+    assert eng.state.zones["zone_a"].state == "running"
+    assert eng.state.pumps["pump_booster_01"].state == "running"
+
+    # 4. Backward jump / reset (e.g. Back to real time)
+    t_back = eng.sim_time - timedelta(hours=2)
+    eng.jump(t_back)
+    assert eng.state.zones["zone_a"].state == "off"
+    assert eng.state.pumps["pump_booster_01"].state == "stopped"
+
+    # 5. Start zone after backward jump -> must reach running with pump running
+    res_back = start(eng)
+    assert res_back["status"] == "accepted"
+    run(eng, 40)
+    assert eng.state.zones["zone_a"].state == "running"
+    assert eng.state.pumps["pump_booster_01"].state == "running"
 
 
 def test_manual_step_advances_physics_while_paused_without_killing_zones(eng):

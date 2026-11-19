@@ -40,6 +40,7 @@ class APIClient:
         root = base_url.replace("/api/v1", "")
         ws_proto = "wss://" if root.startswith("https://") else "ws://"
         host_part = root.split("://", 1)[1] if "://" in root else root
+        self.ws_host = host_part
         self.ws_url = f"{ws_proto}{host_part}/ws?token={token}"
 
     async def sync_clock(self) -> None:
@@ -95,7 +96,7 @@ class APIClient:
         while self.running:
             try:
                 async with websockets.connect(self.ws_url) as ws:
-                    print(f"[SIMULATOR] Connected to WebSocket at {self.ws_url}")
+                    print(f"[SIMULATOR] Connected to WebSocket at {self.ws_host}")
                     while self.running:
                         msg = await ws.recv()
                         try:

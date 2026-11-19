@@ -21,6 +21,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.core.clock import clock
 from app.core.timeutil import as_utc, utcnow
 from app.database import async_session_factory
 from app.deps import Actor
@@ -283,6 +284,7 @@ class ScenarioRunner:
         self.state = RunState()
         self._task: asyncio.Task | None = None
         self._started = utcnow()
+        self._started_farm = clock.farm_now()
         self._picked_up_at = utcnow()  # when the controller took the last command
         self.poll_s = 0.5
         self.pickup_timeout_s = 10.0
@@ -305,15 +307,14 @@ class ScenarioRunner:
         return self._task is not None and not self._task.done()
 
     def start(self, name: str) -> RunState:
-        scenario = SCENARIOS.get(name) or (
-            SCENARIOS.get("normal_cycle") if name == "normal_day" else None
-        )
+        scenario = SCENARIOS.get(name)
         if not scenario:
             raise HTTPException(404, f"Unknown scenario '{name}'")
         if self.busy:
             raise HTTPException(409, f"Scenario '{self.state.name}' is still running")
         steps = (PREP if scenario.prep else []) + scenario.steps
         self._started = utcnow()
+        self._started_farm = clock.farm_now()
         self.state = RunState(
             name=name, status="running", total=len(steps), started_at=utcnow().isoformat()
         )
@@ -446,7 +447,7 @@ class ScenarioRunner:
 
         from app.services.alarms import OPEN
 
-        started = self._started
+        started = self._started_farm
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         while True:

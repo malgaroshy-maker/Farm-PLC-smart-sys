@@ -63,6 +63,7 @@ class Recorder:
                         zone_id=zone_id,
                         ts=now_farm,
                         value_numeric=float(value),
+                        value_text=str(clock.speed),
                         source="simulator" if settings.deployment_mode == "simulation" else "plc",
                     )
                 )
@@ -115,7 +116,18 @@ async def series(
     ]
 
 
-MAX_GAP_S = 600.0  # don't integrate across data gaps (comms loss, simulator off; up to 10 farm min)
+MAX_GAP_S = 60.0  # default/base gap limit at 1x speed
+
+
+def max_gap_s(speed: float) -> float:
+    """Maximum allowed gap in farm seconds between consecutive samples.
+
+    Farm-time sample spacing is max(10 s, speed * 1 s).
+    Allows ~3× the expected spacing: max(60.0, 3.0 * max(10.0, speed * 1.0)).
+    At 1×: 60 s (so a 10-minute outage is rejected).
+    At 360×: 1080 s (~18 farm minutes, so normal 360 s spacing is accepted).
+    """
+    return max(60.0, 3.0 * max(10.0, speed * 1.0))
 
 
 def farm_midnight_utc(now: datetime | None = None) -> datetime:
@@ -129,23 +141,34 @@ async def water_today(db: AsyncSession) -> list[dict]:
     since = farm_midnight_utc()
     rows = (
         await db.execute(
-            select(TelemetryPoint.zone_id, TelemetryPoint.ts, TelemetryPoint.value_numeric)
+            select(
+                TelemetryPoint.zone_id,
+                TelemetryPoint.ts,
+                TelemetryPoint.value_numeric,
+                TelemetryPoint.value_text,
+            )
             .where(TelemetryPoint.metric_key == "zone.flow_m3h", TelemetryPoint.ts >= since)
             .order_by(TelemetryPoint.zone_id, TelemetryPoint.ts)
         )
     ).all()
     totals: dict[str, float] = {}
-    prev: dict[str, tuple[datetime, float]] = {}
-    for zone_id, ts, value in rows:
+    prev: dict[str, tuple[datetime, float, float]] = {}
+    for zone_id, ts, value, val_text in rows:
         ts = as_utc(ts)
         v = value or 0.0
+        try:
+            s_speed = float(val_text) if val_text else 1.0
+        except (ValueError, TypeError):
+            s_speed = 1.0
         if zone_id in prev:
-            pts, pv = prev[zone_id]
+            pts, pv, p_speed = prev[zone_id]
             dt = (ts - pts).total_seconds()
-            if 0 < dt <= MAX_GAP_S:
+            effective_speed = max(s_speed, p_speed)
+            limit = max_gap_s(effective_speed)
+            if 0 < dt <= limit:
                 totals[zone_id] = totals.get(zone_id, 0.0) + (pv + v) / 2 * dt / 3600.0
         totals.setdefault(zone_id, 0.0)
-        prev[zone_id] = (ts, v)
+        prev[zone_id] = (ts, v, s_speed)
     return [{"zone_id": z, "m3": round(m3, 3)} for z, m3 in sorted(totals.items())]
 
 

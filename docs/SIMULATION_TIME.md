@@ -62,7 +62,7 @@ Rule of thumb: if it describes **what happened on the farm**, use farm time. If 
 - Staleness and command timeouts still use real time at 360×.
 - Simulator: paused means no physics. 60× for 10 real seconds gives about 10 farm-minutes of tank and moisture change. A jump stops running zones.
 - Web: the badge appears only in sim mode, and the clock hook resyncs on `clock.changed`.
-- Live: run `normal_day` at 360× and check that charts, lighting and water-today line up.
+- Live: run `normal_cycle` at 360× and check that charts, lighting and water-today line up.
 
 ## Out of scope
 - Running backwards or replaying history.

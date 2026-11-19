@@ -85,11 +85,9 @@ class SimulatorEngine:
 
     @staticmethod
     def _update(cid, status, reason=None) -> dict:
-        terminal = status in ("completed", "failed", "rejected")
         return {
             "command_id": cid,
             "status": status,
-            "completed_at": utcnow().isoformat() if terminal else None,
             "failure_reason": reason,
         }
 
@@ -535,9 +533,14 @@ class SimulatorEngine:
                 if v:
                     v.status = "closed"
                     v.last_command = "close"
+                    self.phase_t.pop(f"valve:{v.valve_id}", None)
+                self.phase_t.pop(zid, None)
+                self.zone_abort.pop(zid, None)
+                self.zone_cmd.pop(zid, None)
         for pump in self.state.pumps.values():
-            pump.state = "off"
+            pump.state = "stopped"
             pump.run_fb = False
+        self.pump_t.clear()
         self.state.system.main_flow_m3h = 0.0
         self.state.system.main_pressure_bar = 0.0
 

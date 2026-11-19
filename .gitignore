@@ -99,3 +99,7 @@ design/assets-raw/*.png
 # launcher runtime state
 .run/
 design/assets-raw/log_*.txt
+
+# Local screenshots and verification dumps
+screenshots/
+
