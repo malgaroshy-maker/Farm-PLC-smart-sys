@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-19
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ (AI: alarm assistant, weather advisor, anomaly detection, daily briefing) → next is **Production track (PLC adapter, hosting, hardening)**
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ (AI: alarm assistant, weather advisor, anomaly detection, daily briefing) → next is **Milestone F: map accuracy, weather on the map, UI polish**, then the Production track (Siemens OPC UA adapter, hosting, hardening)
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -72,6 +72,7 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 | Zones | ✅ 12, from the farm layout SVG |
 | Mobile | ✅ PWA from the web app (no separate React Native app) |
 | Order | ✅ Foundations → demo polish → production |
-| PLC model / protocol | ❓ Not decided. The adapter stays protocol-neutral. |
+| PLC model / protocol | ✅ **Siemens S7-1200/1500 via OPC UA** (owner, 2026-11-20). Test on PLCSIM Advanced before hardware. The adapter interface stays protocol-neutral so the simulator remains an implementation. |
+| Hosting | ❓ Decide later (after Milestone F) |
 | Hosting | ❓ Not decided. Comes after the demo. |
 | Pump specs, valve sizes, pipe diameters | ❓ Need a site survey (affects simulator constants and thresholds) |

@@ -109,8 +109,14 @@ Each milestone ends in something you can run and show. Estimates assume one deve
 
 Crop vision, voice and seasonal learning stay **deferred** until there's real hardware and data.
 
+### Milestone F — Map accuracy, weather on the map, UI polish (next)
+Decided with the owner on 2026-11-20. Prompt: [prompts/milestone-f-map-ui-polish.md](prompts/milestone-f-map-ui-polish.md).
+- **Satellite-corrected drawing.** Keep the generated photoreal map (it works offline), but re-trace the zones, tracks, buildings and pipes from satellite imagery at the exact site ([FARM_SITE.md](FARM_SITE.md)). The owner confirms the corrections.
+- **Weather on the map** from the live Open-Meteo forecast.
+- **UI polish:** dashboard and map interactions, the AI panels, Schedules and Reports, and the phone experience.
+
 ### Later — Production track (after the demo)
-- **PLC adapter interface** (`read_tags()`, `write_command()`, `health()`), with the simulator as the first implementation. Then OPC UA (Siemens S7-1200/1500) or Modbus TCP once the PLC is chosen. Validate against PLCSIM Advanced before touching hardware.
+- **PLC adapter interface** (`read_tags()`, `write_command()`, `health()`), with the simulator as the first implementation. Then **OPC UA on Siemens S7-1200/1500**: the owner chose this on 2026-11-20. Validate against PLCSIM Advanced before touching hardware.
 - **Hosting decision:** a local edge PC with VPN, or local plus a cloud mirror. Then Docker Compose, PostgreSQL, backups, HTTPS.
 - **Security hardening:** rate limiting, audit review, secrets management, and a rule that the cloud can never bypass PLC interlocks.
 - **Notifications:** web push (PWA), then SMS through a GSM gateway for critical alarms, plus escalation.
