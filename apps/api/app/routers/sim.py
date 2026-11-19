@@ -124,6 +124,11 @@ async def update_clock(
         superseded = await _supersede_starts(
             db, CommandCreate(command_type="stop_all", target_type="system")
         )
+        from app.services.cycles import record_cycles_aborted_on_jump
+        from app.services.scheduler import scheduler
+
+        await record_cycles_aborted_on_jump(db, next_sim)
+        scheduler.on_clock_jump(next_sim)
         for c in superseded:
             await manager.broadcast("command.updated", CommandResponse.model_validate(c))
         await clock.save(db)

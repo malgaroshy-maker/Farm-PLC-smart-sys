@@ -61,6 +61,7 @@ def upgrade() -> None:
         "scheduler_state",
         sa.Column("key", sa.String(length=64), primary_key=True, nullable=False),
         sa.Column("value_text", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
 

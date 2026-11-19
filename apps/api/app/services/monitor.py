@@ -26,6 +26,9 @@ class Monitor:
             await expire_stale_commands(db)
             snapshots = await load_snapshots(db)
             await alarm_engine.on_monitor_tick(db, snapshots)
+            from app.services.scheduler import scheduler
+
+            await scheduler.tick(db, snapshots)
             fresh = is_fresh(snapshots)
             if self._was_fresh and not fresh:
                 await manager.broadcast("telemetry.stale", {})

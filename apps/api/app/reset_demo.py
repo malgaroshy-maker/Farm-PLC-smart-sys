@@ -20,9 +20,18 @@ from app.models.alarm import Alarm
 from app.models.command import Command
 from app.models.event_log import EventLog
 from app.models.irrigation_cycle import IrrigationCycle
+from app.models.program import SchedulerState
 from app.models.telemetry import DeviceStateSnapshot, TelemetryPoint
 
-HISTORY = [Alarm, Command, EventLog, TelemetryPoint, DeviceStateSnapshot, IrrigationCycle]
+HISTORY = [
+    Alarm,
+    Command,
+    EventLog,
+    TelemetryPoint,
+    DeviceStateSnapshot,
+    IrrigationCycle,
+    SchedulerState,
+]
 
 
 async def reset_history() -> dict[str, int]:
