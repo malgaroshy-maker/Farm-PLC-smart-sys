@@ -66,12 +66,30 @@ class Settings(BaseSettings):
     telemetry_retention_days: int = 7
     farm_id: str = "farm_algaroshy"
 
-    # ── AI Services (not implemented yet — Milestone E) ──
+    # ── AI Services (Milestone E) ────────────────────────
+    # Primary: APInex (OpenAI-compatible)
+    apinex_base_url: str = "https://api.apinex.dev/v1"
+    apinex_api_key: str = ""
+    apinex_model: str = "gpt-4o-mini"
+
+    # Fallback: Google Gemini
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
+
+    # AI General & Resilience
+    ai_timeout_sec: float = 15.0
+    ai_max_retries: int = 2
+    ai_token_budget: int = 2048
+    ai_offline_fallback: bool = True
+    ai_daily_briefing_time: str = "06:00"
+
+    # Weather (Open-Meteo)
+    weather_api_provider: str = "open-meteo"
     weather_api_key: str = ""
-    weather_latitude: float = 32.8872
-    weather_longitude: float = 13.1803
+    weather_latitude: float = 32.516250
+    weather_longitude: float = 14.070361
+    weather_timezone: str = "Africa/Tripoli"
+    weather_cache_ttl_sec: int = 10800  # 3 hours (3h cache)
 
     @field_validator("database_url")
     @classmethod

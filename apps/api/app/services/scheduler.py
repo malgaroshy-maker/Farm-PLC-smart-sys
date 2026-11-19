@@ -14,7 +14,7 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -23,6 +23,7 @@ from app.core.clock import clock
 from app.core.domain import TERMINAL_COMMAND_STATUSES
 from app.core.timeutil import utcnow
 from app.deps import Actor
+from app.models.ai import ProgramOverride
 from app.models.command import Command
 from app.models.program import Program, ProgramStep, SchedulerState
 from app.schemas.command import CommandCreate
@@ -168,6 +169,14 @@ class SchedulerService:
         # 4. Find programs due between prev_farm and now_farm
         await self._check_due_programs(db, prev_farm, now_farm, farm_tz)
 
+        # 5. Check daily morning briefing at 06:00 farm time
+        try:
+            from app.services.ai.briefing import check_scheduled_briefing
+
+            await check_scheduled_briefing(db)
+        except Exception:
+            log.exception("Error checking scheduled morning briefing")
+
         self._last_farm_time = now_farm
         await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
         await db.commit()
@@ -292,6 +301,79 @@ class SchedulerService:
 
         await self._set_state(db, last_fired_key, today_date_str)
 
+        # Check for one-day AI program override
+        override_stmt = (
+            select(ProgramOverride)
+            .where(
+                ProgramOverride.target_date == today_date_str,
+                ProgramOverride.applied.is_(False),
+                (ProgramOverride.program_id == prog.id) | (ProgramOverride.program_id.is_(None)),
+            )
+            .order_by(desc(ProgramOverride.created_at))
+            .limit(1)
+        )
+        res = await db.execute(override_stmt)
+        override = res.scalar_one_or_none()
+
+        duration_factor = 1.0
+        if override:
+            override.applied = True
+            override.applied_at = clock.farm_now()
+            await db.flush()
+
+            if override.action == "skip":
+                log.info(
+                    "Program '%s' skipped on %s by approved AI override (%s)",
+                    prog.name,
+                    today_date_str,
+                    override.id,
+                )
+                await log_event(
+                    db,
+                    "schedule.overridden",
+                    "program",
+                    prog.id,
+                    actor_type="ai",
+                    payload={
+                        "override_id": override.id,
+                        "action": "skip",
+                        "target_date": today_date_str,
+                        "reason": "AI Weather Advisor approved one-day override",
+                    },
+                )
+                await manager.broadcast(
+                    "schedule.overridden",
+                    {
+                        "program_id": prog.id,
+                        "override_id": override.id,
+                        "action": "skip",
+                        "target_date": today_date_str,
+                    },
+                )
+                return
+            elif override.action in ("extend", "reduce"):
+                duration_factor = float(override.duration_factor)
+                log.info(
+                    "Program '%s' duration adjusted by factor %.2f on %s by approved AI override (%s)",
+                    prog.name,
+                    duration_factor,
+                    today_date_str,
+                    override.id,
+                )
+                await log_event(
+                    db,
+                    "schedule.overridden",
+                    "program",
+                    prog.id,
+                    actor_type="ai",
+                    payload={
+                        "override_id": override.id,
+                        "action": override.action,
+                        "duration_factor": duration_factor,
+                        "target_date": today_date_str,
+                    },
+                )
+
         await log_event(
             db,
             "program.started",
@@ -309,6 +391,7 @@ class SchedulerService:
             "program_id": prog.id,
             "program_name": prog.name,
             "step_index": 0,
+            "duration_factor": duration_factor,
             "active_command_id": None,
             "active_zone_id": None,
         }
@@ -330,15 +413,19 @@ class SchedulerService:
         active_data["step_index"] = step_index
         active_data["active_zone_id"] = step.zone_id
 
+        duration_factor = float(active_data.get("duration_factor", 1.0))
+        effective_duration = max(1, int(round(step.duration_min * duration_factor)))
+        note_suffix = f", override factor {duration_factor:.2f}" if duration_factor != 1.0 else ""
+
         cmd_req = CommandCreate(
             command_type="start_zone",
             target_type="zone",
             target_id=step.zone_id,
             payload={
-                "duration_min": step.duration_min,
+                "duration_min": effective_duration,
                 "program_id": prog.id,
                 "program_step_id": step.id,
-                "notes": f"Program: {prog.name} (Step {step.step_order})",
+                "notes": f"Program: {prog.name} (Step {step.step_order}{note_suffix})",
             },
         )
 

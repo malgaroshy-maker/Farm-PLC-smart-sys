@@ -20,6 +20,9 @@ def test_guard_no_forbidden_utcnow_in_services():
             "self.staleness_conditions(snapshots, utcnow())",  # ALM-044 / ALM-029 link check
             "real_now = utcnow()",  # debounce timer
         ],
+        "anomaly.py": [
+            "r_now = real_now or utcnow()",  # debounce timer
+        ],
         "commands.py": [
             "requested_at_real=utcnow()",  # command timeout tracking
             "now_real = utcnow()",  # command timeout tracking

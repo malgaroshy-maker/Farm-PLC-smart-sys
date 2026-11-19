@@ -3,10 +3,12 @@ SQLAlchemy models — re-export all for Alembic and app use.
 """
 
 from .ai import (
+    AIBriefing,
     AIInsight,
     AISuggestion,
     DetectedAnomaly,
     MaintenancePrediction,
+    ProgramOverride,
     WeatherAdvisory,
     WeatherCache,
 )
@@ -54,4 +56,6 @@ __all__ = [
     "WeatherAdvisory",
     "AIInsight",
     "MaintenancePrediction",
+    "ProgramOverride",
+    "AIBriefing",
 ]

@@ -57,11 +57,17 @@ async def _reset_db() -> None:
 
 @pytest.fixture()
 def client():
+    from app.services.ai.agent import clear_ai_cache
     from app.services.alarms import engine as alarm_engine
+    from app.services.anomaly import anomaly_detector
     from app.services.telemetry import recorder
+    from app.services.weather import weather_service
 
     alarm_engine._pending_since.clear()
+    anomaly_detector.reset()
     recorder._last = None
+    weather_service.reset_cache()
+    clear_ai_cache()
     asyncio.run(_reset_db())
     with TestClient(app) as c:
         yield c

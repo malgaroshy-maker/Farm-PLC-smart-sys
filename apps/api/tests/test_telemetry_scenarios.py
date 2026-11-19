@@ -88,6 +88,10 @@ def test_scenario_without_simulator_fails_cleanly(client, monkeypatch):
         time.sleep(0.05)
     assert state["status"] == "failed"
     assert "ALM-006" in state["message"]
+    for _ in range(50):
+        if not runner.busy:
+            break
+        time.sleep(0.05)
     assert not runner.busy
 
 

@@ -17,6 +17,7 @@ from app.config import DEFAULT_SECRET, settings
 from app.core.clock import clock
 from app.database import async_session_factory
 from app.routers import (
+    ai,
     alarms,
     auth,
     commands,
@@ -94,6 +95,7 @@ for r in (
     schedules,
     cycles,
     reports,
+    ai,
 ):
     app.include_router(r.router, prefix=API_V1)
 
