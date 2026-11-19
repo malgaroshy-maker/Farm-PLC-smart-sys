@@ -40,6 +40,20 @@ async def sync_state(
 
     for event_type, payload in diff_events(before, payloads):
         await manager.broadcast(event_type, payload)
+        if event_type == "zone.state.changed":
+            new_state = payload.get("current_state") or payload.get("state")
+            if new_state in ("off", "completed", "faulted"):
+                zid = payload.get("zone_id")
+                if zid:
+                    from app.services.cycles import record_cycle_end_for_zone
+
+                    outcome = None
+                    if new_state == "faulted":
+                        outcome = "faulted"
+                    elif new_state == "completed":
+                        outcome = "completed"
+                    await record_cycle_end_for_zone(db, zid, outcome=outcome)
+                    await db.commit()
     after = await load_snapshots(db)
     await alarm_engine.on_state_sync(db, after)
     await recorder.maybe_record(db, after)

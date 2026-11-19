@@ -249,6 +249,60 @@ SCENARIOS: dict[str, Scenario] = {
             ],
         ),
         Scenario(
+            "scheduled_day",
+            "Scheduled irrigation day",
+            "يوم ري مجدول",
+            "Create a 3-zone program, jump to 5 min before start, run at 60×, and verify three completed cycles.",
+            [],
+            [
+                (
+                    "create_program",
+                    "Scheduled Day Demo",
+                    "06:00",
+                    "1,2,3,4,5,6,7",
+                    [
+                        ("zone_rumman_1", 2),
+                        ("zone_rumman_2", 2),
+                        ("zone_enab", 2),
+                    ],
+                ),
+                ("clock_speed", 1.0),
+                ("clock_jump", "05:55"),
+                ("note", "Jumped to 05:55 on farm clock. Setting speed to 60×..."),
+                ("clock_speed", 60.0),
+                ("wait_completed_cycles", 3, 180),
+                ("clock_speed", 1.0),
+                ("note", "Program completed all 3 zones with water > 0. Returned to 1×."),
+            ],
+        ),
+        Scenario(
+            "scheduled_blocked_start",
+            "Blocked scheduled start",
+            "تعذر بدء مرحلة مجدولة",
+            "Scheduled program on low tank skips blocked zone, raises S1 info alarm, and continues.",
+            ["ALM-035"],
+            [
+                (
+                    "create_program",
+                    "Low Tank Sequence",
+                    "07:00",
+                    "1,2,3,4,5,6,7",
+                    [
+                        ("zone_rumman_1", 2),
+                        ("zone_enab", 2),
+                    ],
+                ),
+                ("fault", "tank", None, "set_level", 8),
+                ("clock_speed", 1.0),
+                ("clock_jump", "06:55"),
+                ("clock_speed", 60.0),
+                ("wait_skipped_cycle", "zone_rumman_1", 60),
+                ("wait_completed_cycles", 1, 120),
+                ("fault", "tank", None, "set_level", 80),
+                ("clock_speed", 1.0),
+            ],
+        ),
+        Scenario(
             "reset_farm",
             "Reset farm",
             "إعادة ضبط المزرعة",
@@ -394,6 +448,76 @@ class ScenarioRunner:
                 n = await alarm_engine.reset_all_cleared(db, SCENARIO_ACTOR)
             if n:
                 await self._publish(f"Reset {n} latched alarm(s)")
+        elif kind == "create_program":
+            _, prog_name, start_time, weekday_mask, steps_list = step
+            from uuid import uuid4
+
+            from app.models.program import Program, ProgramStep
+
+            async with async_session_factory() as db:
+                p_id = f"prog_scen_{uuid4().hex[:8]}"
+                now = clock.farm_now()
+                prog = Program(
+                    id=p_id,
+                    name=prog_name,
+                    enabled=True,
+                    start_time_local=start_time,
+                    weekday_mask=weekday_mask,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(prog)
+                for idx, (zid, dur) in enumerate(steps_list, start=1):
+                    st_id = f"step_scen_{uuid4().hex[:8]}"
+                    db.add(
+                        ProgramStep(
+                            id=st_id,
+                            program_id=p_id,
+                            zone_id=zid,
+                            step_order=idx,
+                            duration_min=dur,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                await db.commit()
+            await self._publish(f"Created program '{prog_name}' with {len(steps_list)} steps")
+        elif kind == "clock_speed":
+            speed = float(step[1])
+            clock.set_speed(speed)
+            async with async_session_factory() as db:
+                await clock.save(db)
+            await manager.broadcast(
+                "clock.changed",
+                {"speed": speed, "farm_now": clock.farm_now().isoformat()},
+            )
+            await self._publish(f"Clock speed set to {speed}×")
+        elif kind == "clock_jump":
+            time_str = step[1]
+            prev_sim, next_sim = clock.jump_to(time_str)
+            self._started_farm = next_sim
+            async with async_session_factory() as db:
+                from app.schemas.command import CommandCreate
+                from app.services.commands import _supersede_starts
+                from app.services.cycles import record_cycles_aborted_on_jump
+                from app.services.scheduler import scheduler
+
+                await _supersede_starts(
+                    db, CommandCreate(command_type="stop_all", target_type="system")
+                )
+                await record_cycles_aborted_on_jump(db, next_sim)
+                scheduler.on_clock_jump(next_sim)
+                await clock.save(db)
+            await manager.broadcast("clock.changed", {"farm_now": next_sim.isoformat()})
+            await self._publish(f"Clock jumped to {time_str}")
+        elif kind == "wait_completed_cycles":
+            _, count, timeout = step
+            await self._wait_completed_cycles(count, timeout)
+            await self._publish(f"Verified {count} completed cycle(s) with water delivered")
+        elif kind == "wait_skipped_cycle":
+            _, zone_id, timeout = step
+            await self._wait_skipped_cycle(zone_id, timeout)
+            await self._publish(f"Verified skipped cycle recorded for {zone_id}")
         else:
             raise ScenarioFailed(f"Unknown step {kind}")
 
@@ -470,6 +594,48 @@ class ScenarioRunner:
             if loop.time() >= deadline:
                 raise ScenarioFailed(f"Expected alarm {code} was not raised within {timeout}s")
             await asyncio.sleep(self.poll_s)
+
+    async def _wait_completed_cycles(self, expected_count: int, timeout: float) -> None:
+        from sqlalchemy import select
+
+        from app.models.irrigation_cycle import IrrigationCycle
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline:
+            async with async_session_factory() as db:
+                res = await db.execute(
+                    select(IrrigationCycle).where(
+                        IrrigationCycle.outcome == "completed",
+                        IrrigationCycle.actual_start_at >= self._started_farm,
+                        IrrigationCycle.water_estimate_m3 > 0,
+                    )
+                )
+                if len(res.scalars().all()) >= expected_count:
+                    return
+            await asyncio.sleep(self.poll_s)
+        raise ScenarioFailed(f"Did not see {expected_count} completed cycle(s) within {timeout}s")
+
+    async def _wait_skipped_cycle(self, zone_id: str, timeout: float) -> None:
+        from sqlalchemy import select
+
+        from app.models.irrigation_cycle import IrrigationCycle
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline:
+            async with async_session_factory() as db:
+                res = await db.execute(
+                    select(IrrigationCycle).where(
+                        IrrigationCycle.zone_id == zone_id,
+                        IrrigationCycle.outcome == "skipped",
+                        IrrigationCycle.actual_start_at >= self._started_farm,
+                    )
+                )
+                if res.scalars().first():
+                    return
+            await asyncio.sleep(self.poll_s)
+        raise ScenarioFailed(f"Did not see skipped cycle for {zone_id} within {timeout}s")
 
 
 runner = ScenarioRunner()

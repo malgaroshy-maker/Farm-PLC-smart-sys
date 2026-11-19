@@ -137,8 +137,74 @@ def farm_midnight_utc(now: datetime | None = None) -> datetime:
 
 
 async def water_today(db: AsyncSession) -> list[dict]:
-    """m³ delivered per zone since farm-local midnight (trapezoid over zone.flow_m3h)."""
+    """m³ delivered per zone since farm-local midnight.
+
+    Primary source: irrigation_cycles (closed runs + live integration for running cycle).
+    Fallback: direct telemetry trapezoidal integration if no cycles exist.
+    """
+    from app.models.irrigation_cycle import IrrigationCycle
+
     since = farm_midnight_utc()
+    now_farm = clock.farm_now()
+
+    # 1. Closed cycles today
+    cycles_res = await db.execute(
+        select(IrrigationCycle.zone_id, IrrigationCycle.water_estimate_m3).where(
+            IrrigationCycle.actual_end_at >= since,
+            IrrigationCycle.water_estimate_m3.is_not(None),
+        )
+    )
+    cycle_rows = cycles_res.all()
+    totals: dict[str, float] = {}
+    has_cycles = False
+    for zid, m3 in cycle_rows:
+        has_cycles = True
+        totals[zid] = totals.get(zid, 0.0) + (m3 or 0.0)
+
+    # 2. Open cycles in progress
+    open_res = await db.execute(
+        select(IrrigationCycle.zone_id, IrrigationCycle.actual_start_at).where(
+            IrrigationCycle.actual_end_at.is_(None),
+            IrrigationCycle.actual_start_at >= since,
+        )
+    )
+    for zid, start_at in open_res.all():
+        has_cycles = True
+        # Integrate live flow for running cycle
+        run_rows = (
+            await db.execute(
+                select(TelemetryPoint.ts, TelemetryPoint.value_numeric, TelemetryPoint.value_text)
+                .where(
+                    TelemetryPoint.metric_key == "zone.flow_m3h",
+                    TelemetryPoint.zone_id == zid,
+                    TelemetryPoint.ts >= start_at,
+                    TelemetryPoint.ts <= now_farm,
+                )
+                .order_by(TelemetryPoint.ts)
+            )
+        ).all()
+        live_m3 = 0.0
+        prev_p = None
+        for ts, v, val_text in run_rows:
+            ts = as_utc(ts)
+            v = v or 0.0
+            try:
+                s_speed = float(val_text) if val_text else 1.0
+            except (ValueError, TypeError):
+                s_speed = 1.0
+            if prev_p:
+                pts, pv, p_speed = prev_p
+                dt = (ts - pts).total_seconds()
+                limit = max_gap_s(max(s_speed, p_speed))
+                if 0 < dt <= limit:
+                    live_m3 += (pv + v) / 2 * dt / 3600.0
+            prev_p = (ts, v, s_speed)
+        totals[zid] = totals.get(zid, 0.0) + live_m3
+
+    if has_cycles:
+        return [{"zone_id": z, "m3": round(m3, 3)} for z, m3 in sorted(totals.items())]
+
+    # Fallback to pure telemetry trapezoid integration
     rows = (
         await db.execute(
             select(
@@ -151,7 +217,6 @@ async def water_today(db: AsyncSession) -> list[dict]:
             .order_by(TelemetryPoint.zone_id, TelemetryPoint.ts)
         )
     ).all()
-    totals: dict[str, float] = {}
     prev: dict[str, tuple[datetime, float, float]] = {}
     for zone_id, ts, value, val_text in rows:
         ts = as_utc(ts)

@@ -254,6 +254,11 @@ async def submit_command(db: AsyncSession, req: CommandCreate, actor: Actor) -> 
             cmd.completed_at = cmd.requested_at
 
     db.add(cmd)
+    if req.command_type == "start_zone" and not rejection and zone is not None:
+        from app.services.cycles import record_cycle_start
+
+        await record_cycle_start(db, cmd, zone, actor, req.payload)
+
     superseded = await _supersede_starts(db, req) if req.command_type in STOPS else []
     await log_event(
         db,
