@@ -12,7 +12,6 @@ from app.models.irrigation_cycle import IrrigationCycle
 from app.models.telemetry import TelemetryPoint
 from app.services.cycles import (
     record_cycle_end_for_zone,
-    record_cycles_aborted_on_jump,
 )
 
 
@@ -87,6 +86,7 @@ async def test_cycle_lifecycle_and_water_integration(client):
             assert closed.outcome == "completed"
             assert closed.actual_duration_min == 30
             assert closed.water_estimate_m3 > 0
+            assert closed.water_is_estimate is False
             await db.commit()
         finally:
             clock.farm_now = original_fn
@@ -108,20 +108,93 @@ async def test_cycle_lifecycle_and_water_integration(client):
 
 
 @pytest.mark.asyncio
-async def test_clock_jump_aborts_active_cycles(client):
+async def test_water_estimate_flag_with_fewer_than_two_samples(client):
     push_state(client)
     admin = login(client, "admin")
 
+    start_resp = client.post(
+        "/api/v1/commands",
+        headers=admin,
+        json={"command_type": "start_zone", "target_type": "zone", "target_id": "zone_zaytoun"},
+    )
+    assert start_resp.status_code == 201
+
+    async with async_session_factory() as db:
+        # Close without telemetry samples (< 2 samples)
+        closed = await record_cycle_end_for_zone(db, "zone_zaytoun", outcome="completed")
+        assert closed is not None
+        assert closed.outcome == "completed"
+        assert closed.water_is_estimate is True
+        await db.commit()
+
+    # GET /api/v1/cycles must return water_is_estimate == True
+    resp = client.get("/api/v1/cycles?zone_id=zone_zaytoun", headers=admin)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"][0]["water_is_estimate"] is True
+
+
+@pytest.mark.asyncio
+async def test_command_failure_or_supersede_aborts_open_cycle(client):
+    push_state(client)
+    admin = login(client, "admin")
+
+    start_resp = client.post(
+        "/api/v1/commands",
+        headers=admin,
+        json={"command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab"},
+    )
+    assert start_resp.status_code == 201
+    cmd_id = start_resp.json()["id"]
+
+    # Fail the command via sync_command
+    from app.schemas.command import CommandSyncUpdate
+    from app.services.commands import sync_command
+
+    async with async_session_factory() as db:
+        sync_req = CommandSyncUpdate(
+            status="failed",
+            failure_reason="PLC valve timeout",
+        )
+        updated_cmd = await sync_command(db, cmd_id, sync_req)
+        assert updated_cmd.status == "failed"
+
+        # Verify the open cycle was closed as aborted
+        cyc_res = await db.execute(
+            select(IrrigationCycle).where(
+                IrrigationCycle.command_id == cmd_id,
+            )
+        )
+        cycle = cyc_res.scalars().one()
+        assert cycle.outcome == "aborted"
+        assert cycle.failure_reason == "PLC valve timeout"
+        assert cycle.actual_end_at is not None
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_reset_and_back_to_real_leaves_no_open_cycles(client):
+    push_state(client)
+    admin = login(client, "admin")
+
+    # Start a zone to open a cycle
     client.post(
         "/api/v1/commands",
         headers=admin,
         json={"command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab"},
     )
 
+    # Call reset to real time
+    resp = client.post(
+        "/api/v1/sim/clock",
+        headers=admin,
+        json={"real": True, "confirm": True},
+    )
+    assert resp.status_code == 200
+
     async with async_session_factory() as db:
-        jump_time = clock.farm_now() + timedelta(hours=3)
-        aborted = await record_cycles_aborted_on_jump(db, jump_time)
-        assert len(aborted) >= 1
-        assert aborted[0].outcome == "aborted"
-        assert aborted[0].failure_reason == "clock jump"
-        await db.commit()
+        res = await db.execute(
+            select(IrrigationCycle).where(IrrigationCycle.actual_end_at.is_(None))
+        )
+        open_cycles = res.scalars().all()
+        assert len(open_cycles) == 0

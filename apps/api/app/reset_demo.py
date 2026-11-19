@@ -35,14 +35,17 @@ HISTORY = [
 
 
 async def reset_history() -> dict[str, int]:
-    from app.services.scenarios import runner
+    from app.services.scenarios import cleanup_scenario_programs, runner
+    from app.services.scheduler import scheduler
     from app.services.telemetry import recorder
 
     await runner.stop()
     recorder._last_farm = None
     recorder._last_real = None
+    scheduler.reset()
     removed: dict[str, int] = {}
     async with async_session_factory() as db:
+        await cleanup_scenario_programs(db)
         for model in HISTORY:
             n = (await db.execute(select(func.count()).select_from(model))).scalar_one()
             await db.execute(delete(model))

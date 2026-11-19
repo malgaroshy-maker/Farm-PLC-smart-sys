@@ -14,7 +14,7 @@
 | Area | Status | Notes |
 |------|--------|-------|
 | Monorepo, contracts, docs | ✅ | pnpm + Turborepo. `@algaroshy/contracts` is used by the web app as the single source of types. |
-| Database + migrations | ✅ | 26 SQLAlchemy models (including `FarmClockModel`, `Program`, `ProgramStep`, `SchedulerState`, `IrrigationCycle`). Alembic migrations up to head (`3d9f8e2a1b4c`). `alembic check` clean. Fresh DB upgrade verified. |
+| Database + migrations | ✅ | 26 SQLAlchemy models (including `FarmClockModel`, `Program`, `ProgramStep`, `SchedulerState`, `IrrigationCycle`). Alembic migrations up to head (`4e1f8d2a3c5b` adding `water_is_estimate`). `alembic check` clean. Fresh DB upgrade verified. |
 | Seed data | ✅ | 12 zones, 12 valves, 2 pumps, 2 sources, 15 sensors, admin user with a bcrypt-hashed password. |
 | Auth | ✅ | `POST /auth/login` (JWT), `GET /auth/me`. Roles owner_admin / operator / viewer enforced on every endpoint. Operator+ can toggle schedules; Admin creates/edits/deletes. The simulator uses a service token. |
 | Virtual Farm Clock | ✅ | Single source of truth in API (`app/core/clock.py`), persisted, monotonic. Live speed control (pause, 1×, 10×, 60×, 360×), jump to time (presets + custom HH:MM), step (+1 min), WS `clock.changed` broadcasts, amber SIMULATED TIME badge (`#ff9f43`) with speed in AR+EN, presenter header chip (desktop) collapsing to badge on mobile, full Simulator page panel, and "Back to real time" with reset confirmation. Telemetry, event times, alarm windows, and map lighting/season follow farm time; link staleness and command timeouts stay on real wall clock. Locked to real time unless `CONTROLLER_MODE=simulator`. |
@@ -34,7 +34,7 @@
 | Start script | ✅ | `run.bat` / `run.sh` (dev) and `run.bat demo` (phones + PWA). One window, first-run self-setup, a single `API_PORT`, clean Ctrl+C shutdown, `stop.bat` safety net, `--smoke` self-test. `run.bat reset` clears operating history for a clean demo (keeps users and settings). |
 | Phone / PWA | ✅ | Responsive layout with bottom navigation and a slide-in menu. Installable (manifest, icons, service worker that never caches `/api` or `/ws`). |
 | Web MVP | ✅ | Real login, live map (incl. starting/stopping state), dashboard side column (tank, pumps, alarms, trends, water today, next irrigation), zone panel with a duration picker + confirm and real cycle history, start/stop with interlock feedback, alarm chime + mute, reduce-motion toggle, global STOP ALL, Alarm Center (active/history, ack/reset, AR/EN guidance), Simulator page with Virtual Farm Clock panel, Schedules page with 24h timeline and drawer, Reports page with charts and CSV export, honest connection status. |
-| Tests + CI | ✅ | 112 API + 27 simulator + 32 web + 3 map-model tests (174 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
+| Tests + CI | ✅ | 118 API + 27 simulator + 36 web + 3 map-model tests (184 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
 
 ## Live scenario suite (2026-11-19)
 

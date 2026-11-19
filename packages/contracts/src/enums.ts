@@ -149,7 +149,8 @@ export type AlarmCategory =
   | "water_source"
   | "configuration"
   | "security"
-  | "maintenance";
+  | "maintenance"
+  | "schedule";
 
 /** Alarm status lifecycle (ALARM_MATRIX.md §5) */
 export type AlarmStatus =

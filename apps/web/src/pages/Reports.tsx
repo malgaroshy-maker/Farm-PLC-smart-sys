@@ -10,6 +10,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import type {
+  DailyIrrigationReportRow,
+  WaterUsageReportRow,
+  PumpRuntimeReportRow,
+  AlarmHistoryReportRow,
+} from '@algaroshy/contracts';
 import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { apiFetch, apiUrl, session } from '../lib/api';
 import { useFarmClock } from '../lib/clock';
@@ -25,37 +31,6 @@ const RED = '#ff5449';
 
 type ReportTab = 'daily' | 'water' | 'pumps' | 'alarms';
 type RangePreset = 'today' | 'week' | 'month';
-
-interface DailyReportRow {
-  date: string;
-  total_water_m3: number;
-  cycle_count: number;
-  completed_count: number;
-  aborted_count: number;
-  skipped_count: number;
-}
-
-interface WaterReportRow {
-  zone_id: string;
-  total_water_m3: number;
-  cycle_count: number;
-  completed_count: number;
-  total_duration_min: number;
-}
-
-interface PumpReportRow {
-  pump_id: string;
-  runtime_hours: number;
-  start_count: number;
-}
-
-interface AlarmReportRow {
-  alarm_code: string;
-  count: number;
-  severity: string;
-  title: string;
-  title_ar: string;
-}
 
 const PUMP_NAMES: Record<string, [string, string]> = {
   pump_booster_01: ['Booster pump', 'مضخة التعزيز'],
@@ -100,10 +75,10 @@ export default function ReportsPage() {
   }, [farmNow, rangePreset]);
 
   // Report data states
-  const [dailyData, setDailyData] = useState<DailyReportRow[]>([]);
-  const [waterData, setWaterData] = useState<WaterReportRow[]>([]);
-  const [pumpData, setPumpData] = useState<PumpReportRow[]>([]);
-  const [alarmData, setAlarmData] = useState<AlarmReportRow[]>([]);
+  const [dailyData, setDailyData] = useState<DailyIrrigationReportRow[]>([]);
+  const [waterData, setWaterData] = useState<WaterUsageReportRow[]>([]);
+  const [pumpData, setPumpData] = useState<PumpRuntimeReportRow[]>([]);
+  const [alarmData, setAlarmData] = useState<AlarmHistoryReportRow[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -112,16 +87,16 @@ export default function ReportsPage() {
       try {
         const query = `from_date=${fromDate}&to_date=${toDate}`;
         if (tab === 'daily') {
-          const res = await apiFetch<DailyReportRow[]>(`/api/v1/reports/daily-irrigation?${query}`);
+          const res = await apiFetch<DailyIrrigationReportRow[]>(`/api/v1/reports/daily-irrigation?${query}`);
           if (active) setDailyData(res);
         } else if (tab === 'water') {
-          const res = await apiFetch<WaterReportRow[]>(`/api/v1/reports/water-usage?${query}`);
+          const res = await apiFetch<WaterUsageReportRow[]>(`/api/v1/reports/water-usage?${query}`);
           if (active) setWaterData(res);
         } else if (tab === 'pumps') {
-          const res = await apiFetch<PumpReportRow[]>(`/api/v1/reports/pump-runtime?${query}`);
+          const res = await apiFetch<PumpRuntimeReportRow[]>(`/api/v1/reports/pump-runtime?${query}`);
           if (active) setPumpData(res);
         } else if (tab === 'alarms') {
-          const res = await apiFetch<AlarmReportRow[]>(`/api/v1/reports/alarm-history?${query}`);
+          const res = await apiFetch<AlarmHistoryReportRow[]>(`/api/v1/reports/alarm-history?${query}`);
           if (active) setAlarmData(res);
         }
       } catch {
@@ -175,20 +150,20 @@ export default function ReportsPage() {
 
   // Summaries
   const totalWater = useMemo(() => {
-    if (tab === 'daily') return dailyData.reduce((s, r) => s + r.total_water_m3, 0);
-    if (tab === 'water') return waterData.reduce((s, r) => s + r.total_water_m3, 0);
+    if (tab === 'daily') return dailyData.reduce((s, r) => s + (r.total_water_m3 ?? 0), 0);
+    if (tab === 'water') return waterData.reduce((s, r) => s + (r.total_water_m3 ?? 0), 0);
     return 0;
   }, [tab, dailyData, waterData]);
 
   const totalCycles = useMemo(() => {
-    if (tab === 'daily') return dailyData.reduce((s, r) => s + r.cycle_count, 0);
-    if (tab === 'water') return waterData.reduce((s, r) => s + r.cycle_count, 0);
+    if (tab === 'daily') return dailyData.reduce((s, r) => s + (r.cycle_count ?? 0), 0);
+    if (tab === 'water') return waterData.reduce((s, r) => s + (r.cycle_count ?? 0), 0);
     return 0;
   }, [tab, dailyData, waterData]);
 
   const completedCycles = useMemo(() => {
-    if (tab === 'daily') return dailyData.reduce((s, r) => s + r.completed_count, 0);
-    if (tab === 'water') return waterData.reduce((s, r) => s + r.completed_count, 0);
+    if (tab === 'daily') return dailyData.reduce((s, r) => s + (r.completed_count ?? 0), 0);
+    if (tab === 'water') return waterData.reduce((s, r) => s + (r.completed_count ?? 0), 0);
     return 0;
   }, [tab, dailyData, waterData]);
 
@@ -311,8 +286,8 @@ export default function ReportsPage() {
                     labelStyle={{ color: '#bac9cc' }}
                   />
                   <Legend />
-                  <Bar dataKey="total_water_m3" name="Water (m³)" fill={CYAN} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="completed_count" name="Completed Cycles" fill={GREEN} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="total_water_m3" name={t('reports.chartWater')} fill={CYAN} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="completed_count" name={t('reports.chartCompleted')} fill={GREEN} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )
@@ -353,7 +328,7 @@ export default function ReportsPage() {
                     }}
                     labelStyle={{ color: '#bac9cc' }}
                   />
-                  <Bar dataKey="total_water_m3" name="Water (m³)" fill={CYAN} radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="total_water_m3" name={t('reports.chartWater')} fill={CYAN} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )
@@ -385,8 +360,8 @@ export default function ReportsPage() {
                     labelStyle={{ color: '#bac9cc' }}
                   />
                   <Legend />
-                  <Bar dataKey="runtime_hours" name="Runtime (h)" fill={CYAN} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="start_count" name="Starts" fill={YELLOW} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="runtime_hours" name={t('reports.chartRuntime')} fill={CYAN} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="start_count" name={t('reports.chartStarts')} fill={YELLOW} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )
@@ -409,7 +384,7 @@ export default function ReportsPage() {
                     }}
                     labelStyle={{ color: '#bac9cc' }}
                   />
-                  <Bar dataKey="count" name="Occurrences" fill={RED} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" name={t('reports.chartOccurrences')} fill={RED} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )
@@ -420,7 +395,7 @@ export default function ReportsPage() {
       {/* Data Table Section */}
       <div className="panel overflow-hidden">
         <div className="p-4 border-b border-white/5 flex items-center justify-between">
-          <span className="text-xs font-bold text-[#bac9cc]">Detailed Records</span>
+          <span className="text-xs font-bold text-[#bac9cc]">{t('reports.detailedRecords')}</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -447,9 +422,11 @@ export default function ReportsPage() {
                     <tr key={row.date} className="hover:bg-white/5">
                       <td className="p-3 font-mono text-[#e5e2e1]">{row.date}</td>
                       <td className="p-3 text-end font-mono text-[#00e5ff]">{fmtNum(row.total_water_m3, 2)}</td>
-                      <td className="p-3 text-end font-mono">{row.cycle_count}</td>
-                      <td className="p-3 text-end font-mono text-[#7ee787]">{row.completed_count}</td>
-                      <td className="p-3 text-end font-mono text-[#ff5449]">{row.aborted_count + row.skipped_count}</td>
+                      <td className="p-3 text-end font-mono">{row.cycle_count ?? 0}</td>
+                      <td className="p-3 text-end font-mono text-[#7ee787]">{row.completed_count ?? 0}</td>
+                      <td className="p-3 text-end font-mono text-[#ff5449]">
+                        {(row.aborted_count ?? 0) + (row.skipped_count ?? 0) + (row.faulted_count ?? 0) + (row.manual_stop_count ?? 0)}
+                      </td>
                     </tr>
                   ))
                 )}

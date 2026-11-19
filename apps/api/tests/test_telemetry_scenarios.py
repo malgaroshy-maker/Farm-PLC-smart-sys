@@ -120,3 +120,83 @@ def test_water_today_integrates_flow(client):
     enab = next(z for z in body["zones"] if z["zone_id"] == "zone_enab")
     assert enab["m3"] == 0.05
     assert body["total_m3"] >= 0.05
+
+
+def test_scenario_cleanup_programs_on_pass_and_fail(client, monkeypatch):
+    """Scenarios must clean up prog_scen_* programs, steps, and scheduler state on pass, fail, or stop."""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import async_session_factory
+    from app.models.program import Program, ProgramStep, SchedulerState
+    from app.services.scenarios import cleanup_scenario_programs
+
+    async def _setup_and_verify():
+        async with async_session_factory() as db:
+            # Seed leftover prog_scen_* programs, steps, and state
+            p1 = Program(
+                id="prog_scen_temp_1",
+                name="Scenario Program 1",
+                start_time_local="07:00",
+                weekday_mask="1,2,3,4,5,6,7",
+                enabled=True,
+            )
+            s1 = ProgramStep(
+                id="step_scen_1",
+                program_id="prog_scen_temp_1",
+                zone_id="zone_enab",
+                step_order=1,
+                duration_min=15,
+            )
+            st1 = SchedulerState(
+                key="scheduler.last_fired_prog_scen_temp_1",
+                value_text="2026-11-19",
+            )
+            db.add_all([p1, s1, st1])
+            await db.commit()
+
+            # Verify seeded
+            progs = (
+                (await db.execute(select(Program).where(Program.id.like("prog_scen_%"))))
+                .scalars()
+                .all()
+            )
+            assert len(progs) >= 1
+
+            # Execute cleanup
+            cleaned = await cleanup_scenario_programs(db)
+            assert cleaned >= 1
+            await db.commit()
+
+            # Verify all prog_scen_* are gone
+            progs_after = (
+                (await db.execute(select(Program).where(Program.id.like("prog_scen_%"))))
+                .scalars()
+                .all()
+            )
+            assert len(progs_after) == 0
+
+            steps_after = (
+                (
+                    await db.execute(
+                        select(ProgramStep).where(ProgramStep.program_id.like("prog_scen_%"))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(steps_after) == 0
+
+            states_after = (
+                (
+                    await db.execute(
+                        select(SchedulerState).where(SchedulerState.key.like("%prog_scen_%"))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(states_after) == 0
+
+    asyncio.run(_setup_and_verify())

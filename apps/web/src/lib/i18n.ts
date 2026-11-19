@@ -354,6 +354,12 @@ const dict = {
   'reports.alarmTitle': { ar: 'عنوان الإنذار', en: 'Alarm Title' },
   'reports.severity': { ar: 'المستوى', en: 'Severity' },
   'reports.count': { ar: 'التكرار', en: 'Count' },
+  'reports.chartWater': { ar: 'المياه (م³)', en: 'Water (m³)' },
+  'reports.chartCompleted': { ar: 'دورات مكتملة', en: 'Completed Cycles' },
+  'reports.chartRuntime': { ar: 'ساعات العمل (ساعة)', en: 'Runtime (h)' },
+  'reports.chartStarts': { ar: 'مرات التشغيل', en: 'Starts' },
+  'reports.chartOccurrences': { ar: 'مرات التكرار', en: 'Occurrences' },
+  'reports.detailedRecords': { ar: 'السجلات التفصيلية', en: 'Detailed Records' },
   // zone history
   'zone.history.title': { ar: 'سجل دورات الري الأخيرة', en: 'Recent Irrigation Cycles' },
   'zone.history.noCycles': { ar: 'لا توجد دورات مسجلة لهذه المنطقة بعد', en: 'No cycles recorded for this zone yet' },

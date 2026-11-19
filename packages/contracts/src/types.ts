@@ -277,6 +277,7 @@ export interface IrrigationCycle {
   actual_duration_min: number | null;
   outcome: CycleOutcome | null;
   water_estimate_m3: number | null;
+  water_is_estimate?: boolean;
   initiated_by_type: ActorType;
   initiated_by_id: string | null;
   alarms_json?: string | null;
@@ -458,6 +459,47 @@ export interface ClockUpdateRequest {
 }
 
 // ─── Reports ────────────────────────────────────────────
+
+export interface DailyIrrigationReportRow {
+  date: string;
+  total_water_m3: number;
+  cycle_count: number;
+  completed_count: number;
+  aborted_count: number;
+  skipped_count: number;
+  faulted_count: number;
+  manual_stop_count: number;
+  total_duration_min: number;
+}
+
+export interface WaterUsageReportRow {
+  zone_id: string;
+  zone_name: string;
+  zone_name_ar: string;
+  crop_type: CropType | string;
+  total_water_m3: number;
+  cycle_count: number;
+  completed_count: number;
+  total_duration_min: number;
+}
+
+export interface PumpRuntimeReportRow {
+  pump_id: string;
+  pump_name: string;
+  pump_name_ar: string;
+  pump_type: string;
+  start_count: number;
+  runtime_hours: number;
+  faults_count: number;
+}
+
+export interface AlarmHistoryReportRow {
+  alarm_code: string;
+  count: number;
+  severity: string;
+  title: string;
+  title_ar: string;
+}
 
 export interface DailyIrrigationReport {
   date: string;

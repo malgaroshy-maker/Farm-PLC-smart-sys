@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import clock
 from app.core.timeutil import as_utc, utcnow
@@ -280,7 +281,7 @@ SCENARIOS: dict[str, Scenario] = {
             "Blocked scheduled start",
             "تعذر بدء مرحلة مجدولة",
             "Scheduled program on low tank skips blocked zone, raises S1 info alarm, and continues.",
-            ["ALM-035"],
+            ["ALM-045"],
             [
                 (
                     "create_program",
@@ -331,6 +332,23 @@ class RunState:
 
 class ScenarioFailed(Exception):
     pass
+
+
+async def cleanup_scenario_programs(db: AsyncSession) -> int:
+    """Delete all scenario-created programs (id starting with prog_scen_) and their steps/state."""
+    from sqlalchemy import delete, select
+
+    from app.models.program import Program, SchedulerState
+
+    res = await db.execute(select(Program).where(Program.id.like("prog_scen_%")))
+    progs = res.scalars().all()
+    count = len(progs)
+    for p in progs:
+        await db.execute(delete(SchedulerState).where(SchedulerState.key.like(f"%{p.id}%")))
+        await db.delete(p)
+    if count > 0:
+        await db.commit()
+    return count
 
 
 class ScenarioRunner:
@@ -415,6 +433,11 @@ class ScenarioRunner:
             self.state.status = "failed"
             await self._publish(f"Crashed: {exc}")
         finally:
+            try:
+                async with async_session_factory() as db:
+                    await cleanup_scenario_programs(db)
+            except Exception:
+                log.exception("Failed to clean up scenario programs")
             self.state.finished_at = utcnow().isoformat()
             await self._publish()
 
@@ -506,7 +529,7 @@ class ScenarioRunner:
                     db, CommandCreate(command_type="stop_all", target_type="system")
                 )
                 await record_cycles_aborted_on_jump(db, next_sim)
-                scheduler.on_clock_jump(next_sim)
+                scheduler.on_clock_jump(next_sim, prev_sim)
                 await clock.save(db)
             await manager.broadcast("clock.changed", {"farm_now": next_sim.isoformat()})
             await self._publish(f"Clock jumped to {time_str}")

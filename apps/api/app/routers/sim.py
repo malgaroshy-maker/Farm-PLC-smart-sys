@@ -128,7 +128,7 @@ async def update_clock(
         from app.services.scheduler import scheduler
 
         await record_cycles_aborted_on_jump(db, next_sim)
-        scheduler.on_clock_jump(next_sim)
+        scheduler.on_clock_jump(next_sim, prev_sim)
         for c in superseded:
             await manager.broadcast("command.updated", CommandResponse.model_validate(c))
         await clock.save(db)

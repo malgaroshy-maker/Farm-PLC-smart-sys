@@ -33,6 +33,9 @@ def test_guard_no_forbidden_utcnow_in_services():
         "telemetry.py": [
             "now_real = utcnow()",  # at most 1/s real rate limit
         ],
+        "scheduler.py": [
+            "now_real = utcnow()",  # tick downtime detection (real elapsed time between ticks)
+        ],
         "scenarios.py": [  # scenario runner internal execution timers
             "self._started = utcnow()",
             "self._picked_up_at = utcnow()",

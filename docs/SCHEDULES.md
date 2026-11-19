@@ -121,14 +121,19 @@ Located in `apps/api/app/services/conflicts.py`:
 ## 6. Reports & CSV Export (`apps/api/app/routers/reports.py`)
 
 Endpoints:
-1. `GET /api/v1/reports/daily-irrigation?from=YYYY-MM-DD&to=YYYY-MM-DD&format=json|csv`
-2. `GET /api/v1/reports/water-usage?from=YYYY-MM-DD&to=YYYY-MM-DD&zone_id=...&format=json|csv`
-3. `GET /api/v1/reports/pump-runtime?from=YYYY-MM-DD&to=YYYY-MM-DD&format=json|csv`
-4. `GET /api/v1/reports/alarm-history?from=YYYY-MM-DD&to=YYYY-MM-DD&severity=...&format=json|csv`
+1. `GET /api/v1/reports/daily-irrigation?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD&format=json|csv`
+2. `GET /api/v1/reports/water-usage?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD&zone_id=...&format=json|csv`
+3. `GET /api/v1/reports/pump-runtime?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD&format=json|csv`
+4. `GET /api/v1/reports/alarm-history?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD&severity=...&format=json|csv`
+
+Query parameters:
+- `from_date` / `to_date` (inclusive farm-local dates; accepts `from` and `to` aliases).
+- `format=json|csv`.
+- `lang=ar|en` (Arabic headers when `lang=ar` or `Accept-Language: ar`).
 
 CSV Export:
-- Output begins with UTF-8 BOM bytes `\xef\xbb\xbf`.
-- Headers translated to Arabic when request header `Accept-Language: ar` or parameter `lang=ar` is provided.
+- Output begins with UTF-8 BOM bytes `\xef\xbb\xbf` for clean Excel rendering.
+- Localized column headers in Arabic or English matching active selection.
 
 ---
 
@@ -142,8 +147,52 @@ CSV Export:
    - Enable/disable toggle accessible to operators and admins; create/edit restricted to admins.
 2. **Reports Page (`/reports`)**:
    - Tabs: Daily Irrigation, Water Usage, Pump Runtime, Alarm History.
-   - Date range selector presets (Today, Yesterday, Last 7 Days, Last 30 Days).
+   - Date range selector presets (Today = 1 day, Last 7 Days = 7 days, Last 30 Days = 30 days).
    - Recharts bar/line charts and interactive tables with CSV export button.
+   - Displays exact cycle breakdowns (`completed`, `aborted`, `skipped`, `faulted`, `manual_stop`) without `NaN`.
 3. **Dashboard Next Irrigation Card**:
    - Positioned in dashboard side column and mobile quick-status card.
    - Displays: Program Name, Next Zone, Scheduled Time, and live ticking countdown based on `useFarmClock()`.
+
+---
+
+## 8. Review Findings & Resolutions (Milestone D Follow-up)
+
+All 9 review findings confirmed by the farm owner have been implemented and verified:
+
+1. **Reports Date Range Alignment (`from_date` / `to_date`)**:
+   - Standardized API parameters on `from_date` and `to_date` (with backward-compatible `from` and `to` aliases).
+   - Enforced inclusive farm-local dates: Today = 1 day (`to_date == from_date`), Last 7 Days = exactly 7 days (`to_date - timedelta(days=6)`), Last 30 Days = exactly 30 days.
+   - Synchronized frontend presets and API queries.
+
+2. **Cycle Count Breakdown & No-NaN Guarantee**:
+   - Expanded `/reports/daily-irrigation` to return explicit breakdown: `cycle_count`, `completed_count`, `aborted_count`, `skipped_count`, `faulted_count`, and `manual_stop_count`.
+   - Updated TypeScript contracts `@algaroshy/contracts` (`DailyIrrigationReportRow`, `WaterUsageReportRow`, etc.).
+   - Frontend `Reports.tsx` uses typed fallback logic (`r.cycle_count ?? 0`, `r.aborted_count ?? 0`), ensuring totals add up and eliminating `NaN`.
+
+3. **ALM-045 for Blocked Scheduled Steps**:
+   - Added `ALM-045`: "Scheduled step skipped / تم تخطي خطوة مجدولة", Severity S1 (Warning/Info), Category `schedule`, momentary, no acknowledgment or reset required.
+   - Includes full bilingual guidance in Arabic and English explaining the interlock trigger.
+   - When an interlock blocks a scheduled step, `ALM-045` is raised (never security violation `ALM-035`), a skipped cycle is logged with failure reason, and the program advances to the next step.
+
+4. **Scenario Program Cleanup (`prog_scen_*`)**:
+   - Implemented `cleanup_scenario_programs(db)` which purges all `prog_scen_%` programs, associated `program_steps`, and `scheduler_state`.
+   - Guaranteed cleanup in `ScenarioRunner.finally`, system startup lifespan (`main.py`), and `reset_demo.py`.
+
+5. **Downtime vs High-Speed Tick Detection**:
+   - Replaced naive 900s farm-clock threshold with real elapsed time measurement (`delta_real_sec > 60.0`) and explicit clock jump listener (`on_clock_jump`).
+   - Normal simulation ticks at 360× execute every due run in `(prev_farm_time, now_farm_time]` without incorrectly tagging them as missed. Real jumps or downtime trigger missed run logging as specified.
+
+6. **Irrigation Cycle Lifecycle & Command Sync**:
+   - Commands that fail, time out, or are superseded before zone state changes close their cycle as `aborted` with explicit `failure_reason`.
+   - "Back to real time" and farm reset guarantee 0 lingering open cycles.
+
+7. **Real Sample Integration vs Estimation (`water_is_estimate`)**:
+   - Added `water_is_estimate` column to `irrigation_cycles` (Alembic migration `4e1f8d2a3c5b`).
+   - If $\ge 2$ telemetry flow samples exist, trapezoidal integration calculates water and sets `water_is_estimate = False`.
+   - If $< 2$ samples exist, estimated water is stored with `water_is_estimate = True`, rendered with `≈` in the UI (`ZoneDrawer.tsx`).
+
+8. **Localization & Bundle Optimization**:
+   - All Reports, Schedules, and Simulator strings localized via `lib/i18n.ts`.
+   - Route-level lazy loading (`React.lazy` + `Suspense`) for `ReportsPage`, `SchedulesPage`, and `SimulatorPanel`.
+   - Main Vite bundle size reduced from **839 kB** (with chunk warning) to **339 kB** (zero chunk warnings).

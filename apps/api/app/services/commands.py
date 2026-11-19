@@ -213,6 +213,9 @@ async def _supersede_starts(db: AsyncSession, req: CommandCreate) -> list[Comman
         c.status = "failed"
         c.completed_at = now
         c.failure_reason = f"Superseded by {req.command_type}"
+        from app.services.cycles import record_cycle_aborted_by_command
+
+        await record_cycle_aborted_by_command(db, c.id, c.failure_reason)
         await log_event(
             db,
             "command.failed",
@@ -298,6 +301,12 @@ async def sync_command(db: AsyncSession, command_id: str, update: CommandSyncUpd
         cmd.completed_at = max(now, ack_at)
     if update.failure_reason:
         cmd.failure_reason = update.failure_reason
+    if update.status in ("failed", "rejected"):
+        from app.services.cycles import record_cycle_aborted_by_command
+
+        await record_cycle_aborted_by_command(
+            db, cmd.id, update.failure_reason or cmd.failure_reason
+        )
     await log_event(
         db,
         f"command.{update.status}",

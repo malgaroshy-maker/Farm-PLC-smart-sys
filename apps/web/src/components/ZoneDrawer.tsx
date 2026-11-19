@@ -368,7 +368,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                         </div>
                         <div className="text-[11px] text-[#849396] mt-1">
                           {cyc.actual_duration_min ?? cyc.planned_duration_min} min •{' '}
-                          <bdi className="font-mono">{fmtNum(cyc.water_estimate_m3, 2)} m³</bdi>
+                          <bdi className="font-mono">{cyc.water_is_estimate ? '≈ ' : ''}{fmtNum(cyc.water_estimate_m3, 2)} m³</bdi>
                         </div>
                       </div>
                     </div>

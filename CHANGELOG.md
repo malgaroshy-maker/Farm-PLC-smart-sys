@@ -8,6 +8,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone D Review Follow-up & Fixes (2026-11-19)
+- **Reports Query Parameters & Date Range:**
+  - Standardized date query parameters on `from_date` and `to_date` (matching `docs/API.md`), retaining backward-compatible `from` and `to` aliases.
+  - Enforced inclusive farm-local dates: Today = 1 day, Last 7 Days = 7 days (`to_d - timedelta(days=6)`), Last 30 Days = 30 days. Added tests for date ranges and aliases.
+- **Cycle Count Breakdown & No-NaN Guarantee:**
+  - Expanded `/reports/daily-irrigation` to return per-day cycle breakdown: `cycle_count`, `completed_count`, `aborted_count`, `skipped_count`, `faulted_count`, and `manual_stop_count`.
+  - Added shared types `DailyIrrigationReportRow`, `WaterUsageReportRow`, `PumpRuntimeReportRow`, `AlarmHistoryReportRow` to `@algaroshy/contracts`.
+  - Frontend `Reports.tsx` uses typed fallback logic, ensuring cycle totals add up correctly and completely eliminating `NaN`.
+- **ALM-045 for Blocked Scheduled Starts:**
+  - Introduced `ALM-045` ("Scheduled step skipped / تم تخطي خطوة مجدولة"): S1 severity, category `schedule`, momentary, no ack or reset required, with bilingual Arabic/English guidance.
+  - Kept `alarm_catalog.py`, `@algaroshy/contracts` (`alarms.ts`, `enums.ts`), and `docs/ALARM_MATRIX.md` in sync (verified by `test_contracts_sync.py`).
+  - Blocked scheduled starts raise `ALM-045` (never security violation `ALM-035`), log a skipped cycle with failure reason, and advance to the next step.
+- **Scenario Program Cleanup (`prog_scen_*`):**
+  - Added `cleanup_scenario_programs(db)` purging all scenario programs, steps, and scheduler state.
+  - Executed in `ScenarioRunner._run` inside a `finally` block (covering both pass and fail paths), API lifespan startup, and `reset_demo.py`.
+- **Missed Run Detection on Real Elapsed Time:**
+  - Replaced arbitrary 900s farm gap threshold with real wall-clock downtime detection (`delta_real_sec > 60.0`) and explicit clock jump signals (`self._pending_jump` via `on_clock_jump`).
+  - Simulation ticks at 360× execute all due runs in `(prev_farm_time, now_farm_time]` without incorrectly tagging them as missed. Real jumps or downtime mark missed runs.
+- **Cycle Lifecycle & Terminal Command Sync:**
+  - Added `record_cycle_aborted_by_command` ensuring commands that fail, time out, or are superseded before zone state changes close their cycle as `aborted` with `failure_reason` exactly once.
+  - Reset and "Back to real time" guarantee 0 open cycles remain.
+- **Water Volume Estimation Flag (`water_is_estimate`):**
+  - Created Alembic migration `4e1f8d2a3c5b` adding `water_is_estimate` boolean column to `irrigation_cycles`.
+  - In `integrate_zone_water_m3`: computes trapezoidal volume with $\ge 2$ telemetry flow samples (`water_is_estimate = False`); with $< 2$ samples, estimates volume and sets `water_is_estimate = True`.
+  - UI `ZoneDrawer.tsx` displays `≈` on estimated cycle volumes. Water today and reports use aligned calculations.
+- **Localization & Bundle Chunk Optimization:**
+  - Translated hard-coded strings in Reports and Schedules via `lib/i18n.ts`.
+  - Lazy-loaded `ReportsPage`, `SchedulesPage`, and `SimulatorPanel` via `React.lazy()` and `Suspense`. Main Vite bundle chunk reduced from **839.33 kB** (with chunk warning) to **339.19 kB** (zero chunk warnings).
+- **Verification:**
+  - 118 API pytest tests passed.
+  - 27 Simulator pytest tests passed.
+  - 36 Web Vitest tests passed.
+  - Full live verification from `run.bat reset` with Playwright: UI 3-zone program creation, execution at 360× with 0 missed runs, blocked start interlock ALM-045 and continuation, clean scenario `prog_scen_*` removal, Reports presets with 0 NaN and UTF-8 BOM Arabic CSV downloads, zone drawer history with `≈` estimates, and return to real time with 0 open cycles.
+
 ### Milestone D (Steps 1–4) — Sequential programs, scheduler, cycle log, reports (2026-11-19)
 - **Sequential Irrigation Programs:**
   - Owner-approved architecture in [docs/SCHEDULES.md](docs/SCHEDULES.md). Data model (`programs`, `program_steps`, `scheduler_state`) in Alembic migration `3d9f8e2a1b4c`.
@@ -20,7 +54,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
   - Issues zone commands strictly through `submit_command` with `actor_type="scheduler"`, ensuring all physical and hydraulic interlocks apply.
   - Advances to the next step only after the previous zone reaches idle/off.
   - Handles pause, speed changes (up to 360×), and monotonic clock jumps (aborts active run, updates anchor time, prevents mass-firing).
-  - Blocked-start interlock policy: skips blocked zone, records `skipped` cycle, raises S1 info alarm (`ALM-035`), and continues the program.
+  - Blocked-start interlock policy: skips blocked zone, records `skipped` cycle, raises S1 info alarm (`ALM-045`), and continues the program.
   - WebSocket broadcasts: `schedule.fired`, `schedule.skipped`, `schedule.missed`, `program.started`, `program.finished`.
 - **Irrigation Cycle Log:**
   - Complete run history in `irrigation_cycles` (`/api/v1/cycles`).

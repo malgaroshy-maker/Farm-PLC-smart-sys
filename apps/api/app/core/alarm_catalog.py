@@ -297,6 +297,20 @@ _SPECS = [
         "لا تعتمد على الشاشة في اتخاذ القرارات حتى تعود البيانات حية. افحص الاتصال بوحدة التحكم.",
         source="derived",
     ),
+    AlarmSpec(
+        "ALM-045",
+        "Scheduled step skipped",
+        "تم تخطي خطوة مجدولة",
+        "schedule",
+        "S1",
+        False,
+        False,
+        "Scheduled step was skipped due to an active interlock.",
+        "تم تخطي مرحلة الري المجدولة لوجود قفل أمان مانع.",
+        "Review interlock condition (alarm, low tank, or mode). The program continues with the remaining steps.",
+        "راجع حالة قفل الأمان (إنذار، انخفاض الخزان، أو وضع النظام). يستمر البرنامج في تنفيذ المراحل المتبقية.",
+        source="derived",
+    ),
 ]
 
 CATALOG: dict[str, AlarmSpec] = {s.code: s for s in _SPECS}

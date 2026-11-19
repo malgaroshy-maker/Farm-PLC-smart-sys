@@ -21,6 +21,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.core.clock import clock
 from app.core.domain import TERMINAL_COMMAND_STATUSES
+from app.core.timeutil import utcnow
 from app.deps import Actor
 from app.models.command import Command
 from app.models.program import Program, ProgramStep, SchedulerState
@@ -48,10 +49,21 @@ MISSED_RUN_GAP_SEC = 900.0  # 15 farm minutes gap indicates a clock jump or down
 class SchedulerService:
     def __init__(self) -> None:
         self._last_farm_time: datetime | None = None
+        self._last_real_time: datetime | None = None
+        self._pending_jump: tuple[datetime, datetime] | None = None
 
-    def on_clock_jump(self, new_farm_time: datetime) -> None:
-        """Reset tracked time on clock jump so scheduler immediately synchronizes."""
+    def on_clock_jump(
+        self, new_farm_time: datetime, prev_farm_time: datetime | None = None
+    ) -> None:
+        """Register an explicit clock jump so scheduler immediately synchronizes."""
+        prev = prev_farm_time or self._last_farm_time or new_farm_time
+        self._pending_jump = (prev, new_farm_time)
         self._last_farm_time = new_farm_time
+
+    def reset(self) -> None:
+        self._last_farm_time = None
+        self._last_real_time = None
+        self._pending_jump = None
 
     async def _get_state(self, db: AsyncSession, key: str) -> str | None:
         st = await db.get(SchedulerState, key)
@@ -80,7 +92,26 @@ class SchedulerService:
             return
 
         now_farm = clock.farm_now()
+        now_real = utcnow()
         farm_tz = ZoneInfo(settings.farm_timezone)
+
+        delta_real_sec = (
+            (now_real - self._last_real_time).total_seconds()
+            if self._last_real_time is not None
+            else 0.0
+        )
+        self._last_real_time = now_real
+
+        # Check for explicit clock jump first
+        jump_range = self._pending_jump
+        self._pending_jump = None
+        if jump_range is not None:
+            jump_from, jump_to = jump_range
+            await self._handle_missed_runs(db, jump_from, jump_to, farm_tz)
+            self._last_farm_time = now_farm
+            await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
+            await db.commit()
+            return
 
         # 1. Initialize or load last_farm_time
         if self._last_farm_time is None:
@@ -117,8 +148,8 @@ class SchedulerService:
             except Exception:
                 log.exception("Error processing active scheduler program")
 
-        # 3. Check for missed runs (Clock jump or outage)
-        if delta_sec > MISSED_RUN_GAP_SEC:
+        # 3. Check for missed runs on real-time downtime
+        if delta_real_sec > 60.0:
             await self._handle_missed_runs(db, prev_farm, now_farm, farm_tz)
             self._last_farm_time = now_farm
             await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
@@ -208,32 +239,37 @@ class SchedulerService:
         prev_local = prev_farm.astimezone(farm_tz)
         now_local = now_farm.astimezone(farm_tz)
 
-        today_date_str = now_local.strftime("%Y-%m-%d")
-        weekday = now_local.isoweekday()
+        curr_date = prev_local.date()
+        end_date = now_local.date()
 
-        for prog in programs:
-            if not self._is_weekday_active(prog.weekday_mask, weekday):
-                continue
+        while curr_date <= end_date:
+            weekday = curr_date.isoweekday()
+            date_str = curr_date.strftime("%Y-%m-%d")
 
-            # Check if already fired today
-            last_fired_key = f"scheduler.last_fired_{prog.id}"
-            last_fired_date = await self._get_state(db, last_fired_key)
-            if last_fired_date == today_date_str:
-                continue
+            for prog in programs:
+                if not self._is_weekday_active(prog.weekday_mask, weekday):
+                    continue
 
-            try:
-                h, m = map(int, prog.start_time_local.split(":"))
-                start_dt = datetime(
-                    now_local.year, now_local.month, now_local.day, h, m, tzinfo=farm_tz
-                )
-            except Exception:
-                continue
+                # Check if already fired on this date
+                last_fired_key = f"scheduler.last_fired_{prog.id}"
+                last_fired_date = await self._get_state(db, last_fired_key)
+                if last_fired_date == date_str:
+                    continue
 
-            # Check if start time falls in [prev_local, now_local]
-            if prev_local < start_dt <= now_local:
-                # Fire program!
-                await self._start_program(db, prog, today_date_str, last_fired_key)
-                break
+                try:
+                    h, m = map(int, prog.start_time_local.split(":"))
+                    start_dt = datetime(
+                        curr_date.year, curr_date.month, curr_date.day, h, m, tzinfo=farm_tz
+                    )
+                except Exception:
+                    continue
+
+                # Check if start time falls in (prev_local, now_local]
+                if prev_local < start_dt <= now_local:
+                    # Fire program!
+                    await self._start_program(db, prog, date_str, last_fired_key)
+                    return
+            curr_date += timedelta(days=1)
 
     async def _start_program(
         self,
@@ -364,7 +400,7 @@ class SchedulerService:
 
             await alarm_engine.raise_event(
                 db,
-                "ALM-035",
+                "ALM-045",
                 detail=f"Scheduled step skipped for zone {step.zone_id}: {exc.message}",
                 zone_id=step.zone_id,
             )

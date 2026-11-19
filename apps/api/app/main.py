@@ -46,6 +46,11 @@ async def lifespan(app: FastAPI):
         log.warning("SECRET_KEY is the development default — set a real one before deploying.")
     async with async_session_factory() as db:
         await clock.load(db)
+        from app.services.scenarios import cleanup_scenario_programs
+
+        cleaned = await cleanup_scenario_programs(db)
+        if cleaned:
+            log.info("Cleaned up %d leftover scenario program(s) on startup", cleaned)
     task = asyncio.create_task(Monitor().run())
     try:
         yield

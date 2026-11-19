@@ -30,7 +30,14 @@ from app.models.zone import Zone
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 
-def _parse_dates(from_str: str | None, to_str: str | None) -> tuple[datetime, datetime, date, date]:
+def _parse_dates(
+    from_date: str | None,
+    to_date: str | None,
+    from_alias: str | None = None,
+    to_alias: str | None = None,
+) -> tuple[datetime, datetime, date, date]:
+    from_str = from_date or from_alias
+    to_str = to_date or to_alias
     farm_tz = ZoneInfo(settings.farm_timezone)
     now_local = clock.farm_now().astimezone(farm_tz)
     today = now_local.date()
@@ -47,9 +54,12 @@ def _parse_dates(from_str: str | None, to_str: str | None) -> tuple[datetime, da
         try:
             from_d = date.fromisoformat(from_str)
         except ValueError:
-            from_d = to_d - timedelta(days=7)
+            from_d = to_d - timedelta(days=6)
     else:
-        from_d = to_d - timedelta(days=7)
+        from_d = to_d - timedelta(days=6)
+
+    if from_d > to_d:
+        from_d = to_d
 
     from_dt = datetime.combine(from_d, time.min, tzinfo=farm_tz)
     to_dt = datetime.combine(to_d, time.max, tzinfo=farm_tz)
@@ -81,16 +91,18 @@ def _csv_response(rows: list[list[str]], filename: str) -> Response:
 
 @router.get("/daily-irrigation")
 async def daily_irrigation_report(
-    from_date: str | None = Query(default=None, alias="from"),
-    to_date: str | None = Query(default=None, alias="to"),
+    from_date: str | None = Query(default=None),
+    to_date: str | None = Query(default=None),
+    from_: str | None = Query(default=None, alias="from"),
+    to_: str | None = Query(default=None, alias="to"),
     format: str = Query(default="json"),
     lang: str | None = Query(default=None),
     accept_language: str | None = Header(default=None),
     _: Actor = Depends(get_actor),
     db: AsyncSession = Depends(get_db),
 ):
-    """Daily irrigation summary (m³, cycle count, duration)."""
-    from_dt, to_dt, from_d, to_d = _parse_dates(from_date, to_date)
+    """Daily irrigation summary (m³, cycle counts by outcome, duration)."""
+    from_dt, to_dt, from_d, to_d = _parse_dates(from_date, to_date, from_, to_)
     farm_tz = ZoneInfo(settings.farm_timezone)
 
     # Query cycles in range
@@ -110,8 +122,12 @@ async def daily_irrigation_report(
         by_date[d_str] = {
             "date": d_str,
             "total_water_m3": 0.0,
-            "cycles_count": 0,
+            "cycle_count": 0,
             "completed_count": 0,
+            "aborted_count": 0,
+            "skipped_count": 0,
+            "faulted_count": 0,
+            "manual_stop_count": 0,
             "total_duration_min": 0,
         }
         curr += timedelta(days=1)
@@ -122,9 +138,18 @@ async def daily_irrigation_report(
         c_local_date = c.actual_start_at.astimezone(farm_tz).date().isoformat()
         if c_local_date in by_date:
             entry = by_date[c_local_date]
-            entry["cycles_count"] += 1
+            entry["cycle_count"] += 1
             if c.outcome == "completed":
                 entry["completed_count"] += 1
+            elif c.outcome == "aborted":
+                entry["aborted_count"] += 1
+            elif c.outcome == "skipped":
+                entry["skipped_count"] += 1
+            elif c.outcome == "faulted":
+                entry["faulted_count"] += 1
+            elif c.outcome == "manual_stop":
+                entry["manual_stop_count"] += 1
+
             entry["total_water_m3"] = round(
                 entry["total_water_m3"] + (c.water_estimate_m3 or 0.0), 3
             )
@@ -138,16 +163,20 @@ async def daily_irrigation_report(
             [
                 "التاريخ",
                 "إجمالي المياه (م³)",
-                "عدد الدورات",
+                "إجمالي الدورات",
                 "الدورات المكتملة",
+                "الملغاة / المتوقفة",
+                "المتخطاة",
                 "إجمالي المدة (دقيقة)",
             ]
             if ar
             else [
                 "Date",
                 "Total Water (m³)",
-                "Cycles Count",
+                "Total Cycles",
                 "Completed Cycles",
+                "Aborted / Faulted",
+                "Skipped",
                 "Total Duration (min)",
             ]
         )
@@ -157,8 +186,10 @@ async def daily_irrigation_report(
                 [
                     r["date"],
                     str(r["total_water_m3"]),
-                    str(r["cycles_count"]),
+                    str(r["cycle_count"]),
                     str(r["completed_count"]),
+                    str(r["aborted_count"] + r["faulted_count"] + r["manual_stop_count"]),
+                    str(r["skipped_count"]),
                     str(r["total_duration_min"]),
                 ]
             )
@@ -169,8 +200,10 @@ async def daily_irrigation_report(
 
 @router.get("/water-usage")
 async def water_usage_report(
-    from_date: str | None = Query(default=None, alias="from"),
-    to_date: str | None = Query(default=None, alias="to"),
+    from_date: str | None = Query(default=None),
+    to_date: str | None = Query(default=None),
+    from_: str | None = Query(default=None, alias="from"),
+    to_: str | None = Query(default=None, alias="to"),
     zone_id: str | None = Query(default=None),
     format: str = Query(default="json"),
     lang: str | None = Query(default=None),
@@ -179,7 +212,7 @@ async def water_usage_report(
     db: AsyncSession = Depends(get_db),
 ):
     """Water usage per zone over a date range."""
-    from_dt, to_dt, from_d, to_d = _parse_dates(from_date, to_date)
+    from_dt, to_dt, from_d, to_d = _parse_dates(from_date, to_date, from_, to_)
 
     zones_res = await db.execute(select(Zone))
     zones = {z.id: z for z in zones_res.scalars().all()}
@@ -203,14 +236,17 @@ async def water_usage_report(
             "zone_name_ar": z.name_ar,
             "crop_type": z.crop_type,
             "total_water_m3": 0.0,
-            "cycles_count": 0,
+            "cycle_count": 0,
+            "completed_count": 0,
             "total_duration_min": 0,
         }
 
     for c in cycles:
         if c.zone_id in by_zone:
             entry = by_zone[c.zone_id]
-            entry["cycles_count"] += 1
+            entry["cycle_count"] += 1
+            if c.outcome == "completed":
+                entry["completed_count"] += 1
             entry["total_water_m3"] = round(
                 entry["total_water_m3"] + (c.water_estimate_m3 or 0.0), 3
             )
@@ -227,6 +263,7 @@ async def water_usage_report(
                 "المحصول",
                 "إجمالي المياه (م³)",
                 "عدد الدورات",
+                "الدورات المكتملة",
                 "إجمالي المدة (دقيقة)",
             ]
             if ar
@@ -236,6 +273,7 @@ async def water_usage_report(
                 "Crop Type",
                 "Total Water (m³)",
                 "Cycles Count",
+                "Completed Cycles",
                 "Total Duration (min)",
             ]
         )
@@ -248,7 +286,8 @@ async def water_usage_report(
                     name,
                     r["crop_type"] or "",
                     str(r["total_water_m3"]),
-                    str(r["cycles_count"]),
+                    str(r["cycle_count"]),
+                    str(r["completed_count"]),
                     str(r["total_duration_min"]),
                 ]
             )
@@ -259,8 +298,10 @@ async def water_usage_report(
 
 @router.get("/pump-runtime")
 async def pump_runtime_report(
-    from_date: str | None = Query(default=None, alias="from"),
-    to_date: str | None = Query(default=None, alias="to"),
+    from_date: str | None = Query(default=None),
+    to_date: str | None = Query(default=None),
+    from_: str | None = Query(default=None, alias="from"),
+    to_: str | None = Query(default=None, alias="to"),
     pump_id: str | None = Query(default=None),
     format: str = Query(default="json"),
     lang: str | None = Query(default=None),
@@ -269,7 +310,7 @@ async def pump_runtime_report(
     db: AsyncSession = Depends(get_db),
 ):
     """Pump runtimes and starts over date range."""
-    from_dt, to_dt, from_d, to_d = _parse_dates(from_date, to_date)
+    from_dt, to_dt, from_d, to_d = _parse_dates(from_date, to_date, from_, to_)
 
     pumps_res = await db.execute(select(Pump))
     pumps = {p.id: p for p in pumps_res.scalars().all()}
@@ -314,8 +355,10 @@ async def pump_runtime_report(
                 "pump_name": p.name,
                 "pump_name_ar": p.name_ar,
                 "pump_type": p.pump_type,
-                "starts_count": starts,
+                "runtime_hours": runtime_h,
                 "total_runtime_hours": runtime_h,
+                "start_count": starts,
+                "starts_count": starts,
                 "faults_count": len(p_alarms),
             }
         )
@@ -342,8 +385,8 @@ async def pump_runtime_report(
                     r["pump_id"],
                     name,
                     r["pump_type"],
-                    str(r["starts_count"]),
-                    str(r["total_runtime_hours"]),
+                    str(r["start_count"]),
+                    str(r["runtime_hours"]),
                     str(r["faults_count"]),
                 ]
             )
@@ -354,8 +397,10 @@ async def pump_runtime_report(
 
 @router.get("/alarm-history")
 async def alarm_history_report(
-    from_date: str | None = Query(default=None, alias="from"),
-    to_date: str | None = Query(default=None, alias="to"),
+    from_date: str | None = Query(default=None),
+    to_date: str | None = Query(default=None),
+    from_: str | None = Query(default=None, alias="from"),
+    to_: str | None = Query(default=None, alias="to"),
     severity: str | None = Query(default=None),
     zone_id: str | None = Query(default=None),
     format: str = Query(default="json"),
@@ -364,8 +409,8 @@ async def alarm_history_report(
     _: Actor = Depends(get_actor),
     db: AsyncSession = Depends(get_db),
 ):
-    """Historical alarms in date range."""
-    from_dt, to_dt, from_d, to_d = _parse_dates(from_date, to_date)
+    """Historical alarms in date range grouped by alarm code."""
+    from_dt, to_dt, from_d, to_d = _parse_dates(from_date, to_date, from_, to_)
 
     query = select(Alarm).where(
         Alarm.triggered_at >= from_dt,
@@ -378,60 +423,53 @@ async def alarm_history_report(
 
     alarms = (await db.execute(query.order_by(desc(Alarm.triggered_at)))).scalars().all()
 
-    results = [
-        {
-            "id": a.id,
-            "alarm_code": a.alarm_code,
-            "name": a.name,
-            "name_ar": a.name_ar,
-            "severity": a.severity,
-            "category": a.category,
-            "zone_id": a.zone_id,
-            "status": a.status,
-            "triggered_at": a.triggered_at.isoformat() if a.triggered_at else None,
-            "cleared_at": a.cleared_at.isoformat() if a.cleared_at else None,
-        }
-        for a in alarms
-    ]
+    grouped: dict[str, dict] = {}
+    from app.core.alarm_catalog import CATALOG
+
+    for a in alarms:
+        code = a.alarm_code
+        if code not in grouped:
+            catalog_item = CATALOG.get(code)
+            title = catalog_item.name if catalog_item else (a.message_en or code)
+            title_ar = catalog_item.name_ar if catalog_item else (a.message_ar or code)
+            sev = a.severity or (catalog_item.severity if catalog_item else "S1")
+            grouped[code] = {
+                "alarm_code": code,
+                "count": 0,
+                "severity": sev,
+                "title": title,
+                "title_ar": title_ar,
+            }
+        grouped[code]["count"] += 1
+
+    results = sorted(grouped.values(), key=lambda x: x["count"], reverse=True)
 
     if format.lower() == "csv":
         ar = _is_arabic(accept_language, lang)
         headers = (
             [
-                "معرف الإنذار",
                 "كود الإنذار",
                 "اسم الإنذار",
                 "الخطورة",
-                "المنطقة",
-                "وقت البدء",
-                "وقت الزوال",
-                "الحالة",
+                "عدد مرات الحدوث",
             ]
             if ar
             else [
-                "Alarm ID",
                 "Alarm Code",
-                "Name",
+                "Alarm Title",
                 "Severity",
-                "Zone",
-                "Triggered At",
-                "Cleared At",
-                "Status",
+                "Occurrences",
             ]
         )
         csv_rows = [headers]
         for r in results:
-            name = r["name_ar"] if ar and r["name_ar"] else r["name"]
+            name = r["title_ar"] if ar and r["title_ar"] else r["title"]
             csv_rows.append(
                 [
-                    r["id"],
                     r["alarm_code"],
                     name,
                     r["severity"],
-                    r["zone_id"] or "",
-                    r["triggered_at"] or "",
-                    r["cleared_at"] or "",
-                    r["status"],
+                    str(r["count"]),
                 ]
             )
         return _csv_response(csv_rows, f"alarm_history_{from_d}_{to_d}.csv")
