@@ -383,7 +383,7 @@ def test_command_sync_at_360x_stamps_farm_time(client):
     push_state(client)
     clock.set_speed(360.0)
 
-    # Start zone command
+    # 1. Test two-step sync: pending -> in_progress -> completed
     r = client.post(
         "/api/v1/commands",
         json={"command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab"},
@@ -393,10 +393,51 @@ def test_command_sync_at_360x_stamps_farm_time(client):
     cid = r.json()["id"]
     req_at = datetime.fromisoformat(r.json()["requested_at"])
 
-    # Simulate controller sending real-time timestamps in the past
     fake_real_time = "2026-11-19T06:00:00+00:00"
-    r_sync = client.patch(
+    # Step 1: Controller acknowledges
+    r_ack = client.patch(
         f"/api/v1/commands/{cid}/sync",
+        json={
+            "status": "accepted",
+            "acknowledged_at": fake_real_time,
+        },
+        headers=SIM,
+    )
+    assert r_ack.status_code == 200
+    ack_data = r_ack.json()
+    ack_at = datetime.fromisoformat(ack_data["acknowledged_at"])
+    assert ack_at >= req_at
+    assert ack_at.isoformat() != fake_real_time
+    assert ack_data["completed_at"] is None
+
+    # Step 2: Controller completes
+    r_comp = client.patch(
+        f"/api/v1/commands/{cid}/sync",
+        json={
+            "status": "completed",
+            "completed_at": fake_real_time,
+        },
+        headers=SIM,
+    )
+    assert r_comp.status_code == 200
+    comp_data = r_comp.json()
+    comp_at = datetime.fromisoformat(comp_data["completed_at"])
+    ack_at_final = datetime.fromisoformat(comp_data["acknowledged_at"])
+    assert comp_at >= ack_at_final >= req_at
+    assert comp_at.isoformat() != fake_real_time
+
+    # 2. Test direct terminal sync (pending -> completed)
+    r2 = client.post(
+        "/api/v1/commands",
+        json={"command_type": "stop_zone", "target_type": "zone", "target_id": "zone_enab"},
+        headers=op,
+    )
+    assert r2.status_code == 201
+    cid2 = r2.json()["id"]
+    req_at2 = datetime.fromisoformat(r2.json()["requested_at"])
+
+    r2_sync = client.patch(
+        f"/api/v1/commands/{cid2}/sync",
         json={
             "status": "completed",
             "completed_at": fake_real_time,
@@ -404,16 +445,15 @@ def test_command_sync_at_360x_stamps_farm_time(client):
         },
         headers=SIM,
     )
-    assert r_sync.status_code == 200
-    synced = r_sync.json()
-    ack_at = datetime.fromisoformat(synced["acknowledged_at"])
-    comp_at = datetime.fromisoformat(synced["completed_at"])
-
-    # Must ignore controller timestamps and stamp farm time >= requested_at
-    assert ack_at >= req_at
-    assert comp_at >= req_at
-    assert ack_at.isoformat() != fake_real_time
-    assert comp_at.isoformat() != fake_real_time
+    assert r2_sync.status_code == 200
+    synced2 = r2_sync.json()
+    ack_at2 = datetime.fromisoformat(synced2["acknowledged_at"])
+    comp_at2 = datetime.fromisoformat(synced2["completed_at"])
+    assert ack_at2 >= req_at2
+    assert comp_at2 >= req_at2
+    assert comp_at2 >= ack_at2
+    assert ack_at2.isoformat() != fake_real_time
+    assert comp_at2.isoformat() != fake_real_time
     clock.reset_to_real()
 
 

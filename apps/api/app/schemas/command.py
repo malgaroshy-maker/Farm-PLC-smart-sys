@@ -35,13 +35,18 @@ class CommandResponse(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _decode_payload(cls, data: Any) -> Any:
-        raw = getattr(data, "payload_json", None)
-        if raw is None or isinstance(data, dict):
-            return data
-        # ORM object → dict with decoded payload
-        fields = {k: getattr(data, k, None) for k in cls.model_fields if k != "payload"}
-        fields["payload"] = json.loads(raw)
         from app.core.timeutil import as_utc
+
+        if isinstance(data, dict):
+            for dt_field in ("requested_at", "acknowledged_at", "completed_at"):
+                val = data.get(dt_field)
+                if isinstance(val, datetime):
+                    data[dt_field] = as_utc(val)
+            return data
+
+        raw = getattr(data, "payload_json", None)
+        fields = {k: getattr(data, k, None) for k in cls.model_fields if k != "payload"}
+        fields["payload"] = json.loads(raw) if raw else None
 
         for dt_field in ("requested_at", "acknowledged_at", "completed_at"):
             val = fields.get(dt_field)

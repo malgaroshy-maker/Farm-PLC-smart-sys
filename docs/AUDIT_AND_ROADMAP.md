@@ -78,7 +78,7 @@ Each milestone ends in something you can run and show. Estimates assume one deve
 3. **Physics.** Pump curve (pressure falls as more zones open), per-zone flow from `flow_min/max`, tank drain/refill from the well pump, moisture rising while irrigating and drying out over time (faster at midday), sensor noise. Seeded RNG keeps runs deterministic.
 4. **Faults with real consequences.** Valve stuck closed (no flow, triggering a validation alarm), pump trip (zones stop), mainline leak (pressure drop with high flow), sensor stale/out-of-range, low tank (blocks starts).
 5. **Alarm engine (backend).** Evaluate live state against the `ALARM_MATRIX.md` rules for the ~15 alarms that matter in the demo. Implement the lifecycle active_unacked → acked → cleared → reset, debounce, and correlation. Add `GET /alarms`, `POST /alarms/{id}/ack` and `/reset`, broadcast over WS, and record in the event log.
-6. **Scenario runner.** Scripted scenarios (`normal_day`, `pump_trip_mid_cycle`, `leak`, `low_tank`) runnable from the CLI and from an admin panel in the UI. These are what you show in a demo.
+6. **Scenario runner.** Scripted scenarios (`normal_cycle`, `pump_trip_mid_cycle`, `leak`, `low_tank`) runnable from the CLI and from an admin panel in the UI. These are what you show in a demo.
 7. **Telemetry history.** Store downsampled telemetry points so the charts show real data.
 
 ### Milestone C — Demo-quality UI + PWA ✅ done 2026-11-18

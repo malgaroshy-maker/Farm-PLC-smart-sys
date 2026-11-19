@@ -18,7 +18,7 @@ Deliver, in this order:
 5. **"Back to real time":** confirm → reuse `reset_history()` from `app/reset_demo.py` → clock resyncs to real time at 1×.
 6. **Web:** `useFarmClock()` hook used by every clock (header, map lighting, seasonal sprites, chart labels, event times, water-today). Amber **SIMULATED TIME** badge with the speed (Arabic + English, i18n keys). A presenter-mode header chip (pause/play, speed 1×/10×/60×/360×, jump-to-time, step +1 min). A full panel on the Simulator page including "Back to real time" with a confirm dialog that explains history will be cleared. Admin only. On phones, show just the badge.
 7. **Tests** listed in the spec, plus: all existing tests stay green (`pytest` in `apps/api` and `apps/simulator`; `npx vitest run`, `npx eslint .` and `pnpm build` in `apps/web`; `ruff check`).
-8. **Live check:** start with `run.bat reset` (or the preview servers). Run `normal_day` at 360×, then confirm in the browser that the header clock, the badge, day/night, charts and water-today agree. Then try pause, jump to 05:30 and back to real time.
+8. **Live check:** start with `run.bat reset` (or the preview servers). Run `normal_cycle` at 360×, then confirm in the browser that the header clock, the badge, day/night, charts and water-today agree. Then try pause, jump to 05:30 and back to real time.
 9. **Docs:** CHANGELOG (Unreleased), PROJECT_STATUS (move the "Simulation time" known gap to "What works", and update test counts), and mark step 0 done in `docs/AUDIT_AND_ROADMAP.md` and `docs/SIMULATION_TIME.md`.
 
 Rules for this repo:

@@ -538,7 +538,10 @@ class SimulatorEngine:
                 self.zone_abort.pop(zid, None)
                 self.zone_cmd.pop(zid, None)
         for pump in self.state.pumps.values():
-            pump.state = "stopped"
+            if pump.pump_id in self.state.faults.pump_trip:
+                pump.state = "faulted"
+            else:
+                pump.state = "stopped"
             pump.run_fb = False
         self.pump_t.clear()
         self.state.system.main_flow_m3h = 0.0

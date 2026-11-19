@@ -284,10 +284,13 @@ async def sync_command(db: AsyncSession, command_id: str, update: CommandSyncUpd
         raise HTTPException(409, f"Command already {cmd.status}")
     cmd.status = update.status
     now = clock.farm_now()
+    req_at = as_utc(cmd.requested_at) if cmd.requested_at else now
+    now = max(now, req_at)
     if cmd.acknowledged_at is None:
         cmd.acknowledged_at = now
     if update.status in TERMINAL_COMMAND_STATUSES:
-        cmd.completed_at = now
+        ack_at = as_utc(cmd.acknowledged_at) if cmd.acknowledged_at else now
+        cmd.completed_at = max(now, ack_at)
     if update.failure_reason:
         cmd.failure_reason = update.failure_reason
     await log_event(
