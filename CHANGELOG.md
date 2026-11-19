@@ -8,6 +8,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone E Review Fixes & Live Hardening (2026-11-19)
+- **Dependency Packaging & Requirements:**
+  - Added `pydantic-ai-slim[openai,google]==2.71.0` and `respx>=0.23.1` to `apps/api/requirements.txt`.
+  - Re-installation hash checked by `scripts/start.mjs`; verified `run.bat --smoke` executes cleanly.
+- **Session-Per-Tool Concurrency Fix:**
+  - Migrated `AIDeps` to carry `session_factory: async_sessionmaker[AsyncSession]`. Each read-only tool acquires and disposes its own session via `async with ctx.deps.session_factory() as db:`.
+  - Resolved `concurrent operations are not permitted` while maintaining full parallel tool call execution in Pydantic AI.
+  - Added regression test `test_parallel_tools_concurrency_regression` executing all 6 tools concurrently in one turn.
+- **Tool Bug Fixes & Schema Alignment:**
+  - Corrected `zone.zone_code` to `zone.code` in `get_zone_state`.
+  - Fixed `get_schedule` to serialize multi-zone sequential programs and schedules robustly without retry exhaustion.
+  - Safe error handling across all 6 live tools returning structured error strings or `ModelRetry` on missing data.
+- **APInex Defaults & Timeouts:**
+  - Corrected APInex gateway to `https://api.apinex.bond/v1`.
+  - Configured owner-selected free defaults: primary `free/gemini-3.8-flash`, secondary fallback `free/glm-5.3-flash`. Removed all legacy `gpt-4o-mini` strings.
+  - Per-feature timeouts: 45 s for explain/chat, 90 s for background advisor/briefing. Applied `UsageLimits(request_limit=5)`.
+- **Persistent Admin AI Settings:**
+  - Created Alembic migration `6b3c4d5e6f7a` adding `ai_settings` table.
+  - Added `PUT /api/v1/ai/settings` allowing admins to dynamically change provider order, select model per feature from runtime APInex `/v1/models`, and toggle features.
+  - Built agent fallback models dynamically per request from DB settings without API restarts.
+  - Frontend [AiSettings.tsx](apps/web/src/pages/AiSettings.tsx) provides editable form controls, model selection dropdowns, key status indicators, connection test button, and last 20 AI calls table.
+- **Dynamic Farm-Context Injection:**
+  - Replaced hard-coded crop lists with dynamic database query `build_farm_context_block()` querying real zone names, crops, and live states.
+- **Fallback Visibility & Health Reporting:**
+  - In-memory ring buffer tracking last 20 AI calls with feature, provider, model, latency, and fallback reason.
+  - `/health` reports `ai: degraded` when the primary provider fails and falls back.
+  - Frontend drawers show progress states ("جارٍ التحليل والتشخيص…"), latency, and cancel buttons (`AbortController`).
+- **Test Isolation & Rate Limiting:**
+  - Isolated test suite in `conftest.py` with `ALLOW_MODEL_REQUESTS = False` and blanked API keys.
+  - Added per-user sliding window rate limiting (30 requests/min) on AI endpoints.
+
+
 ### Milestone E — Artificial Intelligence Intelligence (2026-11-19)
 - **Multi-Tier AI Provider Fallback Chain:**
   - Built with Pydantic AI (`pydantic-ai-slim[openai,google]>=2.71.0`) utilizing `FallbackModel`.

@@ -51,10 +51,30 @@
 ```
 
 ### Pydantic AI Implementation
-- Built with `pydantic-ai-slim[openai,google]>=2.71.0`.
-- Utilizes `FallbackModel(apinex_model, gemini_model)` with dynamic per-model settings and request timeouts.
+- Built with `pydantic-ai-slim[openai,google]>=2.71.0` (pinned in `requirements.txt` and `pyproject.toml`).
+- Multi-tier fallback: APInex primary (`free/gemini-3.8-flash`) → APInex secondary fallback (`free/glm-5.3-flash`) → Google Gemini direct → Rule-based deterministic offline fallback.
+- Utilizes `FallbackModel` with dynamic per-model settings, feature-level timeouts (45s for explain/chat, 90s for advisor/briefing), and `UsageLimits(request_limit=5)`.
+- Models are constructed dynamically per request from live database settings (`ai_settings` table) or `.env` defaults without requiring API restarts.
 - Structured validation guarantees outputs strictly match Pydantic schemas (`AlarmExplanation`, `AdvisorSuggestion`, `DailyBriefing`, `ChatResponse`). If an LLM returns malformed JSON, Pydantic AI triggers the next fallback tier.
 - Requests are hashed (SHA-256) and cached in memory to eliminate redundant LLM calls.
+- In-memory ring buffer records the last 20 AI calls (feature, provider, model, latency, fallback reason) for admin visibility in the settings page. No prompt text is logged.
+
+### Session-Per-Tool Concurrency Architecture
+When Pydantic AI executes multiple tool calls in parallel within a single LLM turn, sharing a single SQLAlchemy `AsyncSession` causes `concurrent operations are not permitted` errors. To resolve this:
+- `AIDeps` carries `session_factory: async_sessionmaker[AsyncSession]` rather than an open session.
+- Each tool function (`get_alarm`, `get_zone_state`, `get_recent_telemetry`, `get_cycles`, `get_schedule`, `get_forecast`) opens its own short-lived read-only session:
+  ```python
+  async with ctx.deps.session_factory() as db:
+      # read-only query
+  ```
+- Parallel tool execution remains fully enabled.
+- If a tool encounters missing records or unexpected parameters, it returns a concise error string or `ModelRetry` rather than raising unhandled exceptions.
+
+### Dynamic Farm-Context Injection
+To ensure prompts and rule-based answers reflect genuine site data:
+- `build_farm_context_block()` dynamically queries the `Zone` table and live telemetry snapshot.
+- Injects real Arabic/English zone names, areas, valve IDs, current states, and verified crop species: pomegranate (رمان), olives (زيتون), grapes (عنب), and mixed fruit (خوخ، عوينة، مشمش).
+- No farm crop lists or equipment constants are hard-coded in prompt strings.
 
 ---
 
