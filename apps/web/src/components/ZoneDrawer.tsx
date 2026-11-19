@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Play, Square, X } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { TelemetrySeries, Zone } from '@algaroshy/contracts';
+import type { IrrigationCycle, TelemetrySeries, Zone } from '@algaroshy/contracts';
 import { ZONE_SEEDS } from '@algaroshy/contracts';
 
 import type { ZoneLiveState } from '../hooks/useFarmConnector';
@@ -99,6 +99,21 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [range, setRange] = useState(RANGES[0]);
   const history = useZoneHistory(zoneId, range.minutes);
+  const [recentCycles, setRecentCycles] = useState<IrrigationCycle[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch<IrrigationCycle[]>(`/api/v1/cycles/recent/${zoneId}?limit=5`)
+      .then((data) => {
+        if (active) setRecentCycles(data);
+      })
+      .catch(() => {
+        if (active) setRecentCycles([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [zoneId, zoneState?.state]);
   const valve = useFarmStore((s) => s.state?.valves.find((v) => v.valve_id === `valve_${zoneId.slice(5)}` || v.zone_id === zoneId));
   const allAlarms = useFarmStore((s) => s.state?.active_alarms);
   const zoneAlarms = (allAlarms ?? []).filter((a) => a.zone_id === zoneId || a.device_id === `valve_${zoneId.slice(5)}`);
@@ -308,6 +323,59 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                 </ResponsiveContainer>
               )}
             </div>
+          </section>
+
+          {/* 3.5 — Recent Irrigation Cycles */}
+          <section className="panel p-4 space-y-3">
+            <div className="text-xs text-[#bac9cc] font-bold">
+              {t('zone.history.title')}
+            </div>
+            {recentCycles.length === 0 ? (
+              <div className="text-xs text-[#849396] py-2">{t('zone.history.noCycles')}</div>
+            ) : (
+              <div className="space-y-2">
+                {recentCycles.map((cyc) => {
+                  const outcomeColor =
+                    cyc.outcome === 'completed'
+                      ? '#7ee787'
+                      : cyc.outcome === 'skipped'
+                      ? '#ffeb3b'
+                      : '#ff5449';
+                  const dateStr = cyc.actual_start_at
+                    ? parseUtcDate(cyc.actual_start_at).toLocaleTimeString('en-GB', {
+                        timeZone: 'Africa/Tripoli',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '--:--';
+                  return (
+                    <div
+                      key={cyc.id}
+                      className="p-2.5 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                            style={{
+                              backgroundColor: `${outcomeColor}22`,
+                              color: outcomeColor,
+                            }}
+                          >
+                            {t(`outcome.${cyc.outcome}` as MsgKey)}
+                          </span>
+                          <span className="font-mono text-[#bac9cc]">{dateStr}</span>
+                        </div>
+                        <div className="text-[11px] text-[#849396] mt-1">
+                          {cyc.actual_duration_min ?? cyc.planned_duration_min} min •{' '}
+                          <bdi className="font-mono">{fmtNum(cyc.water_estimate_m3, 2)} m³</bdi>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           {/* 4 — crop & hardware */}

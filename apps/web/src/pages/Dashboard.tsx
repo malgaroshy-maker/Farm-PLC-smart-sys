@@ -3,6 +3,7 @@ import { Gauge } from 'lucide-react';
 import FarmMap from '../components/map/FarmMap';
 import KPICard from '../components/KPICard';
 import ZoneDrawer from '../components/ZoneDrawer';
+import NextIrrigationCard from '../components/dashboard/NextIrrigationCard';
 import { AlarmsCard, PumpsCard, StatusCard, TankCard, TrendsCard } from '../components/dashboard/SidePanel';
 import { DropIcon, PumpIcon, ZonesIcon } from '../components/icons/FarmIcons';
 import { useFarmConnector } from '../hooks/useFarmConnector';
@@ -25,8 +26,9 @@ export default function Dashboard() {
   return (
     <div className="h-full flex flex-col gap-3 lg:gap-4">
       {/* phones: status first */}
-      <div className="lg:hidden">
+      <div className="lg:hidden space-y-3">
         <StatusCard state={state} />
+        <NextIrrigationCard />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -41,6 +43,7 @@ export default function Dashboard() {
           <FarmMap state={state} selectedZone={selectedZone} onZoneSelect={setSelectedZone} />
         </div>
         <aside className="space-y-3 lg:overflow-y-auto lg:pe-1">
+          <NextIrrigationCard />
           <TankCard state={state} />
           <PumpsCard state={state} />
           <AlarmsCard alarms={state?.active_alarms ?? []} />

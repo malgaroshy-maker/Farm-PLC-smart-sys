@@ -201,6 +201,32 @@ export const SimulatorIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const ScheduleIcon = (p: IconProps) => (
+  <Icon {...p}>
+    {(a) => (
+      <>
+        <rect x="3" y="4" width="18" height="17" rx="2" />
+        <path d="M16 2v4M8 2v4M3 9h18" />
+        <circle cx="15.5" cy="15.5" r="3.5" stroke={a} {...soft(a)} />
+        <path d="M15.5 13.5v2l1.2 1.2" stroke={a} strokeWidth={1.4} />
+      </>
+    )}
+  </Icon>
+);
+
+export const ReportsIcon = (p: IconProps) => (
+  <Icon {...p}>
+    {(a) => (
+      <>
+        <path d="M4 19.5h16" />
+        <rect x="5.5" y="11" width="3" height="7" rx="0.8" />
+        <rect x="10.5" y="7" width="3" height="11" rx="0.8" stroke={a} {...soft(a)} />
+        <rect x="15.5" y="4" width="3" height="14" rx="0.8" />
+      </>
+    )}
+  </Icon>
+);
+
 export const StopAllIcon = (p: IconProps) => (
   <Icon {...p} accent={p.accent ?? '#ff5449'}>
     {(a) => (

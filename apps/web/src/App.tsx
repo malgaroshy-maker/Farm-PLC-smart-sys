@@ -7,6 +7,8 @@ import SimulatorPanel from './pages/SimulatorPanel';
 import ZonesPage from './pages/ZonesPage';
 import EquipmentPage from './pages/EquipmentPage';
 import EventsPage from './pages/EventsPage';
+import SchedulesPage from './pages/Schedules';
+import ReportsPage from './pages/Reports';
 import { AuthProvider } from './lib/auth';
 
 function App() {
@@ -18,9 +20,11 @@ function App() {
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<Dashboard />} />
             <Route path="zones" element={<ZonesPage />} />
+            <Route path="schedules" element={<SchedulesPage />} />
             <Route path="equipment" element={<EquipmentPage />} />
             <Route path="alarms" element={<AlarmCenter />} />
             <Route path="events" element={<EventsPage />} />
+            <Route path="reports" element={<ReportsPage />} />
             <Route path="simulator" element={<SimulatorPanel />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

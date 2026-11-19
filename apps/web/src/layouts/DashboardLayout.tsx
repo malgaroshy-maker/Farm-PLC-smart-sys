@@ -6,6 +6,8 @@ import {
   EquipmentIcon,
   EventsIcon,
   MapIcon,
+  ReportsIcon,
+  ScheduleIcon,
   SimulatorIcon,
   StopAllIcon,
   ZonesIcon,
@@ -74,9 +76,11 @@ export default function DashboardLayout() {
   const nav: { key: MsgKey; path: string; icon: (p: IconProps) => React.ReactNode; badge?: number }[] = [
     { key: 'nav.dashboard', path: '/', icon: MapIcon },
     { key: 'nav.zones', path: '/zones', icon: ZonesIcon },
+    { key: 'nav.schedules', path: '/schedules', icon: ScheduleIcon },
     { key: 'nav.equipment', path: '/equipment', icon: EquipmentIcon },
     { key: 'nav.alarms', path: '/alarms', icon: AlarmIcon, badge: alarmCount },
     { key: 'nav.events', path: '/events', icon: EventsIcon },
+    { key: 'nav.reports', path: '/reports', icon: ReportsIcon },
     ...(showTech ? [{ key: 'nav.simulator' as MsgKey, path: '/simulator', icon: SimulatorIcon }] : []),
   ];
 
