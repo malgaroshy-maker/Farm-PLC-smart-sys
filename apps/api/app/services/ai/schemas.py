@@ -54,8 +54,9 @@ class DailyBriefing(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    reply: str
-    reply_ar: str
+    reply: str = ""
+    reply_ar: str = ""
+    message: str | None = None
     references: list[str] = Field(default_factory=list)
     provider_used: str = "rule_based"
 

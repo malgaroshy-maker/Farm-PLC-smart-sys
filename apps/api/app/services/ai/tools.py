@@ -61,7 +61,6 @@ async def get_alarm(ctx: RunContext[AIDeps], alarm_id: str) -> dict[str, Any]:
             )
             res = await db.execute(stmt)
             alarm = res.scalar_one_or_none()
-            await db.rollback()
             if not alarm:
                 return {"error": f"Alarm '{alarm_id}' not found"}
 
@@ -161,14 +160,13 @@ async def get_recent_telemetry(ctx: RunContext[AIDeps], hours: int = 1) -> dict[
             cutoff = clock.farm_now() - timedelta(hours=hours_capped)
 
             stmt = (
-                select(TelemetryPoint)
+                select(TelemetryPoint.metric_key, TelemetryPoint.value_numeric)
                 .where(TelemetryPoint.ts >= cutoff)
                 .order_by(desc(TelemetryPoint.ts))
                 .limit(500)
             )
             res = await db.execute(stmt)
-            points = list(res.scalars().all())
-            await db.rollback()
+            points = res.all()
 
             if not points:
                 return {
@@ -177,16 +175,8 @@ async def get_recent_telemetry(ctx: RunContext[AIDeps], hours: int = 1) -> dict[
                     "message": "No telemetry recorded in this time window",
                 }
 
-            flows = [
-                p.value_numeric
-                for p in points
-                if "flow" in p.metric_key and p.value_numeric is not None
-            ]
-            pressures = [
-                p.value_numeric
-                for p in points
-                if "pressure" in p.metric_key and p.value_numeric is not None
-            ]
+            flows = [val for key, val in points if "flow" in key and val is not None]
+            pressures = [val for key, val in points if "pressure" in key and val is not None]
 
             return {
                 "window_hours": hours_capped,
@@ -200,7 +190,7 @@ async def get_recent_telemetry(ctx: RunContext[AIDeps], hours: int = 1) -> dict[
                 "latest_pressure_bar": round(pressures[0], 2) if pressures else 0.0,
             }
     except Exception as exc:
-        log.warning("get_recent_telemetry tool error: %s", exc)
+        log.warning("get_recent_telemetry tool error: %s", exc, exc_info=True)
         return {"error": f"Failed to get recent telemetry: {exc}"}
 
 
@@ -227,7 +217,6 @@ async def get_cycles(ctx: RunContext[AIDeps], days: int = 1) -> list[dict[str, A
             )
             res = await db.execute(stmt)
             cycles = list(res.scalars().all())
-            await db.rollback()
 
             return [
                 {
@@ -269,7 +258,6 @@ async def get_schedule(ctx: RunContext[AIDeps]) -> dict[str, Any]:
             s_stmt = select(Schedule).where(Schedule.enabled.is_(True))
             s_res = await db.execute(s_stmt)
             schedules = list(s_res.scalars().all())
-            await db.rollback()
 
             return {
                 "programs": [

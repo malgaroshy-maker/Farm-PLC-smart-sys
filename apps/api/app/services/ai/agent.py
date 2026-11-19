@@ -223,7 +223,7 @@ async def get_db_settings_and_model(
                 secondary_model=s_model,
                 fallback_model=f_model,
             )
-            await db.rollback()
+            db.expunge(s)
             return s, chain
     except Exception as exc:
         log.warning("Failed to load DB AI settings: %s", exc)
@@ -270,6 +270,7 @@ alarm_agent = Agent(
     system_prompt=ALARM_SYSTEM_PROMPT,
     tools=AI_TOOLS,
     deps_type=AIDeps,
+    retries=2,
 )
 
 advisor_agent = Agent(
@@ -278,6 +279,7 @@ advisor_agent = Agent(
     system_prompt=ADVISOR_SYSTEM_PROMPT,
     tools=AI_TOOLS,
     deps_type=AIDeps,
+    retries=2,
 )
 
 briefing_agent = Agent(
@@ -286,6 +288,7 @@ briefing_agent = Agent(
     system_prompt=BRIEFING_SYSTEM_PROMPT,
     tools=AI_TOOLS,
     deps_type=AIDeps,
+    retries=2,
 )
 
 chat_agent = Agent(
@@ -294,6 +297,7 @@ chat_agent = Agent(
     system_prompt=CHAT_SYSTEM_PROMPT,
     tools=AI_TOOLS,
     deps_type=AIDeps,
+    retries=2,
 )
 
 
@@ -348,7 +352,7 @@ async def _run_with_retry_and_fallback(
                     safe_prompt,
                     deps=deps,
                     model=override_model,
-                    usage_limits=UsageLimits(request_limit=5),
+                    usage_limits=UsageLimits(request_limit=8),
                 ),
                 timeout=eff_timeout,
             )
