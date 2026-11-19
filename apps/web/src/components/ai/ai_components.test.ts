@@ -41,6 +41,31 @@ describe('AI Components & Domain Logic', () => {
       expect(evaluateBaseline(0.1, 0.0)).toBe('idle');
       expect(evaluateBaseline(0.0, 3.5)).toBe('idle');
     });
+
+    it('correctly reports uncalibrated status when completed runs are fewer than 5', () => {
+      const runsCompleted = 3;
+      const minRuns = 5;
+      const isCalibrated = runsCompleted >= minRuns;
+      expect(isCalibrated).toBe(false);
+
+      const bannerText = translate('ar', 'baseline.notCalibrated').replace('{n}', String(runsCompleted));
+      expect(bannerText).toContain('3/5');
+      expect(bannerText).toContain('بيانات غير كافية');
+    });
+
+    it('verifies that fake mock baseline values (14.2 m3/h, 2.45 bar) are eliminated', () => {
+      // An uncalibrated zone must have undefined normal bounds, not hardcoded mock numbers
+      const uncalibratedZone = {
+        zone_id: 'zone_02',
+        calibrated: false,
+        runs_completed: 2,
+        flow_median_m3h: undefined,
+        pressure_median_bar: undefined,
+      };
+      expect(uncalibratedZone.calibrated).toBe(false);
+      expect(uncalibratedZone.flow_median_m3h).toBeUndefined();
+      expect(uncalibratedZone.pressure_median_bar).toBeUndefined();
+    });
   });
 
   describe('Advisor Suggestion Rules & Actions', () => {

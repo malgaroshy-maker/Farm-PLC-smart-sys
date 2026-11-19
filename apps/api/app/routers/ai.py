@@ -13,12 +13,15 @@ Endpoints:
   - GET  /api/v1/ai/models
 """
 
+import asyncio
 import json
 import time
 from collections import deque
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
+from pydantic_ai import Agent
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +31,8 @@ from app.database import get_db
 from app.deps import Actor, get_actor, require_roles
 from app.models.ai import AISettings, AISuggestion
 from app.models.alarm import Alarm
+from app.models.irrigation_cycle import IrrigationCycle
+from app.models.zone import Zone
 from app.services.ai import (
     AICallRecord,
     AISettingsResponse,
@@ -41,10 +46,16 @@ from app.services.ai import (
     evaluate_weather_advisor,
     explain_alarm,
     fetch_apinex_models,
+    get_fallback_model,
+    get_model_catalog,
     get_or_generate_daily_briefing,
+    get_primary_model,
     get_recent_ai_calls,
+    mark_model_available,
+    mark_model_unavailable,
     reject_suggestion,
 )
+from app.services.anomaly import anomaly_detector
 from app.services.weather import WeatherForecast, weather_service
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -491,12 +502,162 @@ async def api_update_ai_settings(
     )
 
 
+class AITestRequest(BaseModel):
+    provider: str | None = None
+    model: str | None = None
+    prompt: str | None = None
+
+
+class AITestResponse(BaseModel):
+    ok: bool
+    provider: str
+    model: str
+    model_used: str
+    latency_ms: float
+    error: str | None = None
+
+
+@router.post("/test", response_model=AITestResponse)
+async def api_test_ai(
+    body: AITestRequest | None = None,
+    actor: Actor = Depends(require_admin),
+):
+    """Test AI model connection and measure response latency (admin only)."""
+    target_provider = (
+        body.provider if body and body.provider else settings.primary_provider or "apinex"
+    ).lower()
+    target_model = (
+        body.model if body and body.model else settings.apinex_model or "free/deepseek-v4-pro-0813"
+    )
+    test_prompt = body.prompt if body and body.prompt else "Test connection. Reply with OK."
+
+    t0 = time.monotonic()
+    try:
+        if target_provider == "apinex":
+            llm_model = get_primary_model(model_name=target_model)
+        else:
+            llm_model = get_fallback_model(model_name=target_model)
+
+        test_agent = Agent(model=llm_model)
+        await asyncio.wait_for(test_agent.run(test_prompt), timeout=15.0)
+        latency_ms = round((time.monotonic() - t0) * 1000, 2)
+        mark_model_available(target_model)
+        return AITestResponse(
+            ok=True,
+            provider=target_provider,
+            model=target_model,
+            model_used=target_model,
+            latency_ms=latency_ms,
+            error=None,
+        )
+    except Exception as exc:
+        latency_ms = round((time.monotonic() - t0) * 1000, 2)
+        err_msg = str(exc)
+        if any(code in err_msg for code in ("400", "402")):
+            mark_model_unavailable(target_model, f"HTTP error during test: {err_msg[:100]}")
+        return AITestResponse(
+            ok=False,
+            provider=target_provider,
+            model=target_model,
+            model_used=target_model,
+            latency_ms=latency_ms,
+            error=err_msg,
+        )
+
+
+@router.get("/baselines/{zone_id}")
+async def api_get_zone_baseline(
+    zone_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(get_actor),
+):
+    """Retrieve real hydraulic baseline statistics for an irrigation zone using AnomalyDetector."""
+    zone = await db.get(Zone, zone_id)
+    if not zone:
+        stmt = select(Zone).where((Zone.id == zone_id) | (Zone.code == zone_id))
+        res = await db.execute(stmt)
+        zone = res.scalar_one_or_none()
+    if not zone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Zone '{zone_id}' not found",
+        )
+
+    # Query completed cycles for zone
+    c_stmt = (
+        select(IrrigationCycle)
+        .where(IrrigationCycle.zone_id == zone.id, IrrigationCycle.outcome == "completed")
+        .order_by(desc(IrrigationCycle.actual_end_at))
+    )
+    c_res = await db.execute(c_stmt)
+    completed_cycles = list(c_res.scalars().all())
+    runs_completed = len(completed_cycles)
+    runs_required = 5
+    calibrated = runs_completed >= runs_required
+
+    # Retrieve or compute baseline
+    baseline = anomaly_detector.get_baseline(zone.id)
+    if not baseline and runs_completed >= anomaly_detector.min_baseline_runs:
+        baseline = await anomaly_detector.compute_zone_baseline_from_db(db, zone.id, max_cycles=20)
+
+    if calibrated and baseline:
+        flow_med = round(baseline.flow.median, 2)
+        flow_mad = round(baseline.flow.mad, 2)
+        flow_min = round(max(0.0, baseline.flow.median - 2.0 * baseline.flow.scale), 2)
+        flow_max = round(baseline.flow.median + 2.0 * baseline.flow.scale, 2)
+        press_med = round(baseline.pressure.median, 2)
+        press_mad = round(baseline.pressure.mad, 2)
+        press_min = round(max(0.0, baseline.pressure.median - 2.0 * baseline.pressure.scale), 2)
+        press_max = round(baseline.pressure.median + 2.0 * baseline.pressure.scale, 2)
+
+        return {
+            "zone_id": zone.id,
+            "calibrated": True,
+            "is_calibrated": True,
+            "runs_completed": runs_completed,
+            "runs_required": runs_required,
+            "baseline_cycles_count": runs_completed,
+            "flow_median_m3h": flow_med,
+            "flow_mad_m3h": flow_mad,
+            "flow_min_normal_m3h": flow_min,
+            "flow_max_normal_m3h": flow_max,
+            "pressure_median_bar": press_med,
+            "pressure_mad_bar": press_mad,
+            "pressure_min_normal_bar": press_min,
+            "pressure_max_normal_bar": press_max,
+            "status": "normal",
+            "message": f"Calibrated ({runs_completed}/5 runs)",
+        }
+
+    return {
+        "zone_id": zone.id,
+        "calibrated": False,
+        "is_calibrated": False,
+        "runs_completed": runs_completed,
+        "runs_required": runs_required,
+        "baseline_cycles_count": runs_completed,
+        "flow_median_m3h": round(baseline.flow.median, 2) if baseline else None,
+        "flow_mad_m3h": round(baseline.flow.mad, 2) if baseline else None,
+        "flow_min_normal_m3h": None,
+        "flow_max_normal_m3h": None,
+        "pressure_median_bar": round(baseline.pressure.median, 2) if baseline else None,
+        "pressure_mad_bar": round(baseline.pressure.mad, 2) if baseline else None,
+        "pressure_min_normal_bar": None,
+        "pressure_max_normal_bar": None,
+        "status": "insufficient_data",
+        "message": f"not enough data yet ({runs_completed}/5 runs)",
+    }
+
+
 @router.get("/models")
 async def api_get_models(actor: Actor = Depends(get_actor)):
-    """Fetch available models dynamically from APInex."""
+    """Fetch available models dynamically from APInex with catalog badges and metadata."""
     models = await fetch_apinex_models()
+    catalog = [m.model_dump() for m in get_model_catalog(models)]
+    selected = settings.apinex_model or "free/deepseek-v4-pro-0813"
     return {
         "models": models,
-        "selected": settings.apinex_model or (models[0] if models else "free/gemini-3.8-flash"),
+        "catalog": catalog,
+        "selected": selected,
         "fallback": settings.gemini_model,
     }

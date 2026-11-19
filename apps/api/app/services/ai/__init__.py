@@ -32,6 +32,16 @@ from app.services.ai.briefing import (
     check_scheduled_briefing,
     get_or_generate_daily_briefing,
 )
+from app.services.ai.model_catalog import (
+    ModelCatalogEntry,
+    get_available_models,
+    get_model_catalog,
+    get_model_metadata,
+    is_model_available,
+    mark_model_available,
+    mark_model_unavailable,
+    reset_unavailable_cache,
+)
 from app.services.ai.providers import (
     build_fallback_chain,
     fetch_apinex_models,
@@ -95,4 +105,12 @@ __all__ = [
     "get_recent_ai_calls",
     "is_primary_degraded",
     "reset_call_history",
+    "ModelCatalogEntry",
+    "get_model_catalog",
+    "get_available_models",
+    "get_model_metadata",
+    "is_model_available",
+    "mark_model_unavailable",
+    "mark_model_available",
+    "reset_unavailable_cache",
 ]

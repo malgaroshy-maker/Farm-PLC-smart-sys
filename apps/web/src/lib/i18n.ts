@@ -435,6 +435,8 @@ const dict = {
   'baseline.status.high_flow_low_pressure': { ar: 'تدفق مرتفع وضغط منخفض — احتمال تسريب (ALM-046)', en: 'High flow + low pressure — possible leak (ALM-046)' },
   'baseline.status.low_flow_high_pressure': { ar: 'تدفق منخفض وضغط مرتفع — احتمال انسداد النقاطات (ALM-047)', en: 'Low flow + high pressure — clogged emitters (ALM-047)' },
   'baseline.status.insufficient_data': { ar: 'قيد جمع البيانات (يتطلب دورات مكتملة كافية)', en: 'Gathering baseline data (requires completed cycles)' },
+  'baseline.notCalibrated': { ar: 'بيانات غير كافية بعد ({n}/5 دورات مكتملة)', en: 'Not enough data yet ({n}/5 completed runs)' },
+  'baseline.error': { ar: 'تعذر تحميل بيانات النطاق المعياري', en: 'Failed to load baseline telemetry data' },
   'baseline.cyclesCount': { ar: 'الدورات المعتمدة', en: 'Calibrated cycles' },
   // AI Settings
   'aiSettings.title': { ar: 'إعدادات الذكاء الاصطناعي', en: 'AI Intelligence Settings' },
@@ -470,6 +472,16 @@ const dict = {
   'aiSettings.model': { ar: 'النموذج', en: 'Model' },
   'aiSettings.fallbackReasonCol': { ar: 'سبب التراجع', en: 'Fallback Reason' },
   'aiSettings.noRecentCalls': { ar: 'لا توجد استدعاءات مسجلة بعد', en: 'No recent AI calls recorded yet' },
+  'aiSettings.modelCatalog': { ar: 'دليل النماذج وتقييم الأداء', en: 'Model Catalog & Evaluation' },
+  'aiSettings.multiplier': { ar: 'مضاعف الحصة', en: 'Multiplier' },
+  'aiSettings.tools': { ar: 'دعم الأدوات', en: 'Tools' },
+  'aiSettings.vision': { ar: 'رؤية الصور', en: 'Vision' },
+  'aiSettings.verdict': { ar: 'التقييم', en: 'Verdict' },
+  'aiSettings.modelVerdict.recommended': { ar: 'موصى به', en: 'Recommended' },
+  'aiSettings.modelVerdict.warning': { ar: 'خلط لغوي', en: 'Language mixing' },
+  'aiSettings.modelVerdict.avoid': { ar: 'تجنبه', en: 'Avoid' },
+  'aiSettings.modelVerdict.unavailable_402': { ar: 'غير متاح (يتطلب اشتراك)', en: 'Subscription only (402)' },
+  'aiSettings.modelVerdict.unavailable_400': { ar: 'غير متاح (لا يدعم المحادثة)', en: 'No chat support (400)' },
 } as const;
 
 export type MsgKey = keyof typeof dict;

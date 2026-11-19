@@ -29,7 +29,8 @@ describe('AI API endpoints client', () => {
       steps: ['Inspect discharge valve'],
       safety_note: 'Never bypass pressure safety valve',
       provider: 'APInex',
-      model: 'free/gemini-3.8-flash',
+      model: 'free/deepseek-v4-pro-0813',
+      model_used: 'free/deepseek-v4-pro-0813',
       is_fallback: false,
       latency_ms: 320,
     };
@@ -42,6 +43,7 @@ describe('AI API endpoints client', () => {
     const res = await explainAlarm('alm_123', 'How to reset?', 'ar', controller.signal);
     expect(res).toMatchObject(mockExplanation);
     expect(res.latency_ms).toBe(320);
+    expect(res.model_used).toBe('free/deepseek-v4-pro-0813');
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];
@@ -59,7 +61,8 @@ describe('AI API endpoints client', () => {
     const mockChatRes = {
       message: 'Zone 1 and Zone 3 are currently running.',
       provider: 'APInex',
-      model: 'free/gemini-3.8-flash',
+      model: 'free/deepseek-v4-pro-0813',
+      model_used: 'free/deepseek-v4-pro-0813',
       is_fallback: false,
       latency_ms: 850,
       fallback_reason: undefined,
@@ -73,6 +76,7 @@ describe('AI API endpoints client', () => {
     const res = await sendAiChat([{ role: 'user', content: 'What is running?' }], 'en', controller.signal);
     expect(res).toMatchObject(mockChatRes);
     expect(res.latency_ms).toBe(850);
+    expect(res.model_used).toBe('free/deepseek-v4-pro-0813');
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain('/api/v1/ai/chat');
@@ -83,7 +87,7 @@ describe('AI API endpoints client', () => {
     });
   });
 
-  it('fetchAiSuggestions retrieves pending advisor suggestions', async () => {
+  it('fetchAiSuggestions retrieves pending advisor suggestions with model_used', async () => {
     const mockSuggestions = [
       {
         id: 'sug_1',
@@ -93,6 +97,8 @@ describe('AI API endpoints client', () => {
         reason_ar: 'توقعات بأمطار غزيرة',
         effective_date: '2026-11-20',
         status: 'pending',
+        provider: 'APInex',
+        model_used: 'free/deepseek-v4-pro-0813',
       },
     ];
 
@@ -103,6 +109,7 @@ describe('AI API endpoints client', () => {
     const res = await fetchAiSuggestions();
     expect(res).toHaveLength(1);
     expect(res[0]).toMatchObject(mockSuggestions[0]);
+    expect(res[0].model_used).toBe('free/deepseek-v4-pro-0813');
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/ai/suggestions');
   });
 
@@ -128,7 +135,7 @@ describe('AI API endpoints client', () => {
     expect(JSON.parse(String(init?.body))).toEqual({ reason: 'Operator override' });
   });
 
-  it('fetchDailyBriefing fetches structured daily briefing', async () => {
+  it('fetchDailyBriefing fetches structured daily briefing with model_used', async () => {
     const mockBriefing = {
       date: '2026-11-20',
       morning_recap: 'All cycles completed normally yesterday.',
@@ -136,7 +143,8 @@ describe('AI API endpoints client', () => {
       schedules_today: [{ program_name: 'Main Morning', start_time: '06:00', zones: ['Zone 1'] }],
       weather_forecast: { condition: 'sunny', temp_min_c: 19, temp_max_c: 31, rain_prob_pct: 0, precipitation_mm: 0 },
       provider: 'APInex',
-      model: 'free/gemini-3.8-flash',
+      model: 'free/deepseek-v4-pro-0813',
+      model_used: 'free/deepseek-v4-pro-0813',
     };
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -147,6 +155,7 @@ describe('AI API endpoints client', () => {
     expect(briefing.date).toBe('2026-11-20');
     expect(briefing.water_used_yesterday_m3).toBe(38.4);
     expect(briefing.weather_forecast.condition).toBe('sunny');
+    expect(briefing.model_used).toBe('free/deepseek-v4-pro-0813');
   });
 
   it('fetchAiSettings and updateAiSettings handle full configuration and recent calls', async () => {
@@ -155,12 +164,12 @@ describe('AI API endpoints client', () => {
       primary_provider: 'apinex',
       fallback_provider: 'gemini',
       provider_order: ['apinex', 'gemini', 'rule_based'],
-      primary_model: 'free/gemini-3.8-flash',
+      primary_model: 'free/deepseek-v4-pro-0813',
       fallback_model: 'gemini-2.5-flash',
       feature_models: {
-        alarm_assistant: 'free/gemini-3.8-flash',
-        weather_advisor: 'free/gemini-3.8-flash',
-        daily_briefing: 'free/gemini-3.8-flash',
+        alarm_assistant: 'free/deepseek-v4-pro-0813',
+        weather_advisor: 'free/deepseek-v4-pro-0813',
+        daily_briefing: 'free/deepseek-v4-pro-0813',
       },
       features_enabled: {
         alarm_assistant: true,
@@ -175,7 +184,7 @@ describe('AI API endpoints client', () => {
           timestamp: '2026-11-19T14:30:00Z',
           feature: 'explain_alarm',
           provider: 'apinex',
-          model: 'free/gemini-3.8-flash',
+          model: 'free/deepseek-v4-pro-0813',
           latency_ms: 920,
         },
       ],
@@ -195,10 +204,11 @@ describe('AI API endpoints client', () => {
     expect(fetchMock.mock.calls[1][1]?.method).toBe('PUT');
   });
 
-  it('fetchAiModels returns APInex model list', async () => {
+  it('fetchAiModels enriches model list with catalog metadata', async () => {
     const mockModels = [
-      { id: 'free/gemini-3.8-flash', name: 'Gemini 3.8 Flash', is_free: true },
-      { id: 'free/gpt-4o-mini', name: 'GPT-4o Mini', is_free: true },
+      'free/deepseek-v4-pro-0813',
+      'free/muse-spark-1.3',
+      'free/claude-opus-4.6',
     ];
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -206,50 +216,54 @@ describe('AI API endpoints client', () => {
     );
 
     const list = await fetchAiModels();
-    expect(list).toHaveLength(2);
-    expect(list[0].id).toBe('free/gemini-3.8-flash');
+    expect(list).toHaveLength(3);
+
+    const deepseek = list.find((m) => m.id === 'free/deepseek-v4-pro-0813');
+    expect(deepseek?.quota_multiplier).toBe(3);
+    expect(deepseek?.verdict).toBe('recommended');
+    expect(deepseek?.available).toBe(true);
+
+    const claude = list.find((m) => m.id === 'free/claude-opus-4.6');
+    expect(claude?.available).toBe(false);
+    expect(claude?.verdict).toBe('unavailable_402');
   });
 
-  it('testAiConnection measures latency and verifies model used', async () => {
-    const mockTest = {
-      ok: true,
+  it('testAiConnection measures latency and captures real error without fake fallback', async () => {
+    const mockTestFail = {
+      ok: false,
       provider: 'apinex',
-      model: 'free/gemini-3.8-flash',
-      latency_ms: 184,
+      model: 'free/invalid',
+      latency_ms: 120,
+      error: 'Model unavailable',
     };
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(mockTest), { status: 200 }),
+      new Response(JSON.stringify(mockTestFail), { status: 200 }),
     );
 
-    const result = await testAiConnection('apinex', 'free/gemini-3.8-flash');
-    expect(result.ok).toBe(true);
-    expect(result.latency_ms).toBe(184);
+    const result = await testAiConnection('apinex', 'free/invalid');
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('Model unavailable');
+    expect(result.latency_ms).toBe(120);
   });
 
-  it('fetchZoneBaseline retrieves baseline statistics for a zone', async () => {
-    const mockBaseline = {
-      zone_id: 'zone_01',
-      baseline_cycles_count: 7,
-      is_calibrated: true,
-      flow_median_m3h: 15.0,
-      flow_mad_m3h: 0.9,
-      flow_min_normal_m3h: 13.5,
-      flow_max_normal_m3h: 16.5,
-      pressure_median_bar: 2.5,
-      pressure_mad_bar: 0.2,
-      pressure_min_normal_bar: 2.2,
-      pressure_max_normal_bar: 2.8,
-      status: 'normal',
+  it('fetchZoneBaseline retrieves baseline statistics or honest uncalibrated state', async () => {
+    const mockUncalibrated = {
+      zone_id: 'zone_02',
+      calibrated: false,
+      runs_completed: 2,
+      runs_required: 5,
+      message: 'not enough data yet (2/5 runs)',
     };
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(mockBaseline), { status: 200 }),
+      new Response(JSON.stringify(mockUncalibrated), { status: 200 }),
     );
 
-    const baseline = await fetchZoneBaseline('zone_01');
-    expect(baseline.is_calibrated).toBe(true);
-    expect(baseline.flow_median_m3h).toBe(15.0);
-    expect(baseline.pressure_median_bar).toBe(2.5);
+    const baseline = await fetchZoneBaseline('zone_02');
+    expect(baseline.calibrated).toBe(false);
+    expect(baseline.runs_completed).toBe(2);
+    expect(baseline.runs_required).toBe(5);
+    expect(baseline.flow_median_m3h).toBeUndefined();
   });
 });

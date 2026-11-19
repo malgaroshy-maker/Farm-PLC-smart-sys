@@ -19,6 +19,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.config import settings
 from app.core.timeutil import utcnow
+from app.services.ai.model_catalog import is_model_available
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ async def fetch_apinex_models(
         log.warning("Could not fetch models dynamically from APInex (%s): %s", models_endpoint, exc)
 
     # Fallback to configured model or standard default
-    default = settings.apinex_model or "free/gemini-3.8-flash"
+    default = settings.apinex_model or "free/deepseek-v4-pro-0813"
     return [default]
 
 
@@ -77,7 +78,7 @@ def get_primary_model(
     api_key: str | None = None,
 ) -> OpenAIChatModel:
     """Build APInex OpenAI-compatible Chat Model."""
-    name = model_name or settings.apinex_model or "free/gemini-3.8-flash"
+    name = model_name or settings.apinex_model or "free/deepseek-v4-pro-0813"
     provider = OpenAIProvider(
         base_url=base_url or settings.apinex_base_url,
         api_key=api_key or settings.apinex_api_key or "no-key",
@@ -90,8 +91,8 @@ def get_apinex_fallback_model(
     base_url: str | None = None,
     api_key: str | None = None,
 ) -> OpenAIChatModel:
-    """Build secondary APInex fallback model (e.g. free/glm-5.3-flash)."""
-    name = model_name or settings.apinex_fallback_model or "free/glm-5.3-flash"
+    """Build secondary APInex fallback model (e.g. free/muse-spark-1.3)."""
+    name = model_name or settings.apinex_fallback_model or "free/muse-spark-1.3"
     provider = OpenAIProvider(
         base_url=base_url or settings.apinex_base_url,
         api_key=api_key or settings.apinex_api_key or "no-key",
@@ -116,12 +117,28 @@ def build_fallback_chain(
     secondary_model: Model | None = None,
     fallback_model: Model | None = None,
 ) -> FallbackModel:
-    """Construct Pydantic AI FallbackModel chain (APInex -> APInex Fallback -> Gemini)."""
+    """Construct Pydantic AI FallbackModel chain (APInex -> APInex Fallback -> Gemini).
+
+    Excludes any models marked runtime unavailable (e.g. HTTP 400/402).
+    """
     p_model = primary_model or get_primary_model()
     s_model = secondary_model or get_apinex_fallback_model()
     f_model = fallback_model or get_fallback_model()
 
-    return FallbackModel(p_model, s_model, f_model, fallback_on=(Exception,))
+    active_models: list[Model] = []
+    for m in (p_model, s_model):
+        m_name = getattr(m, "model_name", None) or getattr(m, "_model_name", None)
+        if m_name and not is_model_available(str(m_name)):
+            log.info("Excluding unavailable model '%s' from fallback chain", m_name)
+            continue
+        active_models.append(m)
+
+    active_models.append(f_model)
+
+    if len(active_models) == 1:
+        return FallbackModel(active_models[0], f_model, fallback_on=(Exception,))
+
+    return FallbackModel(active_models[0], *active_models[1:], fallback_on=(Exception,))
 
 
 def identify_provider_label(response_obj: Any) -> str:

@@ -101,48 +101,20 @@ export default function FloatingAssistant() {
           created_at: new Date().toISOString(),
         },
       ]);
-    } catch {
+    } catch (err: unknown) {
       if (controller.signal.aborted) {
         return;
       }
 
-      // Fallback rule-based local answer when network/API fails
-      let localFallback = '';
-      if (text.includes('مناطق') || text.toLowerCase().includes('zone')) {
-        localFallback =
-          lang === 'ar'
-            ? `المناطق التي تروى الآن: ${runningZones} منطقة. معدل التدفق الإجمالي ${fmtNum(flow, 1)} م³/ساعة والضغط ${fmtNum(pressure, 2)} بار.`
-            : `Currently irrigating: ${runningZones} zones. Total flow is ${fmtNum(flow, 1)} m³/h at ${fmtNum(pressure, 2)} bar.`;
-      } else if (text.includes('إنذار') || text.toLowerCase().includes('alarm')) {
-        localFallback =
-          lang === 'ar'
-            ? activeAlarms.length > 0
-              ? `يوجد ${activeAlarms.length} إنذار نشط في المزرعة. يمكنك مراجعة مركز الإنذارات لمعرفة التفاصيل.`
-              : 'النظام سليم بالكامل، لا توجد أي إنذارات نشطة حالياً.'
-            : activeAlarms.length > 0
-            ? `There are ${activeAlarms.length} active alarms. Check the Alarm Center for diagnosis.`
-            : 'All systems normal, no active alarms at this moment.';
-      } else if (text.includes('مياه') || text.toLowerCase().includes('water')) {
-        localFallback =
-          lang === 'ar'
-            ? 'يمكنك مراجعة صفحة التقارير والموجز اليومي للحصول على استهلاك المياه الدقيق لجميع الدورات المكتملة.'
-            : 'Please review the Reports page and Daily Briefing for accurate water volume breakdown.';
-      } else {
-        localFallback =
-          lang === 'ar'
-            ? `تم استقبال الاستفسار. حالة المزرعة الحالية: الضغط ${fmtNum(pressure, 2)} بار، التدفق ${fmtNum(flow, 1)} م³/س، والمضخات العاملة ${activePumps}.`
-            : `Received inquiry. Current farm telemetry: Pressure ${fmtNum(pressure, 2)} bar, Flow ${fmtNum(flow, 1)} m³/h, Running pumps: ${activePumps}.`;
-      }
-
+      const errMsg = err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر الاتصال بخدمة الذكاء الاصطناعي' : 'Could not connect to AI assistant');
       setMessages([
         ...nextMessages,
         {
           role: 'assistant',
-          content: localFallback,
-          provider: 'rule_based',
-          model: 'rule-based-fallback',
+          content: `${lang === 'ar' ? 'عذراً، تعذر الاتصال بالمساعد الذكي في الوقت الحالي:' : 'Unable to connect to AI assistant:'} ${errMsg}`,
+          provider: 'system',
           is_fallback: true,
-          fallback_reason: 'connection_fallback',
+          fallback_reason: 'connection_error',
           created_at: new Date().toISOString(),
         },
       ]);
@@ -240,10 +212,15 @@ export default function FloatingAssistant() {
                   {m.content}
                 </div>
                 {m.role === 'assistant' && m.provider && m.provider !== 'system' && (
-                  <div className="flex items-center gap-2 text-[10px] text-[#849396] mt-1 px-1">
-                    <span>
-                      {m.is_fallback ? t('ai.ruleBasedLabel') : m.model || m.provider}
+                  <div className="flex items-center gap-1.5 text-[10px] text-[#849396] mt-1 px-1 flex-wrap">
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">
+                      {m.is_fallback ? t('ai.ruleBasedLabel') : m.provider}
                     </span>
+                    {!m.is_fallback && (m.model_used || m.model) && (
+                      <span className="font-mono text-[#00e5ff] px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
+                        {m.model_used || m.model}
+                      </span>
+                    )}
                     {m.latency_ms !== undefined && m.latency_ms > 0 && (
                       <span className="font-mono text-[#00e5ff]">
                         {m.latency_ms >= 1000

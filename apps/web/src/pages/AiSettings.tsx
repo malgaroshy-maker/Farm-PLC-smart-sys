@@ -9,6 +9,7 @@ import {
   MapPin,
   Zap,
   Activity,
+  Layers,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useT } from '../lib/i18n';
@@ -29,12 +30,12 @@ const DEFAULT_SETTINGS: AiSettingsData = {
   primary_provider: 'apinex',
   fallback_provider: 'gemini',
   provider_order: ['apinex', 'gemini', 'rule_based'],
-  primary_model: 'free/gemini-3.8-flash',
+  primary_model: 'free/deepseek-v4-pro-0813',
   fallback_model: 'gemini-2.5-flash',
   feature_models: {
-    alarm_assistant: 'free/gemini-3.8-flash',
-    weather_advisor: 'free/gemini-3.8-flash',
-    daily_briefing: 'free/gemini-3.8-flash',
+    alarm_assistant: 'free/deepseek-v4-pro-0813',
+    weather_advisor: 'free/deepseek-v4-pro-0813',
+    daily_briefing: 'free/deepseek-v4-pro-0813',
   },
   features_enabled: {
     alarm_assistant: true,
@@ -54,24 +55,16 @@ const DEFAULT_SETTINGS: AiSettingsData = {
   recent_calls: [],
 };
 
-const DEFAULT_MODELS: AiModelOption[] = [
-  { id: 'free/gemini-3.8-flash', name: 'Gemini 3.8 Flash (Free APInex)', is_free: true },
-  { id: 'free/glm-5.3-flash', name: 'GLM 5.3 Flash (Free APInex)', is_free: true },
-  { id: 'free/gpt-4o-mini', name: 'GPT-4o Mini (Free APInex)', is_free: true },
-  { id: 'free/deepseek-r1', name: 'DeepSeek R1 (Free APInex)', is_free: true },
-  { id: 'gemini-2.5-flash', name: 'Direct Google Gemini 2.5 Flash', is_free: false },
-  { id: 'gemini-2.5-pro', name: 'Direct Google Gemini 2.5 Pro', is_free: false },
-];
-
 export default function AiSettingsPage() {
   const { can } = useAuth();
   const { t } = useT();
   const isAdmin = can('owner_admin');
 
   const [settings, setSettings] = useState<AiSettingsData>(DEFAULT_SETTINGS);
-  const [models, setModels] = useState<AiModelOption[]>(DEFAULT_MODELS);
+  const [models, setModels] = useState<AiModelOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Test connection state
   const [testing, setTesting] = useState(false);
@@ -131,16 +124,15 @@ export default function AiSettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     setSaveSuccess(false);
+    setSaveError(null);
 
     try {
       const updated = await updateAiSettings(settings);
       setSettings(updated);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
-    } catch {
-      // If endpoint doesn't exist yet or fails, preserve local state gracefully
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -154,13 +146,14 @@ export default function AiSettingsPage() {
     try {
       const res = await testAiConnection(settings.primary_provider, settings.primary_model);
       setTestResult(res);
-    } catch {
+    } catch (err: unknown) {
       const elapsed = Math.round(performance.now() - startTime);
       setTestResult({
-        ok: true,
+        ok: false,
         provider: settings.primary_provider,
         model: settings.primary_model,
-        latency_ms: elapsed || 215,
+        latency_ms: elapsed,
+        error: err instanceof Error ? err.message : t('aiSettings.testFailed'),
       });
     } finally {
       setTesting(false);
@@ -180,6 +173,36 @@ export default function AiSettingsPage() {
 
   const recentCalls: AiRecentCall[] = settings.recent_calls || [];
 
+  const renderModelOption = (m: AiModelOption) => {
+    const verdictBadge =
+      m.verdict === 'recommended'
+        ? '✓'
+        : m.verdict === 'warning'
+        ? '⚠'
+        : m.verdict === 'unavailable_402'
+        ? '⛔ 402'
+        : m.verdict === 'unavailable_400'
+        ? '⛔ 400'
+        : '⛔';
+
+    const mult = m.quota_multiplier ? `×${m.quota_multiplier}` : '';
+    const tools = m.tools ? '🛠' : '';
+    const vision = m.vision ? '👁' : '';
+    const flags = [mult, tools, vision].filter(Boolean).join(' ');
+    const label = `${m.name || m.id}${flags ? ` [${flags}]` : ''} ${verdictBadge}${m.available === false ? ' (Unavailable)' : ''}`;
+
+    return (
+      <option
+        key={m.id}
+        value={m.id}
+        disabled={m.available === false}
+        className={m.available === false ? 'text-[#849396] bg-[#141416]' : 'text-[#e5e2e1] bg-[#141416]'}
+      >
+        {label}
+      </option>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col gap-5 overflow-y-auto pb-10">
       {/* Header */}
@@ -197,6 +220,12 @@ export default function AiSettingsPage() {
             <span className="text-xs font-bold text-[#7ee787] flex items-center gap-1.5 animate-fadeIn">
               <CheckCircle2 size={16} />
               {t('aiSettings.saved')}
+            </span>
+          )}
+          {saveError && (
+            <span className="text-xs font-bold text-[#ff5449] flex items-center gap-1.5 animate-fadeIn">
+              <AlertTriangle size={16} />
+              {saveError}
             </span>
           )}
           <button
@@ -407,14 +436,29 @@ export default function AiSettingsPage() {
               <span>{t('aiSettings.testConnection')}</span>
             </button>
 
-            {testResult && (
-              <div className="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between text-xs animate-fadeIn">
+            {testResult && testResult.ok && (
+              <div className="p-3 rounded-xl bg-black/40 border border-[#7ee787]/30 flex items-center justify-between text-xs animate-fadeIn">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 size={16} className="text-[#7ee787]" />
                   <span className="font-bold text-[#e5e2e1]">{t('aiSettings.testSuccess')}</span>
-                  <span className="text-[11px] text-[#849396]">({testResult.model})</span>
+                  <span className="text-[11px] text-[#849396]">({testResult.model_used || testResult.model})</span>
                 </div>
                 <div className="font-mono text-[#00e5ff] font-bold">
+                  {testResult.latency_ms} ms
+                </div>
+              </div>
+            )}
+
+            {testResult && !testResult.ok && (
+              <div className="p-3 rounded-xl bg-[#ff5449]/10 border border-[#ff5449]/30 flex items-center justify-between text-xs animate-fadeIn text-[#ffb4ab]">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-[#ff5449] shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-bold">{t('aiSettings.testFailed')}</div>
+                    <div className="text-[11px] text-[#ffb4ab]/80 truncate">{testResult.error}</div>
+                  </div>
+                </div>
+                <div className="font-mono text-[11px] text-[#849396] shrink-0">
                   {testResult.latency_ms} ms
                 </div>
               </div>
@@ -445,11 +489,7 @@ export default function AiSettingsPage() {
                 }
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
               >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-[#141416]">
-                    {m.name || m.id} {m.is_free ? '(Free)' : ''}
-                  </option>
-                ))}
+                {models.map(renderModelOption)}
               </select>
             </div>
 
@@ -468,11 +508,7 @@ export default function AiSettingsPage() {
                 }
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
               >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-[#141416]">
-                    {m.name || m.id} {m.is_free ? '(Free)' : ''}
-                  </option>
-                ))}
+                {models.map(renderModelOption)}
               </select>
             </div>
 
@@ -491,11 +527,7 @@ export default function AiSettingsPage() {
                 }
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
               >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-[#141416]">
-                    {m.name || m.id} {m.is_free ? '(Free)' : ''}
-                  </option>
-                ))}
+                {models.map(renderModelOption)}
               </select>
             </div>
 
@@ -514,11 +546,7 @@ export default function AiSettingsPage() {
                 }
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
               >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-[#141416]">
-                    {m.name || m.id} {m.is_free ? '(Free)' : ''}
-                  </option>
-                ))}
+                {models.map(renderModelOption)}
               </select>
             </div>
           </div>
@@ -588,6 +616,67 @@ export default function AiSettingsPage() {
           </div>
         </section>
       </div>
+
+      {/* Model Catalog & Evaluation Summary Table */}
+      <section className="panel p-5 space-y-3">
+        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+          <div className="flex items-center gap-2">
+            <Layers className="text-[#00e5ff]" size={18} />
+            <h2 className="text-sm font-bold text-[#e5e2e1]">{t('aiSettings.modelCatalog')}</h2>
+          </div>
+          <span className="text-[11px] text-[#849396] font-mono">
+            {models.filter((m) => m.available).length} Active / {models.length} Total
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-start text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-white/10 text-[#849396] text-[11px]">
+                <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.model')}</th>
+                <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.multiplier')}</th>
+                <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.tools')}</th>
+                <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.vision')}</th>
+                <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.verdict')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {models.map((m) => {
+                const isAvail = m.available !== false;
+                const verdictClass =
+                  m.verdict === 'recommended'
+                    ? 'bg-[#7ee787]/15 text-[#7ee787] border-[#7ee787]/30'
+                    : m.verdict === 'warning'
+                    ? 'bg-[#ffeb3b]/15 text-[#ffeb3b] border-[#ffeb3b]/30'
+                    : 'bg-[#ff5449]/15 text-[#ffb4ab] border-[#ff5449]/30';
+
+                return (
+                  <tr key={m.id} className={`hover:bg-white/[0.02] transition-colors ${!isAvail ? 'opacity-50' : ''}`}>
+                    <td className="py-2.5 px-3">
+                      <div className="font-bold text-[#e5e2e1]">{m.name || m.id}</div>
+                      <div className="font-mono text-[11px] text-[#849396]">{m.id}</div>
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-[#bac9cc] whitespace-nowrap">
+                      ×{m.quota_multiplier || 1}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap">
+                      {m.tools ? <span className="text-[#7ee787]">✓</span> : <span className="text-[#849396]">—</span>}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap">
+                      {m.vision ? <span className="text-[#7ee787]">✓</span> : <span className="text-[#849396]">—</span>}
+                    </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-medium border ${verdictClass}`}>
+                        {m.verdict_label || m.verdict || 'Available'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Recent AI Calls (Last 20) Table */}
       <section className="panel p-5 space-y-3">

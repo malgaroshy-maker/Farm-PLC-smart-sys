@@ -29,31 +29,7 @@ export default function Dashboard() {
       })
       .catch(() => {
         if (!active) return;
-        // Default weather advisor suggestion example if none fetched
-        setSuggestions([
-          {
-            id: 'sug_weather_01',
-            program_id: 'prog_morning',
-            program_name: 'برنامج الصباح',
-            program_name_ar: 'برنامج الصباح',
-            action: 'skip',
-            adjustment_pct: -100,
-            reason: 'High rain probability (80%, 3.5mm) forecasted at 06:00. Skipping morning irrigation to conserve water.',
-            reason_ar: 'احتمال هطول أمطار بنسبة 80% (3.5 ملم) عند الساعة 06:00. يوصى بتخطي ري الصباح لتوفير المياه.',
-            weather_summary: {
-              condition: 'rain',
-              temperature_c: 19,
-              rain_probability_pct: 80,
-              precipitation_mm: 3.5,
-              et0_mm: 2.1,
-            },
-            effective_date: new Date().toISOString().slice(0, 10),
-            status: 'pending',
-            provider: 'APInex',
-            model: 'free/gemini-3.8-flash',
-            created_at: new Date().toISOString(),
-          },
-        ]);
+        setSuggestions([]);
       });
 
     return () => {

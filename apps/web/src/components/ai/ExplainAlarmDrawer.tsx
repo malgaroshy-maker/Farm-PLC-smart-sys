@@ -321,13 +321,18 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
 
         {/* Provider Banner */}
         <div className="px-4 py-2 border-b border-white/5 bg-black/40 flex items-center justify-between text-xs flex-wrap gap-2">
-          <div className="flex items-center gap-1.5 text-[#00e5ff]">
+          <div className="flex items-center gap-1.5 text-[#00e5ff] flex-wrap">
             <AiSparklesIcon size={15} />
             <span className="font-medium">
               {explanation?.is_fallback || explanation?.provider === 'rule_based'
                 ? t('ai.ruleBasedLabel')
-                : `${explanation?.provider || 'APInex'} · ${explanation?.model || 'free/gemini-3.8-flash'}`}
+                : (explanation?.provider || 'APInex')}
             </span>
+            {!explanation?.is_fallback && (explanation?.model_used || explanation?.model) && (
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-[#00e5ff] border border-white/10">
+                {explanation?.model_used || explanation?.model}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {explanation?.latency_ms !== undefined && explanation.latency_ms > 0 && (
@@ -477,10 +482,15 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
                         {msg.content}
                       </div>
                       {msg.role === 'assistant' && msg.provider && (
-                        <div className="flex items-center gap-2 text-[10px] text-[#849396] mt-1 px-1">
-                          <span>
-                            {msg.is_fallback ? t('ai.ruleBasedLabel') : msg.model || msg.provider}
+                        <div className="flex items-center gap-1.5 text-[10px] text-[#849396] mt-1 px-1 flex-wrap">
+                          <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">
+                            {msg.is_fallback ? t('ai.ruleBasedLabel') : msg.provider}
                           </span>
+                          {!msg.is_fallback && (msg.model_used || msg.model) && (
+                            <span className="font-mono text-[#00e5ff] px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
+                              {msg.model_used || msg.model}
+                            </span>
+                          )}
                           {msg.latency_ms !== undefined && msg.latency_ms > 0 && (
                             <span className="font-mono text-[#00e5ff]">
                               {msg.latency_ms >= 1000

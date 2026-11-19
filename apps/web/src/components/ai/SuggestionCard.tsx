@@ -138,11 +138,18 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
       </p>
 
       {/* Provider badge & Expiration info */}
-      <div className="flex items-center justify-between text-[11px] text-[#849396] pt-1 border-t border-white/5">
-        <span className="flex items-center gap-1 text-[#00e5ff]">
-          <AiSparklesIcon size={12} />
-          {suggestion.is_fallback ? t('ai.ruleBasedLabel') : suggestion.model || suggestion.provider || 'APInex'}
-        </span>
+      <div className="flex items-center justify-between text-[11px] text-[#849396] pt-1 border-t border-white/5 flex-wrap gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="flex items-center gap-1 text-[#00e5ff]">
+            <AiSparklesIcon size={12} />
+            {suggestion.is_fallback ? t('ai.ruleBasedLabel') : (suggestion.provider || 'APInex')}
+          </span>
+          {!suggestion.is_fallback && (suggestion.model_used || suggestion.model) && (
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-[#bac9cc] border border-white/10">
+              {suggestion.model_used || suggestion.model}
+            </span>
+          )}
+        </div>
         {suggestion.expires_at && (
           <span className="font-mono">
             {t('advisor.expiresIn')} {suggestion.expires_at.slice(11, 16)}

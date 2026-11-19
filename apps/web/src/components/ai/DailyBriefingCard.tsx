@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, Calendar, CloudRain } from 'lucide-react';
+import { ChevronDown, ChevronUp, Calendar, CloudRain, AlertCircle } from 'lucide-react';
 import { fetchDailyBriefing, type DailyBriefing } from '../../lib/api';
 import { fmtNum, pickName, useT } from '../../lib/i18n';
 import { AiSparklesIcon, DropIcon, WeatherIcon } from '../icons/FarmIcons';
@@ -13,55 +13,20 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     fetchDailyBriefing()
       .then((res) => {
-        if (active) setBriefing(res);
-      })
-      .catch(() => {
         if (!active) return;
-        // Default rule-based briefing when API not ready / offline
-        const fallback: DailyBriefing = {
-          date: new Date().toISOString().slice(0, 10),
-          morning_recap:
-            lang === 'ar'
-              ? 'صباح الخير. جميع أنظمة الري في مزرعة الجروشي تعمل بشكل مستقر. تم تسجيل دورات الري المكتملة دون تجاوزات في حدود الضغط والتدفق.'
-              : 'Good morning. All irrigation systems at Algaroshy Farm are operational and stable. Completed cycles operated within normal pressure and flow limits.',
-          water_used_yesterday_m3: 42.6,
-          schedules_today: [
-            {
-              program_name: 'برنامج الصباح الباكر',
-              program_name_ar: 'برنامج الصباح الباكر',
-              start_time: '06:00',
-              zones: ['zone_01', 'zone_02', 'zone_03'],
-            },
-            {
-              program_name: 'ري المساء',
-              program_name_ar: 'ري المساء',
-              start_time: '18:30',
-              zones: ['zone_04', 'zone_05'],
-            },
-          ],
-          weather_forecast: {
-            condition: 'partly_cloudy',
-            temp_min_c: 18,
-            temp_max_c: 29,
-            rain_prob_pct: 10,
-            precipitation_mm: 0.0,
-            et0_mm: 4.8,
-          },
-          alarms_summary: {
-            active_count: 0,
-            anomalies_count: 0,
-          },
-          provider: 'rule_based',
-          model: 'rule-based-fallback',
-          is_fallback: true,
-          generated_at: new Date().toISOString(),
-        };
-        setBriefing(fallback);
+        setBriefing(res);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setBriefing(null);
+        setError(err instanceof Error ? err.message : 'Failed to load daily briefing');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -70,9 +35,9 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
     return () => {
       active = false;
     };
-  }, [lang]);
+  }, []);
 
-  if (loading && !briefing) {
+  if (loading && !briefing && !error) {
     return (
       <div className="panel p-4 animate-pulse space-y-3">
         <div className="flex justify-between items-center">
@@ -84,10 +49,22 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
     );
   }
 
+  if (error && !briefing) {
+    return (
+      <div className="panel p-3.5 border-[#ff5449]/20 bg-[#ff5449]/5 text-xs text-[#ffb4ab] flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <AlertCircle size={16} className="text-[#ff5449] shrink-0" />
+          <span>{t('briefing.title')}: {error}</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!briefing) return null;
 
   const recapText = pickName(lang, briefing.morning_recap, briefing.morning_recap_ar);
   const forecast = briefing.weather_forecast;
+  const activeModel = briefing.model_used || briefing.model;
 
   return (
     <article
@@ -113,15 +90,22 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {briefing.is_fallback ? (
             <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-[#849396] border border-white/5 font-medium">
               {t('ai.ruleBasedLabel')}
             </span>
           ) : (
-            <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/20 font-medium">
-              {briefing.provider || 'APInex'} · {briefing.model || 'free/gemini-3.8-flash'}
-            </span>
+            <div className="hidden sm:flex items-center gap-1.5">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/20 font-medium">
+                {briefing.provider || 'APInex'}
+              </span>
+              {activeModel && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-[#bac9cc] border border-white/10">
+                  {activeModel}
+                </span>
+              )}
+            </div>
           )}
 
           <button

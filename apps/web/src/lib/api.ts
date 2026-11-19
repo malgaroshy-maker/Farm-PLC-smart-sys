@@ -113,6 +113,7 @@ export interface AlarmExplanation {
   language?: string;
   provider?: string;
   model?: string;
+  model_used?: string;
   is_fallback?: boolean;
   latency_ms?: number;
   fallback_reason?: string;
@@ -125,6 +126,7 @@ export interface ChatMessage {
   created_at?: string;
   provider?: string;
   model?: string;
+  model_used?: string;
   is_fallback?: boolean;
   latency_ms?: number;
   fallback_reason?: string;
@@ -134,6 +136,7 @@ export interface ChatResponse {
   message: string;
   provider?: string;
   model?: string;
+  model_used?: string;
   is_fallback?: boolean;
   latency_ms?: number;
   fallback_reason?: string;
@@ -160,6 +163,7 @@ export interface AdvisorSuggestion {
   status: 'pending' | 'approved' | 'rejected' | 'applied' | 'expired';
   provider?: string;
   model?: string;
+  model_used?: string;
   is_fallback?: boolean;
   created_at: string;
   expires_at?: string;
@@ -193,6 +197,7 @@ export interface DailyBriefing {
   };
   provider?: string;
   model?: string;
+  model_used?: string;
   is_fallback?: boolean;
   generated_at: string;
 }
@@ -242,12 +247,19 @@ export interface AiModelOption {
   provider?: string;
   description?: string;
   is_free?: boolean;
+  quota_multiplier?: number;
+  tools?: boolean;
+  vision?: boolean;
+  verdict?: 'recommended' | 'warning' | 'avoid' | 'unavailable_402' | 'unavailable_400';
+  verdict_label?: string;
+  available?: boolean;
 }
 
 export interface AiTestResult {
   ok: boolean;
   provider: string;
   model: string;
+  model_used?: string;
   latency_ms: number;
   error?: string;
 }
@@ -255,16 +267,20 @@ export interface AiTestResult {
 export interface ZoneBaseline {
   zone_id: string;
   baseline_cycles_count: number;
-  is_calibrated: boolean;
-  flow_median_m3h: number;
-  flow_mad_m3h: number;
-  flow_min_normal_m3h: number;
-  flow_max_normal_m3h: number;
-  pressure_median_bar: number;
-  pressure_mad_bar: number;
-  pressure_min_normal_bar: number;
-  pressure_max_normal_bar: number;
-  status: 'normal' | 'high_flow_low_pressure' | 'low_flow_high_pressure' | 'insufficient_data';
+  calibrated: boolean;
+  is_calibrated?: boolean;
+  runs_completed?: number;
+  runs_required?: number;
+  flow_median_m3h?: number;
+  flow_mad_m3h?: number;
+  flow_min_normal_m3h?: number;
+  flow_max_normal_m3h?: number;
+  pressure_median_bar?: number;
+  pressure_mad_bar?: number;
+  pressure_min_normal_bar?: number;
+  pressure_max_normal_bar?: number;
+  status?: 'normal' | 'high_flow_low_pressure' | 'low_flow_high_pressure' | 'insufficient_data';
+  message?: string;
 }
 
 export async function explainAlarm(
@@ -300,7 +316,8 @@ export async function explainAlarm(
     confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.95,
     language: raw.language ? String(raw.language) : lang,
     provider: raw.provider ? String(raw.provider) : raw.provider_used ? String(raw.provider_used) : 'APInex',
-    model: raw.model ? String(raw.model) : raw.provider_used ? String(raw.provider_used) : 'free/gemini-3.8-flash',
+    model: raw.model ? String(raw.model) : raw.provider_used ? String(raw.provider_used) : 'free/deepseek-v4-pro-0813',
+    model_used: raw.model_used ? String(raw.model_used) : raw.model ? String(raw.model) : undefined,
     is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based')),
     latency_ms: typeof raw.latency_ms === 'number' ? raw.latency_ms : typeof raw.latency === 'number' ? Math.round(raw.latency * 1000) : elapsed,
     fallback_reason: raw.fallback_reason ? String(raw.fallback_reason) : undefined,
@@ -333,7 +350,8 @@ export async function sendAiChat(
   return {
     message: replyText,
     provider: raw.provider ? String(raw.provider) : raw.provider_used ? String(raw.provider_used) : 'APInex',
-    model: raw.model ? String(raw.model) : raw.provider_used ? String(raw.provider_used) : 'free/gemini-3.8-flash',
+    model: raw.model ? String(raw.model) : raw.provider_used ? String(raw.provider_used) : 'free/deepseek-v4-pro-0813',
+    model_used: raw.model_used ? String(raw.model_used) : raw.model ? String(raw.model) : undefined,
     is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based')),
     latency_ms: typeof raw.latency_ms === 'number' ? raw.latency_ms : typeof raw.latency === 'number' ? Math.round(raw.latency * 1000) : elapsed,
     fallback_reason: raw.fallback_reason ? String(raw.fallback_reason) : undefined,
@@ -366,7 +384,8 @@ export async function fetchAiSuggestions(): Promise<AdvisorSuggestion[]> {
       effective_date: String(s.effective_date ?? payload.target_date ?? (typeof s.created_at === 'string' ? s.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10))),
       status: (s.status as AdvisorSuggestion['status']) ?? 'pending',
       provider: String(s.provider ?? s.provider_used ?? 'APInex'),
-      model: String(s.model ?? 'free/gemini-3.8-flash'),
+      model: String(s.model ?? 'free/deepseek-v4-pro-0813'),
+      model_used: s.model_used ? String(s.model_used) : s.model ? String(s.model) : undefined,
       is_fallback: Boolean(s.is_fallback ?? (s.provider_used === 'rule_based')),
       created_at: String(s.created_at ?? new Date().toISOString()),
       expires_at: s.expires_at ? String(s.expires_at) : undefined,
@@ -396,21 +415,21 @@ export async function fetchDailyBriefing(date?: string): Promise<DailyBriefing> 
     date: String(raw.date ?? new Date().toISOString().slice(0, 10)),
     morning_recap: String(raw.morning_recap ?? raw.summary ?? ''),
     morning_recap_ar: String(raw.morning_recap_ar ?? raw.summary_ar ?? ''),
-    water_used_yesterday_m3: typeof raw.water_used_yesterday_m3 === 'number' ? raw.water_used_yesterday_m3 : 42.6,
+    water_used_yesterday_m3: typeof raw.water_used_yesterday_m3 === 'number' ? raw.water_used_yesterday_m3 : 0,
     schedules_today: (raw.schedules_today as DailyBriefing['schedules_today']) ?? [],
     weather_forecast: (raw.weather_forecast as DailyBriefing['weather_forecast']) ?? {
-      condition: 'partly_cloudy',
+      condition: 'sunny',
       temp_min_c: 18,
-      temp_max_c: 29,
-      rain_prob_pct: 10,
-      precipitation_mm: 0.0,
-      et0_mm: 4.8,
+      temp_max_c: 28,
+      rain_prob_pct: 0,
+      precipitation_mm: 0,
     },
     alarms_summary: (raw.alarms_summary as DailyBriefing['alarms_summary']) ?? {
       active_count: 0,
     },
     provider: String(raw.provider ?? raw.provider_used ?? 'APInex'),
-    model: String(raw.model ?? raw.provider_used ?? 'free/gemini-3.8-flash'),
+    model: String(raw.model ?? raw.provider_used ?? 'free/deepseek-v4-pro-0813'),
+    model_used: raw.model_used ? String(raw.model_used) : raw.model ? String(raw.model) : undefined,
     is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based')),
     generated_at: String(raw.generated_at ?? raw.created_at ?? new Date().toISOString()),
   };
@@ -478,7 +497,150 @@ export async function updateAiSettings(data: Partial<AiSettingsData>): Promise<A
   });
 }
 
-type ModelItem = string | { id: string; name?: string; provider?: string; is_free?: boolean };
+export const KNOWN_AI_MODELS: Record<string, Partial<AiModelOption>> = {
+  'free/deepseek-v4-pro-0813': {
+    name: 'DeepSeek V4 Pro (0813)',
+    quota_multiplier: 3,
+    tools: true,
+    vision: false,
+    verdict: 'recommended',
+    verdict_label: 'Recommended default: fast & almost clean',
+    available: true,
+  },
+  'free/muse-spark-1.3': {
+    name: 'Muse Spark 1.3',
+    quota_multiplier: 3,
+    tools: true,
+    vision: true,
+    verdict: 'recommended',
+    verdict_label: 'Recommended second: cleanest Arabic',
+    available: true,
+  },
+  'free/gemini-3.8-flash': {
+    name: 'Gemini 3.8 Flash',
+    quota_multiplier: 3,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Fast; mixes in Korean and English words',
+    available: true,
+  },
+  'free/hy4': {
+    name: 'HY4',
+    quota_multiplier: 2,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Cheaper; slow',
+    available: true,
+  },
+  'free/hy4-flash': {
+    name: 'HY4 Flash',
+    quota_multiplier: 2,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Cheap and fast; noticeable mixing',
+    available: true,
+  },
+  'free/deepseek-v4.1-flash': {
+    name: 'DeepSeek V4.1 Flash',
+    quota_multiplier: 3,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Fast; mixing',
+    available: true,
+  },
+  'free/qwen-3.8-max': {
+    name: 'Qwen 3.8 Max',
+    quota_multiplier: 3,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'English words in Arabic',
+    available: true,
+  },
+  'free/glm-5.3-flash': {
+    name: 'GLM 5.3 Flash',
+    quota_multiplier: 3,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Mixing; large prompts',
+    available: true,
+  },
+  'free/glm-5.3-flashx': {
+    name: 'GLM 5.3 FlashX',
+    quota_multiplier: 3,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Mixing',
+    available: true,
+  },
+  'free/minimax-m3.1-flash': {
+    name: 'MiniMax M3.1 Flash',
+    quota_multiplier: 2,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Slow',
+    available: true,
+  },
+  'free/mimo-v2.6-pro': {
+    name: 'MiMo V2.6 Pro',
+    quota_multiplier: 2,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Slow and mixing',
+    available: true,
+  },
+  'free/gemini-4-hydrogen': {
+    name: 'Gemini 4 Hydrogen',
+    quota_multiplier: 5,
+    tools: true,
+    vision: true,
+    verdict: 'warning',
+    verdict_label: 'Most expensive; mixing',
+    available: true,
+  },
+  'free/gpt-6-luna': {
+    name: 'GPT-6 Luna',
+    quota_multiplier: 3,
+    tools: true,
+    vision: true,
+    verdict: 'avoid',
+    verdict_label: 'Avoid: answered Arabic question in English',
+    available: true,
+  },
+  'free/kimi-k3': {
+    name: 'Kimi K3',
+    quota_multiplier: 3,
+    tools: true,
+    vision: true,
+    verdict: 'avoid',
+    verdict_label: 'Avoid: heavy English/German mixing',
+    available: true,
+  },
+  // Unusable 402 models
+  'free/claude-opus-4.6': { name: 'Claude Opus 4.6', verdict: 'unavailable_402', verdict_label: 'Subscription-only (HTTP 402)', available: false },
+  'free/claude-sonnet-4.6': { name: 'Claude Sonnet 4.6', verdict: 'unavailable_402', verdict_label: 'Subscription-only (HTTP 402)', available: false },
+  'free/gemini-3.1-pro': { name: 'Gemini 3.1 Pro', verdict: 'unavailable_402', verdict_label: 'Subscription-only (HTTP 402)', available: false },
+  'free/glm-5.3': { name: 'GLM 5.3', verdict: 'unavailable_402', verdict_label: 'Subscription-only (HTTP 402)', available: false },
+  'free/kimi-k2.8': { name: 'Kimi K2.8', verdict: 'unavailable_402', verdict_label: 'Subscription-only (HTTP 402)', available: false },
+  'free/minimax-m3': { name: 'MiniMax M3', verdict: 'unavailable_402', verdict_label: 'Subscription-only (HTTP 402)', available: false },
+  'free/mimo-v2.6-flash': { name: 'MiMo V2.6 Flash', verdict: 'unavailable_402', verdict_label: 'Subscription-only (HTTP 402)', available: false },
+  'free/deepseek-v4-flash-0731': { name: 'DeepSeek V4 Flash (0731)', verdict: 'unavailable_402', verdict_label: 'Subscription-only (HTTP 402)', available: false },
+  // Unusable 400 models
+  'free/jev-1.13': { name: 'JEV 1.13', verdict: 'unavailable_400', verdict_label: 'No chat support (HTTP 400)', available: false },
+  // Direct Google Gemini
+  'gemini-2.5-flash': { name: 'Google Gemini 2.5 Flash', quota_multiplier: 1, tools: true, vision: true, verdict: 'recommended', verdict_label: 'Fast direct Google model', available: true },
+  'gemini-2.5-pro': { name: 'Google Gemini 2.5 Pro', quota_multiplier: 1, tools: true, vision: true, verdict: 'recommended', verdict_label: 'High reasoning direct Google model', available: true },
+};
+
+type ModelItem = string | { id: string; name?: string; provider?: string; is_free?: boolean; quota_multiplier?: number; tools?: boolean; vision?: boolean; verdict?: string; verdict_label?: string; available?: boolean };
 
 export async function fetchAiModels(): Promise<AiModelOption[]> {
   const raw = await apiFetch<{ models?: ModelItem[] } | ModelItem[]>('/api/v1/ai/models');
@@ -486,22 +648,82 @@ export async function fetchAiModels(): Promise<AiModelOption[]> {
 
   return list.map((m: ModelItem) => {
     const id = typeof m === 'string' ? m : m.id;
+    const known = KNOWN_AI_MODELS[id] || {};
+    const obj: Partial<AiModelOption> = typeof m === 'object' && m !== null ? (m as Partial<AiModelOption>) : {};
+
+    const isUnavailable =
+      obj.available === false ||
+      known.available === false ||
+      id.includes('claude') ||
+      id === 'free/jev-1.13' ||
+      id === 'free/gemini-3.1-pro' ||
+      id === 'free/glm-5.3' ||
+      id === 'free/kimi-k2.8' ||
+      id === 'free/minimax-m3' ||
+      id === 'free/mimo-v2.6-flash' ||
+      id === 'free/deepseek-v4-flash-0731';
+
     return {
       id,
-      name: typeof m === 'object' && m.name ? m.name : id,
-      provider: typeof m === 'object' && m.provider ? m.provider : id.includes('/') ? id.split('/')[0] : 'APInex',
-      is_free: typeof m === 'object' && m.is_free !== undefined ? m.is_free : id.startsWith('free/'),
+      name: String(obj.name || known.name || id),
+      provider: String(obj.provider || known.provider || (id.includes('/') ? id.split('/')[0] : 'APInex')),
+      is_free: typeof obj.is_free === 'boolean' ? obj.is_free : id.startsWith('free/'),
+      quota_multiplier: typeof obj.quota_multiplier === 'number' ? obj.quota_multiplier : (known.quota_multiplier ?? (id.includes('hydrogen') ? 5 : id.includes('hy4') || id.includes('minimax') || id.includes('mimo') ? 2 : 3)),
+      tools: typeof obj.tools === 'boolean' ? obj.tools : (known.tools ?? (id !== 'free/jev-1.13')),
+      vision: typeof obj.vision === 'boolean' ? obj.vision : (known.vision ?? (id !== 'free/deepseek-v4-pro-0813' && id !== 'free/jev-1.13')),
+      verdict: (obj.verdict as AiModelOption['verdict']) ?? known.verdict ?? (isUnavailable ? 'unavailable_402' : 'warning'),
+      verdict_label: String(obj.verdict_label || known.verdict_label || ''),
+      available: isUnavailable ? false : (typeof obj.available === 'boolean' ? obj.available : (known.available ?? true)),
     };
   });
 }
 
 export async function testAiConnection(provider?: string, model?: string): Promise<AiTestResult> {
-  return apiFetch<AiTestResult>('/api/v1/ai/test', {
+  const raw = await apiFetch<Record<string, unknown>>('/api/v1/ai/test', {
     method: 'POST',
     body: JSON.stringify({ provider, model }),
   });
+
+  return {
+    ok: Boolean(raw.ok),
+    provider: String(raw.provider ?? provider ?? 'APInex'),
+    model: String(raw.model ?? model ?? 'free/deepseek-v4-pro-0813'),
+    model_used: raw.model_used ? String(raw.model_used) : undefined,
+    latency_ms: typeof raw.latency_ms === 'number' ? raw.latency_ms : typeof raw.latency === 'number' ? Math.round(raw.latency * 1000) : 0,
+    error: raw.error ? String(raw.error) : undefined,
+  };
 }
 
 export async function fetchZoneBaseline(zoneId: string): Promise<ZoneBaseline> {
-  return apiFetch<ZoneBaseline>(`/api/v1/ai/baselines/${zoneId}`);
+  const raw = await apiFetch<Record<string, unknown>>(`/api/v1/ai/baselines/${zoneId}`);
+  const isCalibrated = Boolean(raw.calibrated ?? raw.is_calibrated);
+
+  return {
+    zone_id: String(raw.zone_id ?? zoneId),
+    baseline_cycles_count:
+      typeof raw.baseline_cycles_count === 'number'
+        ? raw.baseline_cycles_count
+        : typeof raw.runs_completed === 'number'
+        ? raw.runs_completed
+        : 0,
+    calibrated: isCalibrated,
+    is_calibrated: isCalibrated,
+    runs_completed:
+      typeof raw.runs_completed === 'number'
+        ? raw.runs_completed
+        : typeof raw.baseline_cycles_count === 'number'
+        ? raw.baseline_cycles_count
+        : 0,
+    runs_required: typeof raw.runs_required === 'number' ? raw.runs_required : 5,
+    flow_median_m3h: typeof raw.flow_median_m3h === 'number' ? raw.flow_median_m3h : undefined,
+    flow_mad_m3h: typeof raw.flow_mad_m3h === 'number' ? raw.flow_mad_m3h : undefined,
+    flow_min_normal_m3h: typeof raw.flow_min_normal_m3h === 'number' ? raw.flow_min_normal_m3h : undefined,
+    flow_max_normal_m3h: typeof raw.flow_max_normal_m3h === 'number' ? raw.flow_max_normal_m3h : undefined,
+    pressure_median_bar: typeof raw.pressure_median_bar === 'number' ? raw.pressure_median_bar : undefined,
+    pressure_mad_bar: typeof raw.pressure_mad_bar === 'number' ? raw.pressure_mad_bar : undefined,
+    pressure_min_normal_bar: typeof raw.pressure_min_normal_bar === 'number' ? raw.pressure_min_normal_bar : undefined,
+    pressure_max_normal_bar: typeof raw.pressure_max_normal_bar === 'number' ? raw.pressure_max_normal_bar : undefined,
+    status: (raw.status as ZoneBaseline['status']) ?? (isCalibrated ? 'normal' : 'insufficient_data'),
+    message: raw.message ? String(raw.message) : undefined,
+  };
 }

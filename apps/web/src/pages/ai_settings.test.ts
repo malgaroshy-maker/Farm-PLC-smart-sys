@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AiSettingsData, AiRecentCall } from '../lib/api';
+import { type AiSettingsData, type AiRecentCall, KNOWN_AI_MODELS } from '../lib/api';
 
 describe('AI Settings & Site Configuration', () => {
   const defaultSettings: AiSettingsData = {
@@ -7,12 +7,12 @@ describe('AI Settings & Site Configuration', () => {
     primary_provider: 'apinex',
     fallback_provider: 'gemini',
     provider_order: ['apinex', 'gemini', 'rule_based'],
-    primary_model: 'free/gemini-3.8-flash',
+    primary_model: 'free/deepseek-v4-pro-0813',
     fallback_model: 'gemini-2.5-flash',
     feature_models: {
-      alarm_assistant: 'free/gemini-3.8-flash',
-      weather_advisor: 'free/gemini-3.8-flash',
-      daily_briefing: 'free/gemini-3.8-flash',
+      alarm_assistant: 'free/deepseek-v4-pro-0813',
+      weather_advisor: 'free/deepseek-v4-pro-0813',
+      daily_briefing: 'free/deepseek-v4-pro-0813',
     },
     features_enabled: {
       alarm_assistant: true,
@@ -34,7 +34,7 @@ describe('AI Settings & Site Configuration', () => {
         timestamp: '2026-11-19T14:30:00Z',
         feature: 'explain_alarm',
         provider: 'apinex',
-        model: 'free/gemini-3.8-flash',
+        model: 'free/deepseek-v4-pro-0813',
         latency_ms: 1240,
       },
       {
@@ -67,7 +67,7 @@ describe('AI Settings & Site Configuration', () => {
   });
 
   it('uses free models by default for APInex', () => {
-    expect(defaultSettings.primary_model).toBe('free/gemini-3.8-flash');
+    expect(defaultSettings.primary_model).toBe('free/deepseek-v4-pro-0813');
     expect(defaultSettings.feature_models.alarm_assistant).toMatch(/^free\//);
     expect(defaultSettings.feature_models.weather_advisor).toMatch(/^free\//);
     expect(defaultSettings.feature_models.daily_briefing).toMatch(/^free\//);
@@ -103,5 +103,30 @@ describe('AI Settings & Site Configuration', () => {
 
     expect(calls[1].provider).toBe('rule_based');
     expect(calls[1].fallback_reason).toBe('timeout_exceeded');
+  });
+
+  it('contains benchmarked model catalog metadata from docs/AI_MODELS.md', () => {
+    const deepseek = KNOWN_AI_MODELS['free/deepseek-v4-pro-0813'];
+    expect(deepseek?.quota_multiplier).toBe(3);
+    expect(deepseek?.tools).toBe(true);
+    expect(deepseek?.verdict).toBe('recommended');
+    expect(deepseek?.available).toBe(true);
+
+    const muse = KNOWN_AI_MODELS['free/muse-spark-1.3'];
+    expect(muse?.quota_multiplier).toBe(3);
+    expect(muse?.tools).toBe(true);
+    expect(muse?.vision).toBe(true);
+    expect(muse?.verdict).toBe('recommended');
+    expect(muse?.available).toBe(true);
+
+    // Unusable 402 model marked unavailable
+    const claude = KNOWN_AI_MODELS['free/claude-opus-4.6'];
+    expect(claude?.available).toBe(false);
+    expect(claude?.verdict).toBe('unavailable_402');
+
+    // Unusable 400 model marked unavailable
+    const jev = KNOWN_AI_MODELS['free/jev-1.13'];
+    expect(jev?.available).toBe(false);
+    expect(jev?.verdict).toBe('unavailable_400');
   });
 });

@@ -20,6 +20,7 @@ class AlarmExplanation(BaseModel):
     safety_critical: bool = False
     confidence: float = 0.95
     provider_used: str = "rule_based"
+    model_used: str = ""
 
 
 class AdvisorSuggestion(BaseModel):
@@ -34,6 +35,7 @@ class AdvisorSuggestion(BaseModel):
     reasoning_ar: str
     confidence: float = 0.95
     provider_used: str = "rule_based"
+    model_used: str = ""
 
 
 class DailyBriefing(BaseModel):
@@ -51,6 +53,7 @@ class DailyBriefing(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
     recommendations_ar: list[str] = Field(default_factory=list)
     provider_used: str = "rule_based"
+    model_used: str = ""
 
 
 class ChatResponse(BaseModel):
@@ -59,6 +62,7 @@ class ChatResponse(BaseModel):
     message: str | None = None
     references: list[str] = Field(default_factory=list)
     provider_used: str = "rule_based"
+    model_used: str = ""
 
 
 # ── Request / Response models for API endpoints ──────────────
@@ -97,7 +101,7 @@ class AISettingsResponse(BaseModel):
     fallback_provider: str = "gemini"
     apinex_base_url: str
     apinex_model: str
-    apinex_fallback_model: str = "free/glm-5.3-flash"
+    apinex_fallback_model: str = "free/muse-spark-1.3"
     gemini_model: str
     model_alarm: str | None = None
     model_advisor: str | None = None

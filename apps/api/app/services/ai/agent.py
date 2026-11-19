@@ -41,6 +41,7 @@ from app.services.ai.providers import (
     get_primary_model,
     identify_provider_label,
 )
+from app.services.ai.purity import check_response_purity
 from app.services.ai.redaction import redact_payload, redact_text
 from app.services.ai.rules import rule_service
 from app.services.ai.schemas import (
@@ -359,18 +360,54 @@ async def _run_with_retry_and_fallback(
             latency_ms = (time.monotonic() - start_time) * 1000
             data = result.output
 
-            # Identify provider label
+            # Arabic purity guard: audit Arabic text for Hangul, CJK, Kana, Cyrillic, and English words
+            purity = check_response_purity(data)
+            fallback_reason: str | None = None
+
+            if not purity.is_pure:
+                log.warning(
+                    "Arabic purity guard triggered (%d foreign chars, %d English words: %s); retrying with fallback model",
+                    purity.foreign_char_count,
+                    purity.english_word_count,
+                    purity.violating_words,
+                )
+                try:
+                    cleaner_model = get_apinex_fallback_model()
+                    clean_result = await asyncio.wait_for(
+                        agent_instance.run(
+                            safe_prompt,
+                            deps=deps,
+                            model=cleaner_model,
+                            usage_limits=UsageLimits(request_limit=8),
+                        ),
+                        timeout=eff_timeout,
+                    )
+                    clean_data = clean_result.output
+                    clean_purity = check_response_purity(clean_data)
+                    fallback_reason = "language_purity"
+                    # If retry is cleaner, select it
+                    if clean_purity.total_violations < purity.total_violations:
+                        data = clean_data
+                        result = clean_result
+                except Exception as retry_exc:
+                    log.info("Purity retry error (%s); keeping primary output", retry_exc)
+                    fallback_reason = "language_purity"
+
+            # Identify provider label & model name
             provider_label = identify_provider_label(result.response)
+            model_name = getattr(result.response, "model_name", None) or "llm_agent"
+
             if hasattr(data, "provider_used"):
                 data.provider_used = provider_label
+            if hasattr(data, "model_used"):
+                data.model_used = str(model_name)
 
-            model_name = getattr(result.response, "model_name", None) or "llm_agent"
             record_ai_call(
                 feature=feature_name,
                 provider=provider_label,
                 model=str(model_name),
                 latency_ms=latency_ms,
-                fallback_reason=None,
+                fallback_reason=fallback_reason,
             )
 
             if cache_key:
@@ -411,6 +448,8 @@ async def _run_with_retry_and_fallback(
     fallback_data = fallback_fn()
     if hasattr(fallback_data, "provider_used"):
         fallback_data.provider_used = "rule_based"
+    if hasattr(fallback_data, "model_used"):
+        fallback_data.model_used = "offline_rules"
 
     record_ai_call(
         feature=feature_name,

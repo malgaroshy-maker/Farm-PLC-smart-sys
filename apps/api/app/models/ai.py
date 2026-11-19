@@ -187,10 +187,10 @@ class AISettings(Base):
         String(255), default="https://api.apinex.bond/v1", nullable=False
     )
     apinex_model: Mapped[str] = mapped_column(
-        String(100), default="free/gemini-3.8-flash", nullable=False
+        String(100), default="free/deepseek-v4-pro-0813", nullable=False
     )
     apinex_fallback_model: Mapped[str] = mapped_column(
-        String(100), default="free/glm-5.3-flash", nullable=False
+        String(100), default="free/muse-spark-1.3", nullable=False
     )
     gemini_model: Mapped[str] = mapped_column(
         String(100), default="gemini-2.5-flash", nullable=False

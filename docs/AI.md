@@ -12,11 +12,13 @@
 |---|-------|----------|
 | 1 | **Provider Chain** | **APInex primary**, then direct **Google Gemini**, then **rule-based fallback**. APInex is an OpenAI-compatible gateway (`https://api.apinex.bond/v1`, Bearer token, `POST /v1/chat/completions`). Provider and model are configurable in `.env` and via the Admin AI Settings UI. |
 | 2 | **Shipped Features** | Four core features: **Alarm Assistant (AR/EN)**, **Weather-Aware Advisor**, **Statistical Anomaly Detection**, and **Daily Briefing**. All other exploratory concepts (crop vision, voice control, seasonal learning) are deferred. |
-| 3 | **Default Models** | APInex free models (e.g. `free/gemini-3.8-flash`). Models are not hard-coded: runtime fetches `GET /v1/models` from APInex, caches the list, and surfaces them in Admin Settings. Rate limits or timeouts gracefully fall back to Gemini or rule-based logic. |
+| 3 | **Default Models** | Benchmark-validated default chain: **`free/deepseek-v4-pro-0813`** (fastest, high accuracy) → **`free/muse-spark-1.3`** (cleanest Arabic) → **`gemini-2.5-flash`** (direct Google) → **rule-based offline**. Models are not hard-coded: runtime fetches `GET /v1/models` from APInex, enriches with metadata from `docs/AI_MODELS.md`, and surfaces them in Admin Settings. Models returning 400 or 402 are marked unavailable and excluded from fallback chains. |
 | 4 | **Weather Provider** | **Open-Meteo API** (free, no key required) at the exact farm coordinates (`32.516250, 14.070361`, timezone=`Africa/Tripoli`). Replaced legacy Tripoli placeholder coordinates and removed OpenWeatherMap. |
-| 5 | **Assistant UI** | Dual interface: an **"Explain / اشرح"** button on every alarm row (Alarm Center and Zone Drawer) opening a dedicated side panel, plus a **persistent floating assistant** with live farm telemetry badges and interactive chat. |
-| 6 | **Advisor UI** | Suggestion cards with **one-tap approve** (with 5-second undo toast) and reject with feedback. Approving applies a 1-day override for that specific run only. **Never auto-apply.** Requires `operator+` permission. |
+| 5 | **Assistant UI** | Dual interface: an **"Explain / اشرح"** button on every alarm row (Alarm Center and Zone Drawer) opening a dedicated side panel, plus a **persistent floating assistant** with live farm telemetry badges, interactive chat, and `model_used` badges. |
+| 6 | **Advisor UI** | Suggestion cards with **one-tap approve** (with 5-second undo toast) and reject with feedback. Approving applies a 1-day override for that specific run only. **Never auto-apply.** Requires `operator+` permission. Displays active `model_used` indicator. |
 | 7 | **Reliability / Offline** | Every feature includes a zero-dependency **rule-based fallback** that produces identical structured schemas when all AI providers are unavailable, rate-limited, or disabled. |
+| 8 | **Arabic Purity Guard** | Automated inspection of Arabic model responses for Hangul, CJK, Kana, Cyrillic, and disallowed English words outside domain terminology. Impure responses trigger a single retry with the next model in the fallback chain (logging `fallback_reason="language_purity"`). |
+| 9 | **Zero Fake Fallbacks** | Complete elimination of hard-coded mock fallbacks (e.g. `14.2 m³/h`, fake `215ms` test latency). UI surfaces honest error states, real connection test metrics via `POST /api/v1/ai/test`, and authentic cycle baseline calibration data via `GET /api/v1/ai/baselines/{zone_id}`. |
 
 ---
 
@@ -32,13 +34,16 @@
 ┌────────────────────────────────────────────────────────────────────────┐
 │                  Pydantic AI Multi-Tier Fallback Agent                 │
 │                                                                        │
-│   Tier 1: APInex OpenAICompatibleProvider (free/gemini-3.8-flash)       │
-│      │ (Timeout 15s / HTTP 429/5xx / Malformed Output)                 │
+│   Tier 1: APInex Primary (free/deepseek-v4-pro-0813)                   │
+│      │ (Timeout / HTTP 429/5xx / Malformed Output / Arabic Impurity)    │
 │      ▼                                                                 │
-│   Tier 2: GoogleProvider (Direct Gemini API: gemini-2.5-flash)         │
-│      │ (Timeout 15s / HTTP 429/5xx / Malformed Output / No Key)        │
+│   Tier 2: APInex Secondary (free/muse-spark-1.3)                       │
+│      │ (Timeout / HTTP 429/5xx / Malformed Output / Arabic Impurity)    │
 │      ▼                                                                 │
-│   Tier 3: Rule-Based Fallback Engine (Deterministic Offline Logic)     │
+│   Tier 3: GoogleProvider (Direct Gemini API: gemini-2.5-flash)         │
+│      │ (Timeout / HTTP 429/5xx / Malformed Output / No Key)            │
+│      ▼                                                                 │
+│   Tier 4: Rule-Based Fallback Engine (Deterministic Offline Logic)     │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
        ┌────────────────────────────┼────────────────────────────┐
@@ -52,12 +57,19 @@
 
 ### Pydantic AI Implementation
 - Built with `pydantic-ai-slim[openai,google]>=2.71.0` (pinned in `requirements.txt` and `pyproject.toml`).
-- Multi-tier fallback: APInex primary (`free/gemini-3.8-flash`) → APInex secondary fallback (`free/glm-5.3-flash`) → Google Gemini direct → Rule-based deterministic offline fallback.
+- Multi-tier fallback chain: APInex primary (`free/deepseek-v4-pro-0813`) → APInex secondary fallback (`free/muse-spark-1.3`) → Google Gemini direct (`gemini-2.5-flash`) → Rule-based deterministic offline fallback.
 - Utilizes `FallbackModel` with dynamic per-model settings, feature-level timeouts (45s for explain/chat, 90s for advisor/briefing), and `UsageLimits(request_limit=5)`.
 - Models are constructed dynamically per request from live database settings (`ai_settings` table) or `.env` defaults without requiring API restarts.
-- Structured validation guarantees outputs strictly match Pydantic schemas (`AlarmExplanation`, `AdvisorSuggestion`, `DailyBriefing`, `ChatResponse`). If an LLM returns malformed JSON, Pydantic AI triggers the next fallback tier.
+- Structured validation guarantees outputs strictly match Pydantic schemas (`AlarmExplanation`, `AdvisorSuggestion`, `DailyBriefing`, `ChatResponse`), all returning `model_used: str`.
 - Requests are hashed (SHA-256) and cached in memory to eliminate redundant LLM calls.
 - In-memory ring buffer records the last 20 AI calls (feature, provider, model, latency, fallback reason) for admin visibility in the settings page. No prompt text is logged.
+
+### Arabic-Purity Guard (`apps/api/app/services/ai/purity.py`)
+- Free models frequently inject foreign Asian scripts (Hangul, CJK, Katakana) or German/English words into Arabic replies.
+- The purity guard inspects Arabic text with regex for:
+  - Asian/Cyrillic scripts: `[\uac00-\ud7af\u4e00-\u9fff\u3040-\u30ff\u0400-\u04ff]`
+  - Disallowed English words ($\ge 3$ letters) outside a domain dictionary (`ALM`, `bar`, `PLC`, `VFD`, `MODBUS`, zone codes).
+- If pollution is detected, the request retries once with the next model in the fallback chain (recording `fallback_reason="language_purity"`). If the second model is also impure, the cleaner response is selected.
 
 ### Session-Per-Tool Concurrency Architecture
 When Pydantic AI executes multiple tool calls in parallel within a single LLM turn, sharing a single SQLAlchemy `AsyncSession` causes `concurrent operations are not permitted` errors. To resolve this:
@@ -137,7 +149,10 @@ Because free/third-party AI providers may log prompts, the system enforces **zer
 
 ## 5. Settings, Operations & Health
 
-- **Admin Page (`/settings/ai`):** Allows configuring provider order, selecting specific models per feature (dynamically populated from APInex), toggling AI globally or per-feature, running a live connection latency test, and viewing key configuration status.
+- **Admin Page (`/settings/ai`):** Allows configuring provider order, selecting specific models per feature (dynamically populated from APInex enriched with metadata from `docs/AI_MODELS.md`), toggling AI globally or per-feature, running a live connection latency test (`POST /api/v1/ai/test`), and viewing recent AI calls.
+- **Model Catalog Metadata (`model_catalog.py`):** Exposes 23 APInex models with quota multipliers (×2/×3/×5), tools ✓, vision ✓, and verdict badges (✓ recommended, ⚠ mixing, ⛔ subscription-only 402, ⛔ no chat 400). Runtime tracking caches 400/402 failures to exclude broken models from fallback selection.
+- **Zone Baseline Calibration (`GET /api/v1/ai/baselines/{zone_id}`):** Directly queries `apps/api/app/services/anomaly.py` to retrieve true median and MAD flow and pressure bands. Returns `calibrated: true` when $\ge 5$ runs exist, or `calibrated: false` with honest run count ("بيانات غير كافية بعد (N/5 دورات)"). No hardcoded fake numbers.
+- **Connection Test Endpoint (`POST /api/v1/ai/test`):** Performs a live probe against the primary provider, returning real measured latency in milliseconds, the model used, and detailed error messages on failure (no simulated success fallbacks).
 - **Health Checks (`/health`):**
   - `ai`: `ok` (AI operational) | `degraded` (fallback active) | `off` (disabled) | `not_configured`.
   - `weather`: `ok` (fresh forecast) | `stale` (cache expired) | `off`.

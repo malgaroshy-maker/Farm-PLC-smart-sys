@@ -77,6 +77,7 @@ class RuleBasedService:
             safety_critical=(severity in ("S1", "S2")),
             confidence=1.0,
             provider_used="rule_based",
+            model_used="rule_based",
         )
 
     def weather_advisor(
@@ -112,6 +113,7 @@ class RuleBasedService:
                 reasoning_ar="تعذر تحميل توقعات الطقس، سيستمر الري المجدول كالمعتاد دون تعديل.",
                 confidence=0.5,
                 provider_used="rule_based",
+                model_used="rule_based",
             )
 
         precip_mm = day_summary.precipitation_total_mm
@@ -139,6 +141,7 @@ class RuleBasedService:
                 ),
                 confidence=0.95,
                 provider_used="rule_based",
+                model_used="rule_based",
             )
 
         # Threshold 2: Heat (> 38°C) or High ET0 (> 6.0 mm) -> Extend duration by 20%
@@ -161,6 +164,7 @@ class RuleBasedService:
                 ),
                 confidence=0.90,
                 provider_used="rule_based",
+                model_used="rule_based",
             )
 
         # Default: Normal conditions -> No adjustment
@@ -182,6 +186,7 @@ class RuleBasedService:
             ),
             confidence=0.95,
             provider_used="rule_based",
+            model_used="rule_based",
         )
 
     def daily_briefing(
@@ -267,6 +272,7 @@ class RuleBasedService:
             recommendations=recs_en,
             recommendations_ar=recs_ar,
             provider_used="rule_based",
+            model_used="rule_based",
         )
 
     def chat(self, message: str, lang: str = "ar") -> ChatResponse:
@@ -291,6 +297,7 @@ class RuleBasedService:
             reply_ar=ar,
             references=["docs/AI_FEATURES.md", "docs/ALARM_MATRIX.md"],
             provider_used="rule_based",
+            model_used="rule_based",
         )
 
     chat_reply = chat

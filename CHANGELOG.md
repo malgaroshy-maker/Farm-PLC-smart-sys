@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone E Round 3 — Benchmarking, Arabic Purity & Honest Fallbacks (2026-11-19)
+- **AI Model Benchmark Tool (`tools/ai-bench`):**
+  - Created maintained CLI benchmark runner `tools/ai-bench/ai_bench.py` and documentation `tools/ai-bench/README.md`.
+  - Benchmarks all 23 free APInex models across the 3 core agricultural tasks: Alarm Explanation (ALM-012 no-flow), Tool Calling (`get_zone_state` on Rumman 2), and Weather Advice (85% rain -> skip).
+  - Enforces concurrency 2 via `asyncio.Semaphore(2)`. Evaluates pass/fail, latency, and Arabic language purity (scoring foreign scripts: Hangul, CJK, Kana, Cyrillic, and disallowed English words).
+  - Safe key management: reads `APINEX_API_KEY` from `.env`, never logs or outputs credentials. Includes `--dry-run` mode for CI simulation.
+  - Documented "How to re-run" instructions in `docs/AI_MODELS.md`.
+- **Benchmark-Validated Default Model Chain:**
+  - Configured default chain: `free/deepseek-v4-pro-0813` (fastest & high accuracy) → `free/muse-spark-1.3` (cleanest Arabic) → direct Gemini (`gemini-2.5-flash`) → rule-based offline engine.
+  - Updated `apps/api/app/config.py`, `.env.example`, `models/ai.py`, and created migration `7c4d5e6f7a8b`.
+- **Arabic-Purity Guard:**
+  - Built `apps/api/app/services/ai/purity.py` checking Arabic outputs for foreign characters and non-whitelisted English words.
+  - Impure outputs trigger an automatic fallback retry with the next model in the chain (recording `fallback_reason="language_purity"` in the call log).
+- **Model Catalog Metadata & Error Caching:**
+  - Added `model_catalog.py` with metadata for all 23 free models: quota multipliers (×2/×3/×5), tools ✓, vision ✓, and verdict badges (recommended / language mixing / subscription-only 402 / no chat 400).
+  - Runtime cache records HTTP 400 and 402 failures, marking models unavailable and excluding them from fallback chains.
+  - Added `model_used` badge to all AI response DTOs and UI components (Alarm Assistant, Floating Chat, Daily Briefing, Suggestion Cards).
+- **Real Endpoints & Elimination of Fake Fallbacks:**
+  - Implemented real `POST /api/v1/ai/test` returning genuine measured latency and provider diagnostics (no fake `215ms` success mock).
+  - Implemented real `GET /api/v1/ai/baselines/{zone_id}` backed by `apps/api/app/services/anomaly.py` returning genuine median/MAD bands or honest "not enough data yet (N/5 runs)" banners (removed hardcoded `14.2 m³/h` mock).
+  - Audited and eliminated fake fallback values across frontend `catch` blocks.
+- **Route Coverage & Purity Tests:**
+  - Added `test_route_coverage.py` asserting all frontend API client URLs map to real FastAPI endpoints.
+  - Added `test_ai_purity.py` and `test_ai_model_catalog.py` unit test suites.
+
 ### Milestone E Review Fixes & Live Hardening (2026-11-19)
 - **Dependency Packaging & Requirements:**
   - Added `pydantic-ai-slim[openai,google]==2.71.0` and `respx>=0.23.1` to `apps/api/requirements.txt`.
