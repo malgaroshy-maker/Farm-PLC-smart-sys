@@ -246,6 +246,11 @@ class AlarmEngine:
         for zone_id, count in counts.items():
             if zone_id and count >= settings.repeated_fault_threshold:
                 out.append(Condition("ALM-036", zone_id=zone_id, value=float(count)))
+
+        # ALM-046 / ALM-047: statistical hydraulic anomaly detection per zone
+        from app.services.anomaly import anomaly_detector
+
+        out.extend(await anomaly_detector.evaluate_snapshots(db, snapshots, now, r_now))
         return out
 
     @staticmethod
@@ -354,7 +359,16 @@ class AlarmEngine:
         farm_now = clock.farm_now()
         real_now = utcnow()
         plc_codes = {c for c, s in CATALOG.items() if s.source == "plc"}
-        derived_codes = {"ALM-001", "ALM-008", "ALM-010", "ALM-036", "ALM-042", "ALM-043"}
+        derived_codes = {
+            "ALM-001",
+            "ALM-008",
+            "ALM-010",
+            "ALM-036",
+            "ALM-042",
+            "ALM-043",
+            "ALM-046",
+            "ALM-047",
+        }
         events = await self.reconcile(db, self.plc_conditions(snapshots), plc_codes)
         events += await self.reconcile(
             db, await self.derived_conditions(db, snapshots, farm_now, real_now), derived_codes

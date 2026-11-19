@@ -187,13 +187,15 @@ SCENARIOS: dict[str, Scenario] = {
             "Mainline leak",
             "تسريب في الخط الرئيسي",
             "Pipe bursts while Olives run → high flow detected, zone stopped.",
-            ["ALM-013"],
+            ["ALM-013", "ALM-046"],
             [
+                ("ensure_baseline", "zone_zaytoun"),
                 ("cmd", "start_zone", "zone", "zone_zaytoun", {"duration_min": 20}),
                 ("wait_zone", "zone_zaytoun", RUNNING, 60),
                 ("wait", 6),
                 ("fault", "system", None, "mainline_leak"),
                 ("wait_alarm", "ALM-013", 60),
+                ("wait_alarm", "ALM-046", 60),
                 ("wait", 6),
                 ("fault", "system", None, "clear_leak"),
             ],
@@ -466,6 +468,12 @@ class ScenarioRunner:
         elif kind == "wait_alarm":
             await self._wait_alarm(step[1], step[2])
             await self._publish(f"Alarm raised: {step[1]}")
+        elif kind == "ensure_baseline":
+            from app.services.anomaly import ensure_zone_baseline_runs
+
+            async with async_session_factory() as db:
+                await ensure_zone_baseline_runs(db, step[1])
+            await self._publish(f"Baseline confirmed for {step[1]}")
         elif kind == "reset_alarms":
             async with async_session_factory() as db:
                 n = await alarm_engine.reset_all_cleared(db, SCENARIO_ACTOR)

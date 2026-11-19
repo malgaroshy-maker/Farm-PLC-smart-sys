@@ -311,7 +311,36 @@ _SPECS = [
         "راجع حالة قفل الأمان (إنذار، انخفاض الخزان، أو وضع النظام). يستمر البرنامج في تنفيذ المراحل المتبقية.",
         source="derived",
     ),
+    AlarmSpec(
+        "ALM-046",
+        "Possible leak",
+        "تسريب محتمل في الخط الرئيسي",
+        "process",
+        "S2",
+        True,
+        False,
+        "Statistical anomaly detected: high flow and low pressure indicate possible pipe leak.",
+        "تم رصد شذوذ إحصائي: تدفق مرتفع مصحوب بانخفاض الضغط يشير إلى احتمال تسريب في الخط الرئيسي أو خط المنطقة.",
+        "Inspect zone pipeline and mainline for pipe bursts, loose fittings, or physical leaks. Keep zone isolated until checked.",
+        "تفقّد خط الأنابيب الرئيسي وخطوط المنطقة بحثاً عن كسور أو وصلات مفكوكة أو تسريب مياه. اعزل المنطقة حتى الفحص.",
+        source="derived",
+    ),
+    AlarmSpec(
+        "ALM-047",
+        "Possible clogged emitters",
+        "انسداد محتمل في النقاطات",
+        "process",
+        "S2",
+        True,
+        False,
+        "Statistical anomaly detected: low flow and high pressure indicate clogged emitters.",
+        "تم رصد شذوذ إحصائي: تدفق منخفض مصحوب بارتفاع الضغط يشير إلى انسداد في النقاطات أو اختناق في الخط.",
+        "Inspect drip lateral lines, screen filters, and emitters for sediment build-up or pinching. Flush laterals if necessary.",
+        "تفقّد أنابيب التنقيط والفلاتر الشبكية والنقاطات بحثاً عن ترسبات أو انسدادات أو التواء الأنابيب. اغسل الخطوط الفرعية عند الحاجة.",
+        source="derived",
+    ),
 ]
 
 CATALOG: dict[str, AlarmSpec] = {s.code: s for s in _SPECS}
+ALARM_CATALOG = CATALOG
 SEVERITY_RANK = {"S0": 0, "S1": 1, "S2": 2, "S3": 3}
