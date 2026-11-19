@@ -1,0 +1,123 @@
+# 🧠 Artificial Intelligence System — Algaroshy Farm Smart Irrigation
+
+**Document Type:** AI Architecture, Decisions, Prompts, Redaction, and Verification Specification  
+**Status:** ✅ Milestone E Delivered (2026-11-19)  
+**Farm Coordinates:** `32.516250, 14.070361` (Africa/Tripoli, UTC+2)  
+
+---
+
+## 1. Owner Decisions (2026-11-19)
+
+| # | Topic | Decision |
+|---|-------|----------|
+| 1 | **Provider Chain** | **APInex primary**, then direct **Google Gemini**, then **rule-based fallback**. APInex is an OpenAI-compatible gateway (`https://api.apinex.bond/v1`, Bearer token, `POST /v1/chat/completions`). Provider and model are configurable in `.env` and via the Admin AI Settings UI. |
+| 2 | **Shipped Features** | Four core features: **Alarm Assistant (AR/EN)**, **Weather-Aware Advisor**, **Statistical Anomaly Detection**, and **Daily Briefing**. All other exploratory concepts (crop vision, voice control, seasonal learning) are deferred. |
+| 3 | **Default Models** | APInex free models (e.g. `free/gemini-3.8-flash`). Models are not hard-coded: runtime fetches `GET /v1/models` from APInex, caches the list, and surfaces them in Admin Settings. Rate limits or timeouts gracefully fall back to Gemini or rule-based logic. |
+| 4 | **Weather Provider** | **Open-Meteo API** (free, no key required) at the exact farm coordinates (`32.516250, 14.070361`, timezone=`Africa/Tripoli`). Replaced legacy Tripoli placeholder coordinates and removed OpenWeatherMap. |
+| 5 | **Assistant UI** | Dual interface: an **"Explain / اشرح"** button on every alarm row (Alarm Center and Zone Drawer) opening a dedicated side panel, plus a **persistent floating assistant** with live farm telemetry badges and interactive chat. |
+| 6 | **Advisor UI** | Suggestion cards with **one-tap approve** (with 5-second undo toast) and reject with feedback. Approving applies a 1-day override for that specific run only. **Never auto-apply.** Requires `operator+` permission. |
+| 7 | **Reliability / Offline** | Every feature includes a zero-dependency **rule-based fallback** that produces identical structured schemas when all AI providers are unavailable, rate-limited, or disabled. |
+
+---
+
+## 2. Architecture & Provider Fallback Chain
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        FastAPI Application Layer                       │
+│  /api/v1/ai/explain-alarm  /chat  /suggestions  /briefing  /settings   │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                  Pydantic AI Multi-Tier Fallback Agent                 │
+│                                                                        │
+│   Tier 1: APInex OpenAICompatibleProvider (free/gemini-3.8-flash)       │
+│      │ (Timeout 15s / HTTP 429/5xx / Malformed Output)                 │
+│      ▼                                                                 │
+│   Tier 2: GoogleProvider (Direct Gemini API: gemini-2.5-flash)         │
+│      │ (Timeout 15s / HTTP 429/5xx / Malformed Output / No Key)        │
+│      ▼                                                                 │
+│   Tier 3: Rule-Based Fallback Engine (Deterministic Offline Logic)     │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+       ┌────────────────────────────┼────────────────────────────┐
+       ▼                            ▼                            ▼
+┌──────────────┐             ┌──────────────┐             ┌──────────────┐
+│  Read-Only   │             │   Payload    │             │  Structured  │
+│  Farm Tools  │             │  Redaction   │             │ Pydantic DTO │
+│ (No commands)│             │ (No secrets) │             │ (Validated)  │
+└──────────────┘             └──────────────┘             └──────────────┘
+```
+
+### Pydantic AI Implementation
+- Built with `pydantic-ai-slim[openai,google]>=2.71.0`.
+- Utilizes `FallbackModel(apinex_model, gemini_model)` with dynamic per-model settings and request timeouts.
+- Structured validation guarantees outputs strictly match Pydantic schemas (`AlarmExplanation`, `AdvisorSuggestion`, `DailyBriefing`, `ChatResponse`). If an LLM returns malformed JSON, Pydantic AI triggers the next fallback tier.
+- Requests are hashed (SHA-256) and cached in memory to eliminate redundant LLM calls.
+
+---
+
+## 3. Privacy, Safety & Redaction Rules
+
+Because free/third-party AI providers may log prompts, the system enforces **zero-trust data sanitization** before any payload leaves the server:
+
+1. **Payload Redaction (`apps/api/app/services/ai/redaction.py`):**
+   - IPv4 and IPv6 addresses are masked (`<REDACTED_IP>`).
+   - Email addresses are stripped (`<REDACTED_EMAIL>`).
+   - Bearer / JWT tokens and API keys are masked (`<REDACTED_TOKEN>`).
+   - Passwords and secret parameters are eliminated.
+   - Operator and user personal names are replaced with generic roles (`<OPERATOR>`).
+2. **Read-Only Context Tools (`apps/api/app/services/ai/tools.py`):**
+   - `get_alarm(code)`: Fetches catalog alarm metadata and live active records.
+   - `get_zone_state(zone_id)`: Fetches current status, flow, and pressure.
+   - `get_recent_telemetry(zone_id, minutes)`: Retrieves recent flow/pressure samples.
+   - `get_cycles(limit)`: Retrieves completed irrigation cycle logs.
+   - `get_schedule()`: Reads active irrigation programs.
+   - `get_forecast()`: Reads cached weather forecast.
+   - **Crucial Rule:** Zero command, schedule modification, or valve control tools exist. The AI cannot physically actuate any field device.
+3. **Safety Interlocks Prompts:**
+   - Prompts mandate adherence to `PLC_CONTROL_LOGIC.md` and explicitly forbid advising operators to bypass hydraulic interlocks or run conflicting zones.
+   - Every response contains a clear disclaimer: *"Suggestions only — inspect conditions on-site before acting / مقترحات استرشادية فقط — يرجى التحقق الميداني قبل التنفيذ"*.
+
+---
+
+## 4. Shipped Features
+
+### Feature 1: AI Alarm Assistant (Bilingual AR/EN)
+- **Endpoints:** `POST /api/v1/ai/explain-alarm`, `POST /api/v1/ai/chat`.
+- **Behavior:** Takes an active alarm ID, pulls the alarm matrix definition and live sensor readings, and produces structured troubleshooting advice in Arabic or English.
+- **Rule-Based Fallback:** If offline, synthesizes guidance directly from `app/core/alarm_catalog.py` and current telemetry values.
+- **UI:** An "Explain / اشرح" button on every alarm row in Alarm Center and Zone Drawer opening a side panel, plus a persistent floating assistant on all pages.
+
+### Feature 2: Weather-Aware Irrigation Advisor
+- **Weather Integration:** `apps/api/app/services/weather.py` fetches hourly and daily data from Open-Meteo (`precipitation_probability`, `precipitation`, `temperature_2m`, `et0_fao_evapotranspiration`, `wind_speed_10m`).
+- **Caching:** 3-hour cache stored in database table `weather_cache`. Respects virtual farm time (`clock.farm_now()`).
+- **Deterministic Thresholds:**
+  - **Rain Skip:** Precipitation probability $\ge 50\%$ OR expected rainfall $\ge 2.0\text{ mm}$ within the scheduled window $\rightarrow$ Suggests skipping the run.
+  - **Heat/Drought Extension:** Max temperature $\ge 38^\circ\text{C}$ OR $\text{ET}_0 \ge 7.0\text{ mm/day}$ $\rightarrow$ Suggests extending duration by $+20\%$.
+  - **No Forecast:** If weather API is unreachable and cache expired, generates no suggestion.
+- **One-Day Overrides:** Approving a suggestion (`POST /api/v1/ai/suggestions/{id}/approve`) records a `ProgramOverride` for that farm date. The scheduler (`app/services/scheduler.py`) honors this override exactly once and marks it applied. Rejecting records operator feedback.
+
+### Feature 3: Statistical Anomaly Detection (No LLM)
+- **Engine:** `apps/api/app/services/anomaly.py`. Pure robust statistical analysis using Median and Median Absolute Deviation (MAD / robust z-score).
+- **Baselines:** Computed per zone from completed cycles in `irrigation_cycles` (minimum $N=3$ runs required).
+- **Live Detection Rules:**
+  - **Mainline Leak:** High flow ($z > +2.5$) and low pressure ($z < -2.0$) $\rightarrow$ Raises **ALM-046** (*"Possible leak / تسريب محتمل في الخط الرئيسي"*).
+  - **Clogged Emitters:** Low flow ($z < -2.5$) and high pressure ($z > +2.0$) $\rightarrow$ Raises **ALM-047** (*"Possible clogged emitters / انسداد محتمل في النقاطات"*).
+- **Filtering:** 15-second grace period ignores valve travel and pump ramp-up pressure spikes; 10-second debounce prevents false alarms.
+
+### Feature 4: Daily Morning Briefing
+- **Generation:** Scheduled at `06:00` farm time on `clock.farm_now()`.
+- **Synthesis:** Aggregates yesterday's water consumption, cycle count and outcomes, tripped alarms, detected anomalies, today's upcoming programs, and today's weather forecast.
+- **Storage:** Persisted in `ai_briefings` table (`GET /api/v1/ai/briefing?date=YYYY-MM-DD`).
+- **UI:** Top hero collapsible card on the main dashboard feed and mobile status screen.
+
+---
+
+## 5. Settings, Operations & Health
+
+- **Admin Page (`/settings/ai`):** Allows configuring provider order, selecting specific models per feature (dynamically populated from APInex), toggling AI globally or per-feature, running a live connection latency test, and viewing key configuration status.
+- **Health Checks (`/health`):**
+  - `ai`: `ok` (AI operational) | `degraded` (fallback active) | `off` (disabled) | `not_configured`.
+  - `weather`: `ok` (fresh forecast) | `stale` (cache expired) | `off`.

@@ -288,8 +288,8 @@ Used when system operation can safely continue:
 | ALM-043 | Maintenance Mode Active | Info | S0 | Maintenance mode enabled | Change logic permissions | Log state change | Web, in-app | No | No | Suppresses selected alarms if configured |
 | ALM-044 | Data Stale / Last Good State Only | Utility | S1 | UI data older than freshness threshold | No PLC action | Mark stale badge on UI | Web, in-app | No | No | Important for remote trust |
 | ALM-045 | Scheduled Step Skipped / تم تخطي خطوة مجدولة | Schedule | S1 | Scheduled program step was skipped due to an active interlock or condition | Advance to next step | Raise momentary advisory alarm, log skipped cycle | In-app, web | No | No | Program continues with remaining steps |
-| ALM-046 | Zone Not Watered as Expected | Process | S2 | Derived logic: zone scheduled and completed but validation poor | Flag irrigation quality failure | Raise investigation event | Push, web, email | Yes | No | Uses flow/pressure/moisture correlation |
-| ALM-047 | Excessive Start/Stop Cycling | Equipment/Process | S2 | Pumps/valves cycling too frequently in time window | Restrict auto restarts | Log equipment stress event | Push, web, email | Yes | Optional | Protects hardware |
+| ALM-046 | Possible Leak / تسريب محتمل في الخط الرئيسي | Process | S2 | High flow + low pressure detected by statistical anomaly engine | Flag leak anomaly, isolate if sustained | Raise leak investigation event | Push, web, email | Yes | No | Statistical anomaly: median + MAD robust z-score |
+| ALM-047 | Possible Clogged Emitters / انسداد محتمل في النقاطات | Process | S2 | Low flow + high pressure detected by statistical anomaly engine | Flag clogged emitter condition | Log clogging investigation event | Push, web, email | Yes | No | Statistical anomaly: median + MAD robust z-score |
 | ALM-048 | Direct-Well Supply Not Permitted | Configuration | S1 | Zone requested on direct-well path but config disallows | Block sequence | Log command rejection | Web, in-app | No | No | Relevant for close/lower fields |
 | ALM-049 | Source Switchover Failed | Water Source | S2 | Automatic failover from tank/well did not complete | Abort dependent sequence | Create process interruption event | Push, web, email | Yes | Optional | Important for hybrid source logic |
 | ALM-050 | Configuration Missing Thresholds | Configuration | S1 | Zone/device lacks required threshold values | Block related smart decisions | Log config defect | Web, in-app, optional email | No | No | Must be prevented in admin UI |
@@ -322,6 +322,34 @@ No water flow was detected even though irrigation was commanded to run.
 
 **English recommended action**  
 Check pump status, zone valve position, tank/source availability, mainline pressure, and possible blockage or broken line conditions.
+
+### ALM-046: Possible Leak / تسريب محتمل في الخط الرئيسي
+
+**Arabic operator message**  
+تم رصد شذوذ إحصائي: تدفق مرتفع مصحوب بانخفاض الضغط يشير إلى احتمال تسريب في الخط الرئيسي أو خط المنطقة.
+
+**Arabic recommended action**  
+تفقّد خط الأنابيب الرئيسي وخطوط المنطقة بحثاً عن كسور أو وصلات مفكوكة أو تسريب مياه. اعزل المنطقة حتى الفحص.
+
+**English operator message**  
+Statistical anomaly detected: high flow and low pressure indicate possible pipe leak.
+
+**English recommended action**  
+Inspect zone pipeline and mainline for pipe bursts, loose fittings, or physical leaks. Keep zone isolated until checked.
+
+### ALM-047: Possible Clogged Emitters / انسداد محتمل في النقاطات
+
+**Arabic operator message**  
+تم رصد شذوذ إحصائي: تدفق منخفض مصحوب بارتفاع الضغط يشير إلى انسداد في النقاطات أو اختناق في الخط.
+
+**Arabic recommended action**  
+تفقّد أنابيب التنقيط والفلاتر الشبكية والنقاطات بحثاً عن ترسبات أو انسدادات أو التواء الأنابيب. اغسل الخطوط الفرعية عند الحاجة.
+
+**English operator message**  
+Statistical anomaly detected: low flow and high pressure indicate clogged emitters.
+
+**English recommended action**  
+Inspect drip lateral lines, screen filters, and emitters for sediment build-up or pinching. Flush laterals if necessary.
 
 ---
 

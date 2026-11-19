@@ -68,6 +68,15 @@ Emitted when an irrigation cycle begins (manual, scheduled, or scenario).
 ### cycle.ended
 Emitted when an irrigation cycle concludes with duration, outcome, and integrated water usage (m³).
 
+### ai.suggestion.created
+Emitted when the weather-aware advisor generates an irrigation suggestion for an upcoming run.
+
+### ai.suggestion.resolved
+Emitted when an operator approves or rejects an advisor suggestion.
+
+### ai.briefing.ready
+Emitted when the daily morning briefing is synthesized and stored (06:00 farm time).
+
 ## 3. Envelope
 
 ```json

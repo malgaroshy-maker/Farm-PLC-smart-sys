@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-19
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ (Simulation time, schedules, cycles, reports) → next is **Milestone E: AI (alarm assistant, weather advisor, anomaly detection)**
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ (AI: alarm assistant, weather advisor, anomaly detection, daily briefing) → next is **Production track (PLC adapter, hosting, hardening)**
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -34,22 +34,24 @@
 | Start script | ✅ | `run.bat` / `run.sh` (dev) and `run.bat demo` (phones + PWA). One window, first-run self-setup, a single `API_PORT`, clean Ctrl+C shutdown, `stop.bat` safety net, `--smoke` self-test. `run.bat reset` clears operating history for a clean demo (keeps users and settings). |
 | Phone / PWA | ✅ | Responsive layout with bottom navigation and a slide-in menu. Installable (manifest, icons, service worker that never caches `/api` or `/ws`). |
 | Web MVP | ✅ | Real login, live map (incl. starting/stopping state), dashboard side column (tank, pumps, alarms, trends, water today, next irrigation), zone panel with a duration picker + confirm and real cycle history, start/stop with interlock feedback, alarm chime + mute, reduce-motion toggle, global STOP ALL, Alarm Center (active/history, ack/reset, AR/EN guidance), Simulator page with Virtual Farm Clock panel, Schedules page with 24h timeline and drawer, Reports page with charts and CSV export, honest connection status. |
-| Tests + CI | ✅ | 122 API + 27 simulator + 36 web + 3 map-model tests (184 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
+| AI Services & Assistant | ✅ | Pydantic AI agent with multi-tier fallback: APInex primary (`free/gemini-3.8-flash`), Google Gemini fallback, and deterministic rule-based offline fallback. Strict Pydantic schemas, read-only tools, SHA-256 request caching, payload sanitization (redacting IPs, emails, tokens, secrets, names). "Explain / اشرح" side panel on every alarm row in Alarm Center & Zone Drawer; floating assistant drawer with live farm telemetry badges. Admin AI settings page (`/settings/ai`) with dynamic model selection from APInex `/v1/models`, feature toggles, and latency testing. `/health` reports live AI and weather status. |
+| Weather & Irrigation Advisor | ✅ | Open-Meteo weather client targeting exact farm coordinates (`32.516250, 14.070361`, Africa/Tripoli) with 3-hour caching and ET0 evapotranspiration extraction. Deterministic advisor rules: rain skip ($\ge 50\%$ or $\ge 2\text{ mm}$), heat extension ($\ge 38^\circ\text{C}$ or $\text{ET}_0 \ge 7\text{ mm}$ $\rightarrow +20\%$), and safe offline fallback. Suggestion cards with one-tap approve (5-second undo toast) creating single-day program run overrides honored by scheduler. |
+| Statistical Anomaly Detection | ✅ | Non-LLM statistical anomaly detection engine (`apps/api/app/services/anomaly.py`) computing median + MAD / robust z-score baselines per zone from completed cycles ($N \ge 3$). Evaluates live flow and pressure during irrigation: high flow + low pressure triggers S2 alarm ALM-046 (Possible leak); low flow + high pressure triggers S2 alarm ALM-047 (Possible clogged emitters). Debounce and valve-travel grace periods eliminate false positives. Baseline band visualized in Zone Drawer. |
+| Daily Morning Briefing | ✅ | Automated daily briefing synthesized at 06:00 farm time (`clock.farm_now()`). Summarizes yesterday's water consumption, cycle count and outcomes, tripped alarms, anomalies, and today's forecast. Stored in `ai_briefings` table; surfaced as collapsible top hero card on main dashboard and mobile status screen. |
+| Tests + CI | ✅ | 166 API + 27 simulator + 59 web + 3 map-model tests (255 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
 
 ## Live scenario suite (2026-11-19)
 
-All **15/15** scenarios pass against the running API + simulator (timescale 1× and 60×): normal cycle, direct-well cycle, tank critical during a run, booster failed start, pump trip mid-cycle, valve failed open, no flow, valve failed close, mainline leak, emergency stop, comms loss, repeated fault, reset farm, scheduled day (3 sequential zones with water > 0), scheduled blocked start (low tank interlock skip + S1 alarm + continuation).
+All **15/15** scenarios pass against the running API + simulator (timescale 1× and 60×): normal cycle, direct-well cycle, tank critical during a run, booster failed start, pump trip mid-cycle, valve failed open, no flow, valve failed close, mainline leak (verifying ALM-046 anomaly trigger), emergency stop, comms loss, repeated fault, reset farm, scheduled day (3 sequential zones with water > 0), scheduled blocked start (low tank interlock skip + S1 alarm + continuation).
 
 ## Known gaps (not done — don't demo these as real)
 
 | Gap | Planned in |
 |-----|-----------|
-| All AI features (`/health` reports `ai: not_implemented`) | E |
 | PLC adapter, hosting, PostgreSQL in production, notifications/SMS | Production track |
 | Notifications (push/email/SMS) and escalation for alarms | Production track |
 | Scenario suite runs manually against a live stack, not in CI | CI improvement |
 | Pipe routes are a plausible guess. Edit `tools/map-geometry/network.py` with the real routes | Owner input |
-| Weather location: owner supplied the exact site (32.516250, 14.070361), see [docs/FARM_SITE.md](docs/FARM_SITE.md). Not yet used in code | E |
 | Dual-zone operation (`MAX_CONCURRENT_ZONES>1`) is supported by interlocks but not exercised by any scenario | After commissioning |
 
 ## Milestones
@@ -60,7 +62,7 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 | **B: Credible simulator + real alarms** | ✅ Done 2026-11-18 |
 | **C: Demo-quality UI + PWA** | ✅ Done 2026-11-18 |
 | **D: Simulation time, schedules, cycles, reports** | ✅ Done 2026-11-19 |
-| **E: AI (alarm assistant, weather advisor, anomaly detection)** | ⬜ |
+| **E: AI (alarm assistant, weather advisor, anomaly detection, daily briefing)** | ✅ Done 2026-11-19 |
 | Production track (PLC adapter, hosting, hardening) | ⬜ After the demo |
 
 ## Decisions

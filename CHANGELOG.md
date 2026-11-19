@@ -8,6 +8,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone E — Artificial Intelligence Intelligence (2026-11-19)
+- **Multi-Tier AI Provider Fallback Chain:**
+  - Built with Pydantic AI (`pydantic-ai-slim[openai,google]>=2.71.0`) utilizing `FallbackModel`.
+  - Tier 1: Primary APInex gateway (`OpenAIChatModel` with `OpenAIProvider`, `free/gemini-3.8-flash`).
+  - Tier 2: Direct Google Gemini (`GoogleModel` with `GoogleProvider`).
+  - Tier 3: Deterministic rule-based offline fallback service (`RuleBasedService`).
+  - 15-second timeouts, exponential backoff on 429/5xx, in-memory SHA-256 request caching.
+  - Dynamic model discovery from APInex `GET /v1/models` with in-memory TTL caching.
+  - Strict payload sanitization pipeline (`redaction.py`) stripping IPv4/IPv6, emails, Bearer/JWT tokens, API keys, passwords, and operator names before LLM submission.
+  - Read-only farm tools taking `RunContext[AIDeps]` (`get_alarm`, `get_zone_state`, `get_recent_telemetry`, `get_cycles`, `get_schedule`, `get_forecast`); zero write or command tools.
+- **Alarm Assistant (Bilingual AR/EN):**
+  - Endpoints `POST /api/v1/ai/explain-alarm` and `POST /api/v1/ai/chat`.
+  - Generates structured `AlarmExplanation` with summary, likely causes, step-by-step actions, safety notes, confidence score, and provider label.
+  - "Explain / اشرح" button on every alarm row in Alarm Center and Zone Drawer opening side panel.
+  - Persistent floating assistant action button on all pages expanding into a slide-over chat drawer with live telemetry badges (pressure, flow, pumps, zones) and quick prompt pills.
+- **Weather-Aware Irrigation Advisor:**
+  - Open-Meteo weather integration targeting exact farm coordinates (`32.516250, 14.070361`, Africa/Tripoli) with 3-hour caching and ET0 evapotranspiration extraction.
+  - Deterministic evaluation of upcoming 24h programs: rain skip ($\ge 50\%$ or $\ge 2\text{ mm}$), heat extension ($\ge 38^\circ\text{C}$ or $\text{ET}_0 \ge 7\text{ mm}$ $\rightarrow +20\%$), and safe no-forecast fallback.
+  - Suggestion cards on Dashboard and Schedules page with duotone FarmIcons.
+  - One-tap approve with 5-second undo toast (Operator+ permission) creating single-day `ProgramOverride` in database; scheduler honors override once and marks applied.
+- **Statistical Anomaly Detection (No LLM):**
+  - Pure statistical engine (`apps/api/app/services/anomaly.py`) computing median + MAD / robust z-scores per zone from completed cycles ($N \ge 3$).
+  - Detects mainline leaks (high flow + low pressure) raising S2 alarm `ALM-046` (*"Possible leak / تسريب محتمل في الخط الرئيسي"*).
+  - Detects clogged emitters (low flow + high pressure) raising S2 alarm `ALM-047` (*"Possible clogged emitters / انسداد محتمل في النقاطات"*).
+  - 15-second valve travel grace period and 10-second debounce.
+  - Added baseline visualization section in Zone Drawer showing normal flow and pressure bands.
+- **Daily Morning Briefing:**
+  - Automated daily briefing synthesized at 06:00 farm time (`clock.farm_now()`) summarizing yesterday's water consumption, cycle count and outcomes, tripped alarms, anomalies, and today's forecast.
+  - Stored in `ai_briefings` table (`GET /api/v1/ai/briefing?date=YYYY-MM-DD`).
+  - Collapsible top hero card on main dashboard and mobile status screen.
+- **Admin AI Settings & Ops:**
+  - Dedicated admin page at `/settings/ai` for provider ordering, feature model configuration, global and per-feature toggles, live connection testing with latency display, key status, and farm coordinates.
+  - `/health` endpoint updated reporting live `ai` (`ok`, `degraded`, `off`, `not_configured`) and `weather` (`ok`, `stale`, `off`) health.
+- **Database & Migrations:**
+  - Created Alembic migration `5a2b3c4d5e6f` adding `ai_briefings`, `program_overrides`, and weather cache columns. Verified on fresh DB and `farm.db`.
+- **Verification:**
+  - 166 API tests passed (`pytest apps/api/tests`).
+  - 59 Web tests passed (`vitest run`).
+  - ESLint passed with 0 errors/warnings.
+  - Vite production build passed with zero chunk size warnings.
+  - All 15 simulator scenarios verified including mainline leak scenario triggering ALM-046.
+
+
 ### Milestone D second review fixes (2026-11-19)
 - **API restart no longer catches up missed runs.** On the first tick after start-up, every program start between the last recorded tick and now is logged as `schedule.missed` (owner decision #4) instead of being fired.
 - **Timed-out starts close their cycle.** A start nobody picked up is now closed as `aborted` with the timeout reason, the same as failed and superseded starts.

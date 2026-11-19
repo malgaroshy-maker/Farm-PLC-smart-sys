@@ -99,14 +99,15 @@ Each milestone ends in something you can run and show. Estimates assume one deve
 3. ✅ **Irrigation cycle log (Done 2026-11-19)**. Records all runs (manual, scenario, scheduled); calculates speed-aware water volume integration, duration, outcome (`completed`, `aborted`, `faulted`, `manual_stop`, `skipped`), and linked alarms. Live in zone drawer history.
 4. ✅ **Reports and CSV export (Done 2026-11-19)**. Tabbed reports page (daily irrigation, water per zone, pump runtime, alarm history), Recharts charts + data tables, date range filtering, and UTF-8 BOM bilingual CSV exports. "Next irrigation" card ticking on simulation clock on dashboard and mobile.
 
-### Milestone E — AI that earns its place (≈1.5–2 weeks)
-Ship **3 features well**, not 10 on paper. Each one must work without the AI service (rule-based fallback) and must only *suggest*:
-1. **Alarm assistant.** Explains an alarm in AR/EN using the alarm matrix and live context (Gemini or Claude, behind a provider interface).
-2. **Weather-aware advisor.** Uses a forecast API and suggests skip/shorten/delay for scheduled cycles. The operator approves.
-3. **Anomaly detection.** Statistical (z-score on flow and pressure per zone), not an LLM. Catches leaks and clogged emitters, and the simulator's leak scenario proves it works.
-4. **Daily briefing:** a summary of the cycle log and alarms (cheap to add once 1–3 exist).
+### Milestone E — AI that earns its place ✅ done 2026-11-19
+*Built to owner decisions (2026-11-19) and [docs/AI.md](AI.md). Shipped four core features with Pydantic AI, APInex primary (`free/gemini-3.8-flash`), direct Google Gemini fallback, and deterministic rule-based offline fallbacks. Operator+ approval, read-only tools, and zero auto-apply.*
+1. ✅ **Alarm assistant (Done 2026-11-19).** Explains alarms in AR/EN using alarm matrix, live telemetry, and read-only tools. "Explain / اشرح" side panel on every alarm row + persistent floating assistant drawer.
+2. ✅ **Weather-aware advisor (Done 2026-11-19).** Open-Meteo forecast at exact farm site (`32.516250, 14.070361`, Africa/Tripoli). Deterministic thresholds: rain skip ($\ge 50\%$ or $\ge 2\text{ mm}$), heat extension ($\ge 38^\circ\text{C}$ or $\text{ET}_0 \ge 7\text{ mm}$ $\rightarrow +20\%$). One-tap approve suggestion cards with 5-second undo toast creating single-day program run overrides.
+3. ✅ **Anomaly detection (Done 2026-11-19).** Statistical (median + MAD / robust z-score on flow and pressure per zone from completed cycles, $N \ge 3$), no LLM. Raises S2 alarms ALM-046 (Possible leak) and ALM-047 (Possible clogged emitters). Simulator leak scenario triggers ALM-046.
+4. ✅ **Daily briefing (Done 2026-11-19).** Synthesized at 06:00 farm time (`clock.farm_now()`) summarizing yesterday's water, cycle outcomes, tripped alarms, anomalies, and today's forecast. Collapsible hero card on dashboard and phone status screen.
+5. ✅ **Admin AI settings & ops (Done 2026-11-19).** Dedicated settings page at `/settings/ai` with provider order, dynamic models fetched from APInex `/v1/models`, feature toggles, test connection button, key status, and farm coordinates. `/health` reports `ai` and `weather` status honestly.
 
-Crop vision, voice and seasonal learning stay **deferred** until there's real hardware and data. Remove them from "enabled" toggles until then.
+Crop vision, voice and seasonal learning stay **deferred** until there's real hardware and data.
 
 ### Later — Production track (after the demo)
 - **PLC adapter interface** (`read_tags()`, `write_command()`, `health()`), with the simulator as the first implementation. Then OPC UA (Siemens S7-1200/1500) or Modbus TCP once the PLC is chosen. Validate against PLCSIM Advanced before touching hardware.

@@ -224,7 +224,69 @@ Historical alarm occurrences grouped by alarm code, severity, and bilingual titl
 ### GET /api/v1/system/config
 ### PATCH /api/v1/system/config
 
-## 11. Response Rules
+## 11. AI and Weather (Milestone E)
+
+### POST /api/v1/ai/explain-alarm
+Explains an active or historical alarm in Arabic or English using live sensor and catalog context.
+Request:
+```json
+{
+  "alarm_id": 1,
+  "question": "ما سبب انخفاض الضغط؟",
+  "lang": "ar"
+}
+```
+Response:
+```json
+{
+  "alarm_id": 1,
+  "alarm_code": "ALM-008",
+  "summary": "انخفاض مفاجئ في ضغط خط الري...",
+  "likely_causes": ["تسريب في الخط الرئيسي", "عطل في مضخة التعزيز"],
+  "recommended_steps": ["فحص الخط الرئيسي بصرياً", "إيقاف المنطقة يدوياً"],
+  "safety_note": "لا تتجاوز إقفال الأمان التلقائي للمضخة",
+  "confidence": 0.95,
+  "provider": "apinex/free/gemini-3.8-flash",
+  "disclaimer": "مقترحات استرشادية فقط — يرجى التحقق الميداني قبل التنفيذ"
+}
+```
+
+### POST /api/v1/ai/chat
+Interactive chat with read-only farm tools (`get_alarm`, `get_zone_state`, `get_recent_telemetry`, `get_cycles`, `get_schedule`, `get_forecast`).
+Request:
+```json
+{
+  "messages": [{ "role": "user", "content": "كم استهلكنا مياه اليوم؟" }],
+  "lang": "ar"
+}
+```
+
+### GET /api/v1/ai/suggestions
+Returns pending and historical weather-aware irrigation suggestions.
+
+### POST /api/v1/ai/suggestions/{id}/approve
+Approves an advisor suggestion (Operator+). Creates a 1-day program run override.
+
+### POST /api/v1/ai/suggestions/{id}/reject
+Rejects an advisor suggestion with feedback.
+
+### GET /api/v1/ai/briefing
+Returns the daily morning briefing for the specified farm date (default: today).
+Query parameter: `date=YYYY-MM-DD`.
+
+### GET /api/v1/ai/weather/forecast
+Returns cached Open-Meteo weather forecast for Algaroshy Farm (`32.516250, 14.070361`, Africa/Tripoli).
+
+### GET /api/v1/ai/settings
+Admin endpoint returning provider order, feature toggles, API key status, and active models.
+
+### POST /api/v1/ai/settings
+Admin endpoint to update AI configuration.
+
+### POST /api/v1/ai/test-connection
+Admin endpoint testing connectivity, measuring latency, and returning the active model.
+
+## 12. Response Rules
 
 Use a standard response wrapper for commands:
 
