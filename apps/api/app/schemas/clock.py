@@ -17,7 +17,7 @@ class ClockResponse(BaseModel):
 class ClockUpdateRequest(BaseModel):
     speed: float | None = Field(default=None, ge=0)
     pause: bool | None = None
-    step_min: float | None = None
+    step_min: float | None = Field(default=None, gt=0)
     jump_to: str | None = None
     real: bool | None = None
     confirm: bool | None = None

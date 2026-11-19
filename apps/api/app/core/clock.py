@@ -42,7 +42,7 @@ class FarmClock:
 
     def farm_now(self, real_now: datetime | None = None) -> datetime:
         """Current virtual time on the farm."""
-        now = real_now or utcnow()
+        now = as_utc(real_now) if real_now else utcnow()
         if self.is_locked_real or self.mode == "real":
             return now
         delta = (now - self.anchor_real).total_seconds()
@@ -50,7 +50,7 @@ class FarmClock:
 
     def _reanchor(self, real_now: datetime | None = None) -> None:
         """Capture the current sim time at real_now before any rate or anchor change."""
-        now = real_now or utcnow()
+        now = as_utc(real_now) if real_now else utcnow()
         current_sim = self.farm_now(now)
         self.anchor_real = now
         self.anchor_sim = current_sim
@@ -86,6 +86,8 @@ class FarmClock:
     def step(self, step_min: float = 1.0, real_now: datetime | None = None) -> None:
         if self.is_locked_real:
             raise ValueError("Clock is locked to real time in PLC controller mode")
+        if step_min <= 0:
+            raise ValueError("Step minutes must be positive")
         self._reanchor(real_now)
         self.anchor_sim += timedelta(minutes=step_min)
         self.mode = "sim"
@@ -117,7 +119,7 @@ class FarmClock:
         return prev_sim, target_utc
 
     def reset_to_real(self, real_now: datetime | None = None) -> None:
-        now = real_now or utcnow()
+        now = as_utc(real_now) if real_now else utcnow()
         self.mode = "real"
         self.speed = 1.0
         self.anchor_real = now
@@ -126,7 +128,7 @@ class FarmClock:
         self._last_nonzero_speed = 1.0
 
     def as_dict(self, real_now: datetime | None = None) -> dict:
-        now = real_now or utcnow()
+        now = as_utc(real_now) if real_now else utcnow()
         if self.is_locked_real:
             return {
                 "mode": "real",

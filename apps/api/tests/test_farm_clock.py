@@ -8,6 +8,7 @@ from conftest import login
 
 from app.config import settings
 from app.core.clock import FarmClock, clock
+from app.core.timeutil import utcnow
 from app.database import async_session_factory
 from app.deps import Actor
 from app.models.command import Command
@@ -215,6 +216,75 @@ async def test_link_staleness_and_timeouts_stay_on_real_time(client, monkeypatch
         assert expired[0].status == "timed_out"
         assert expired[0].completed_at == sim_t  # user-facing completed_at in farm time!
 
+    # Link staleness check:
+    # A snapshot updated 2 real seconds ago (staleness limit is 5s)
+    # Even if farm clock is at 360x (where 2 real seconds = 12 farm minutes),
+    # staleness must NOT trigger.
+    from app.services.live_state import Snapshot
+
+    snap_recent = {
+        "zone_a": Snapshot(state={"state": "running"}, updated_at=real_req + timedelta(seconds=18))
+    }
+    stale_conds = alarm_svc.engine.staleness_conditions(snap_recent, real_now)
+    assert len(stale_conds) == 0  # Only 2 real seconds elapsed -> NOT stale
+
+    # After 6 real seconds without updates (limit is 5s):
+    real_stale_now = real_req + timedelta(seconds=25)
+    stale_conds_triggered = alarm_svc.engine.staleness_conditions(snap_recent, real_stale_now)
+    assert any(c.code == "ALM-044" for c in stale_conds_triggered)
+
+
+@pytest.mark.asyncio
+async def test_alm036_and_water_today_follow_farm_time(client, monkeypatch):
+    from app.models.alarm import Alarm
+
+    # Farm time at t0
+    t0 = datetime(2026, 11, 19, 10, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr(clock, "mode", "sim")
+    monkeypatch.setattr(clock, "farm_now", lambda *args: t0)
+
+    async with async_session_factory() as db:
+        # Seed 3 major faults on zone_enab at farm time t0
+        for i in range(3):
+            db.add(
+                Alarm(
+                    id=f"fault_alm_{i}",
+                    alarm_code="ALM-019",
+                    severity="S2",
+                    category="hydraulic",
+                    status="active_unacked",
+                    zone_id="zone_enab",
+                    source_layer="plc",
+                    triggered_at=t0 - timedelta(hours=i),
+                    correlation_key=f"ALM-019:zone_enab:{i}",
+                )
+            )
+        await db.commit()
+
+        # At t0: ALM-036 is raised because 3 faults occurred in the last 24 farm hours
+        conds = await alarm_svc.engine.derived_conditions(db, {}, t0, utcnow())
+        assert any(c.code == "ALM-036" and c.zone_id == "zone_enab" for c in conds)
+
+        # Advance farm time by 25 farm hours:
+        t_future = t0 + timedelta(hours=25)
+        conds_future = await alarm_svc.engine.derived_conditions(db, {}, t_future, utcnow())
+        # The 24-farm-hour window has passed -> ALM-036 is no longer triggered!
+        assert not any(c.code == "ALM-036" and c.zone_id == "zone_enab" for c in conds_future)
+
+    # Water-today resets at farm midnight:
+    # 23:30 Tripoli time (21:30 UTC)
+    t_night = datetime(2026, 11, 19, 21, 30, 0, tzinfo=UTC)
+    monkeypatch.setattr(clock, "farm_now", lambda *args: t_night)
+    midnight_before = telem_svc.farm_midnight_utc()
+
+    # Cross farm midnight to 00:30 next day Tripoli time (22:30 UTC)
+    t_next_day = datetime(2026, 11, 19, 22, 30, 0, tzinfo=UTC)
+    monkeypatch.setattr(clock, "farm_now", lambda *args: t_next_day)
+    midnight_after = telem_svc.farm_midnight_utc()
+
+    assert midnight_after > midnight_before
+    assert (midnight_after - midnight_before) == timedelta(days=1)
+
 
 def test_api_clock_endpoints(client):
     admin = login(client, "admin")
@@ -253,9 +323,21 @@ def test_api_clock_endpoints(client):
     r = client.post("/api/v1/sim/clock", json={"step_min": 1}, headers=admin)
     assert r.status_code == 200
 
+    # 5b. POST step with negative/zero step_min -> 422
+    r = client.post("/api/v1/sim/clock", json={"step_min": -5}, headers=admin)
+    assert r.status_code == 422
+    r = client.post("/api/v1/sim/clock", json={"step_min": 0}, headers=admin)
+    assert r.status_code == 422
+
     # 6. POST jump to 05:30
     r = client.post("/api/v1/sim/clock", json={"jump_to": "05:30"}, headers=admin)
     assert r.status_code == 200
+
+    # 6b. POST jump with invalid time format -> 422
+    r = client.post("/api/v1/sim/clock", json={"jump_to": "99:99"}, headers=admin)
+    assert r.status_code == 422
+    r = client.post("/api/v1/sim/clock", json={"jump_to": "invalid"}, headers=admin)
+    assert r.status_code == 422
 
     # 7. POST back to real time without confirm -> 400
     r = client.post("/api/v1/sim/clock", json={"real": True}, headers=admin)
@@ -290,8 +372,7 @@ async def test_reset_history_resets_clock():
     assert clock.mode == "real"
     assert clock.speed == 1.0
     async with async_session_factory() as db:
-        row = (await db.get(FarmClockModel, 1))
+        row = await db.get(FarmClockModel, 1)
         assert row is not None
         assert row.mode == "real"
         assert row.speed == 1.0
-

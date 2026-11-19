@@ -90,4 +90,3 @@ async def require_admin_or_service(actor: Actor = Depends(get_actor)) -> Actor:
     if actor.is_service or actor.role == "owner_admin":
         return actor
     raise HTTPException(status_code=403, detail="Insufficient permissions")
-

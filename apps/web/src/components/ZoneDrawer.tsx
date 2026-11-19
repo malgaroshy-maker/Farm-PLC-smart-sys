@@ -14,7 +14,7 @@ import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
 import { DropIcon, FlowIcon, GaugeIcon, ValveIcon } from './icons/FarmIcons';
 import { CROP_ICON } from './icons/cropIcon';
 import MaintenanceDone from './MaintenanceDone';
-import { useClockStore } from '../lib/clock';
+import { parseUtcDate, useClockStore } from '../lib/clock';
 
 interface ZoneDrawerProps {
   zoneId: string | null;
@@ -63,7 +63,7 @@ function useZoneHistory(zoneId: string, minutes: number): ChartRow[] {
         ]);
         const byTs = new Map<string, ChartRow>();
         const label = (ts: string) =>
-          new Date(ts).toLocaleTimeString('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' });
+          parseUtcDate(ts).toLocaleTimeString('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' });
         m.points.forEach((p) => byTs.set(p.ts, { time: label(p.ts), moisture: p.value }));
         f.points.forEach((p) => byTs.set(p.ts, { ...(byTs.get(p.ts) ?? { time: label(p.ts) }), flow: p.value }));
         if (live) setRows([...byTs.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, r]) => r));

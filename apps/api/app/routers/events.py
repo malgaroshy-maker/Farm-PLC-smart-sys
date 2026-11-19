@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import as_utc
 from app.database import get_db
 from app.deps import Actor, get_actor
 from app.models.event_log import EventLog
@@ -63,7 +64,7 @@ async def list_events(
             actor_id=e.actor_id,
             actor_name=name,
             payload=json.loads(e.payload_json) if e.payload_json else None,
-            occurred_at=e.occurred_at,
+            occurred_at=as_utc(e.occurred_at),
         )
         for e, name in rows
     ]

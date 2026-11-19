@@ -4,6 +4,7 @@ import {
   computeFarmNow,
   formatFarmClock,
   farmHourAndMonth,
+  parseUtcDate,
 } from './clock';
 
 describe('virtual farm clock', () => {
@@ -86,5 +87,31 @@ describe('virtual farm clock', () => {
 
     expect(ar).toBeTruthy();
     expect(en).toContain('05:30:00');
+  });
+
+  it('parseUtcDate reliably parses naive and timezone-offset strings as UTC', () => {
+    // String without timezone (e.g. from SQLite)
+    const dNaive = parseUtcDate('2026-11-19T10:00:00');
+    expect(dNaive.toISOString()).toBe('2026-11-19T10:00:00.000Z');
+
+    // String with +00:00 (FastAPI format)
+    const dOffset = parseUtcDate('2026-11-19T10:00:00+00:00');
+    expect(dOffset.toISOString()).toBe('2026-11-19T10:00:00.000Z');
+
+    // String with Z
+    const dZ = parseUtcDate('2026-11-19T10:00:00Z');
+    expect(dZ.toISOString()).toBe('2026-11-19T10:00:00.000Z');
+
+    // Empty or null
+    expect(parseUtcDate(null)).toBeInstanceOf(Date);
+    expect(parseUtcDate('')).toBeInstanceOf(Date);
+  });
+
+  it('safely handles invalid dates in formatFarmClock and farmHourAndMonth', () => {
+    const invalidDate = new Date('invalid');
+    expect(formatFarmClock(invalidDate, 'ar')).toBe('—');
+    const { hour, month } = farmHourAndMonth(invalidDate);
+    expect(hour).toBe(12);
+    expect(month).toBe(1);
   });
 });

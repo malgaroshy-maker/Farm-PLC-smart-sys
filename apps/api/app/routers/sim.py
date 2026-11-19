@@ -8,9 +8,10 @@ from app.core.clock import clock
 from app.database import get_db
 from app.deps import Actor, get_actor, require_admin, require_admin_or_service
 from app.schemas.clock import ClockResponse, ClockUpdateRequest
-from app.schemas.command import CommandCreate
+from app.schemas.command import CommandCreate, CommandResponse
 from app.services.commands import _supersede_starts
 from app.services.events import log_event
+from app.services.live_state import current_map_state
 from app.services.realtime import manager
 from app.services.scenarios import runner
 
@@ -57,6 +58,10 @@ async def update_clock(
             actor_type=actor.actor_type,
             actor_id=actor.actor_id,
         )
+        res = ClockResponse(**clock.as_dict(), action=action)
+        await manager.broadcast("clock.changed", res)
+        await manager.broadcast("state.snapshot", await current_map_state(db))
+        return res
     elif body.speed is not None:
         action = "speed"
         old_speed = clock.speed
@@ -112,11 +117,15 @@ async def update_clock(
         )
     elif body.jump_to is not None:
         action = "jump"
-        await _supersede_starts(db, CommandCreate(command_type="stop_all", target_type="system"))
         try:
             prev_sim, next_sim = clock.jump_to(body.jump_to)
         except ValueError as err:
             raise HTTPException(422, str(err)) from err
+        superseded = await _supersede_starts(
+            db, CommandCreate(command_type="stop_all", target_type="system")
+        )
+        for c in superseded:
+            await manager.broadcast("command.updated", CommandResponse.model_validate(c))
         await clock.save(db)
         await log_event(
             db,

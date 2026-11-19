@@ -358,3 +358,25 @@ def test_jump_stops_running_zones_and_approximates(eng):
     assert eng.state.zones["zone_a"].health == "healthy"
     assert eng.state.zones["zone_a"].flow_m3h == 0.0
     assert eng.state.pumps["pump_booster_01"].state == "off"
+
+
+def test_manual_step_advances_physics_while_paused_without_killing_zones(eng):
+    start(eng)
+    run(eng, 40)
+    assert eng.state.zones["zone_a"].state == "running"
+    initial_runtime = eng.state.zones["zone_a"].runtime_sec
+
+    # Pause the simulator
+    eng.paused = True
+    assert eng.paused is True
+
+    # Regular step while paused: does nothing
+    eng.step(10.0)
+    assert eng.state.zones["zone_a"].runtime_sec == initial_runtime
+
+    # Manual step: advances physics for 60 seconds without killing the zone
+    eng.manual_step(60.0)
+    assert eng.paused is True  # still paused after step
+    assert eng.state.zones["zone_a"].state == "running"  # NOT killed!
+    assert eng.state.zones["zone_a"].runtime_sec == initial_runtime + 60.0
+    assert eng.state.zones["zone_a"].flow_m3h > 0.0

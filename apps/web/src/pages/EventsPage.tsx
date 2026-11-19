@@ -4,6 +4,7 @@ import { EventsIcon } from '../components/icons/FarmIcons';
 import { apiFetch } from '../lib/api';
 import { useT, type MsgKey } from '../lib/i18n';
 import { useFarmStore } from '../store/farm';
+import { parseUtcDate } from '../lib/clock';
 
 interface EventRow {
   id: number;
@@ -119,7 +120,7 @@ export default function EventsPage() {
             {rows.map((e) => (
               <tr key={e.id} className="border-t border-[#353534] align-top">
                 <td className="p-3 font-mono text-xs text-[#849396] whitespace-nowrap" dir="ltr">
-                  {fmt.format(new Date(e.occurred_at))}
+                  {fmt.format(parseUtcDate(e.occurred_at))}
                 </td>
                 <td className="p-3 font-mono text-xs whitespace-nowrap" dir="ltr" style={{ color: TYPE_COLOR[e.event_type] ?? '#e5e2e1' }}>
                   {e.event_type}

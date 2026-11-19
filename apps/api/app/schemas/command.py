@@ -41,6 +41,12 @@ class CommandResponse(BaseModel):
         # ORM object → dict with decoded payload
         fields = {k: getattr(data, k, None) for k in cls.model_fields if k != "payload"}
         fields["payload"] = json.loads(raw)
+        from app.core.timeutil import as_utc
+
+        for dt_field in ("requested_at", "acknowledged_at", "completed_at"):
+            val = fields.get(dt_field)
+            if isinstance(val, datetime):
+                fields[dt_field] = as_utc(val)
         return fields
 
 

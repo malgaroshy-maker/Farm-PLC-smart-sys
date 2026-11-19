@@ -15,7 +15,7 @@ import asyncio
 import json
 import math
 import random
-from datetime import timedelta
+from datetime import UTC, timedelta
 from zoneinfo import ZoneInfo
 
 from .faults import FaultInjector
@@ -506,8 +506,23 @@ class SimulatorEngine:
 
     # ── Main step & Jump ─────────────────────────────────
 
+    def manual_step(self, dt: float) -> None:
+        """Advance physics and sim_time by dt seconds even if paused, without aborting zones."""
+        if dt <= 0:
+            return
+        was_paused = self.paused
+        self.paused = False
+        try:
+            n = max(1, math.ceil(dt / 2.0))
+            for _ in range(n):
+                self.step(dt / n)
+        finally:
+            self.paused = was_paused
+
     def jump(self, new_sim_time) -> None:
         """Monotonic jump: stop running zones, apply closed-form environment, log."""
+        if new_sim_time.tzinfo is None:
+            new_sim_time = new_sim_time.replace(tzinfo=UTC)
         for zid in list(self.state.zones):
             z = self.state.zones[zid]
             if z.state in ACTIVE_STATES:

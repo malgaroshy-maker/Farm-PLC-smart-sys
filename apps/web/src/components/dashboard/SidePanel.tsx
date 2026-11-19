@@ -7,7 +7,7 @@ import { apiFetch } from '../../lib/api';
 import { SEVERITY, sortAlarms } from '../../lib/alarms';
 import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
 import { AlarmIcon, PumpIcon, TankIcon } from '../icons/FarmIcons';
-import { useClockStore } from '../../lib/clock';
+import { parseUtcDate, useClockStore } from '../../lib/clock';
 
 const CYAN = '#00e5ff';
 const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
@@ -17,7 +17,7 @@ const tip = {
 };
 
 function hhmm(ts: string) {
-  return new Date(ts).toLocaleTimeString('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' });
+  return parseUtcDate(ts).toLocaleTimeString('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' });
 }
 
 function usePoll<T>(path: string, ms: number): T | null {

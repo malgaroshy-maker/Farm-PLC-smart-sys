@@ -13,12 +13,14 @@ import { pickName, useT, type MsgKey } from '../lib/i18n';
 const NO_ALARMS: Alarm[] = [];
 const ZONE_NAME = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
 
+import { parseUtcDate } from '../lib/clock';
+
 type View = 'active' | 'history';
 type SevFilter = 'all' | AlarmSeverity;
 
 function fmtTime(iso: string | null): string {
   if (!iso) return '—';
-  const d = new Date(iso);
+  const d = parseUtcDate(iso);
   return new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Africa/Tripoli',
     year: 'numeric',

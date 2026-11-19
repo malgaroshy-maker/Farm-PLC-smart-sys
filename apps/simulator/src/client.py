@@ -74,7 +74,12 @@ class APIClient:
                 dt = datetime.fromisoformat(s)
                 gap = (dt - self.engine.sim_time).total_seconds()
                 threshold = max(300.0, 5.0 * max(1.0, self.engine.timescale))
-                if action in ("jump", "step") or abs(gap) > threshold:
+                if action == "step":
+                    delta = (dt - self.engine.sim_time).total_seconds()
+                    if 0 < delta <= 300:
+                        self.engine.manual_step(delta)
+                    self.engine.sim_time = dt
+                elif action in ("jump", "reset") or abs(gap) > threshold:
                     self.engine.jump(dt)
                 else:
                     self.engine.sim_time = dt

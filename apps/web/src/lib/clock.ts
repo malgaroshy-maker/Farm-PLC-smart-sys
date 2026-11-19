@@ -116,6 +116,16 @@ export const useClockStore = create<ClockStore>((set, get) => ({
   },
 }));
 
+export function parseUtcDate(iso: string | null | undefined): Date {
+  if (!iso) return new Date();
+  const s =
+    iso.includes('Z') || /[+-]\d{2}(:\d{2})?$/.test(iso)
+      ? iso
+      : `${iso}Z`;
+  const parsed = Date.parse(s);
+  return Number.isNaN(parsed) ? new Date() : new Date(parsed);
+}
+
 export function computeFarmNow(): Date {
   const { mode, paused, speed, anchorSimMs, clientRecvMs } = useClockStore.getState();
   if (mode === 'real') return new Date();
@@ -126,6 +136,7 @@ export function computeFarmNow(): Date {
 }
 
 export function formatFarmClock(date: Date, lang: string): string {
+  if (Number.isNaN(date.getTime())) return '—';
   return new Intl.DateTimeFormat(lang === 'ar' ? 'ar-LY-u-nu-latn' : 'en-GB', {
     timeZone: 'Africa/Tripoli',
     weekday: 'short',
@@ -139,6 +150,9 @@ export function formatFarmClock(date: Date, lang: string): string {
 }
 
 export function farmHourAndMonth(date: Date): { hour: number; month: number } {
+  if (Number.isNaN(date.getTime())) {
+    return { hour: 12, month: 1 };
+  }
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Africa/Tripoli',
     hour: '2-digit',
@@ -161,6 +175,13 @@ export function useFarmClock(lang: string = 'ar') {
   const paused = useClockStore((s) => s.paused);
   const isSimulated = useClockStore((s) => s.isSimulated);
   const [farmNow, setFarmNow] = useState<Date>(() => computeFarmNow());
+
+  useEffect(() => {
+    const unsub = useClockStore.subscribe(() => {
+      setFarmNow(computeFarmNow());
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const tickInterval = speed >= 60 ? 100 : speed >= 10 ? 250 : 500;

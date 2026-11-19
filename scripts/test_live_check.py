@@ -96,7 +96,7 @@ with sync_playwright() as p:
     print("Dashboard rendered during high-speed simulation.")
 
     # Test Pause
-    print("\n--- Step 7: Test Pause ---")
+    print("\n--- Step 7: Test Pause & Step ---")
     pause_btn = page.locator('button[title="إيقاف مؤقت"], button[title="Pause"]').first
     if not pause_btn.is_visible():
         pause_btn = page.locator('button:has-text("إيقاف مؤقت"), button:has-text("Pause")').first
@@ -104,6 +104,13 @@ with sync_playwright() as p:
     page.wait_for_timeout(1500)
     page.screenshot(path=str(SCREENSHOT_DIR / "06_paused.png"))
     print("Clock paused successfully.")
+
+    # Test Step (+1 min) while paused
+    step_btn = page.locator('button:has-text("+1m"), button:has-text("+1 دقيقة"), button:has-text("+1 min")').first
+    if step_btn.is_visible():
+        step_btn.click()
+        page.wait_for_timeout(1000)
+        print("Stepped virtual clock +1 min successfully while paused.")
 
     # Test Jump to 05:30 Dawn
     print("\n--- Step 8: Jump to 05:30 Dawn ---")

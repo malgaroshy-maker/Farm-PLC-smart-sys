@@ -26,8 +26,10 @@ HISTORY = [Alarm, Command, EventLog, TelemetryPoint, DeviceStateSnapshot, Irriga
 
 
 async def reset_history() -> dict[str, int]:
+    from app.services.scenarios import runner
     from app.services.telemetry import recorder
 
+    await runner.stop()
     recorder._last_farm = None
     recorder._last_real = None
     removed: dict[str, int] = {}
