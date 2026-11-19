@@ -189,22 +189,99 @@ export interface Schedule {
   updated_at: string;
 }
 
+// ─── Programs & Steps (Milestone D) ───────────────────────
+
+export interface ProgramStep {
+  id: string;
+  program_id: string;
+  zone_id: string;
+  step_order: number;
+  duration_min: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgramStepCreate {
+  zone_id: string;
+  step_order: number;
+  duration_min: number;
+}
+
+export interface Program {
+  id: string;
+  name: string;
+  enabled: boolean;
+  start_time_local: string; // HH:MM in farm local time (Africa/Tripoli)
+  weekday_mask: string; // e.g. "1,2,3,4,5,6,7" (1=Monday ... 7=Sunday)
+  season: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  steps: ProgramStep[];
+  total_duration_min: number;
+}
+
+export interface ProgramCreate {
+  name: string;
+  enabled?: boolean;
+  start_time_local: string;
+  weekday_mask?: string;
+  season?: string | null;
+  notes?: string | null;
+  steps: ProgramStepCreate[];
+}
+
+export interface ProgramUpdate {
+  name?: string;
+  enabled?: boolean;
+  start_time_local?: string;
+  weekday_mask?: string;
+  season?: string | null;
+  notes?: string | null;
+  steps?: ProgramStepCreate[];
+}
+
+export interface ConflictError {
+  code: string;
+  message_en: string;
+  message_ar: string;
+  details?: Record<string, unknown>;
+}
+
+export interface NextIrrigationInfo {
+  program_id: string;
+  program_name: string;
+  step_order: number;
+  zone_id: string;
+  zone_name: string;
+  crop_type?: string;
+  scheduled_start_farm: string;
+  duration_min: number;
+  seconds_until_start: number;
+}
+
 // ─── Irrigation Cycle ───────────────────────────────────
 
 export interface IrrigationCycle {
   id: string;
   zone_id: string;
   source_mode: WaterSourceType;
-  planned_start_at: string;
+  program_id?: string | null;
+  program_step_id?: string | null;
+  command_id?: string | null;
+  planned_start_at: string | null;
   actual_start_at: string | null;
   actual_end_at: string | null;
-  planned_duration_min: number;
+  planned_duration_min: number | null;
   actual_duration_min: number | null;
   outcome: CycleOutcome | null;
   water_estimate_m3: number | null;
   initiated_by_type: ActorType;
   initiated_by_id: string | null;
-  notes: string;
+  alarms_json?: string | null;
+  failure_reason?: string | null;
+  notes: string | null;
   created_at: string;
 }
 

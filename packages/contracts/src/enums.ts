@@ -133,7 +133,8 @@ export type CycleOutcome =
   | "completed"
   | "aborted"
   | "faulted"
-  | "manual_stop";
+  | "manual_stop"
+  | "skipped";
 
 // ─── Alarms (ALARM_MATRIX.md) ───────────────────────────
 
@@ -179,6 +180,13 @@ export type EventType =
   | "alarm.updated"
   | "scenario.updated"
   | "clock.changed"
+  | "schedule.fired"
+  | "schedule.skipped"
+  | "schedule.missed"
+  | "program.started"
+  | "program.finished"
+  | "program.step_started"
+  | "program.step_completed"
   | "ai.suggestion.new"
   | "ai.anomaly.detected"
   | "ai.weather.advisory"

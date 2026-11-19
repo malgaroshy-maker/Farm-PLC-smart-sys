@@ -13,6 +13,15 @@ class IrrigationCycle(Base, IdentityMixin, TimestampMixin):
 
     zone_id: Mapped[str] = mapped_column(String(64), ForeignKey("zones.id"), nullable=False)
     source_mode: Mapped[str] = mapped_column(String(20), default="tank")
+    program_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("programs.id", ondelete="SET NULL")
+    )
+    program_step_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("program_steps.id", ondelete="SET NULL")
+    )
+    command_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("commands.id", ondelete="SET NULL")
+    )
     planned_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     actual_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     actual_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -20,8 +29,10 @@ class IrrigationCycle(Base, IdentityMixin, TimestampMixin):
     actual_duration_min: Mapped[int | None] = mapped_column(Integer)
     outcome: Mapped[str | None] = mapped_column(
         String(20)
-    )  # completed | aborted | faulted | manual_stop
+    )  # completed | aborted | faulted | manual_stop | skipped
     initiated_by_type: Mapped[str] = mapped_column(String(20), default="user")
     initiated_by_id: Mapped[str | None] = mapped_column(String(64))
     water_estimate_m3: Mapped[float | None] = mapped_column(Float)
+    alarms_json: Mapped[str | None] = mapped_column(Text)
+    failure_reason: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)

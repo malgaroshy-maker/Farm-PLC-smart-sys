@@ -17,6 +17,7 @@ from .command import Command
 from .event_log import EventLog
 from .farm import Farm
 from .irrigation_cycle import IrrigationCycle
+from .program import Program, ProgramStep, SchedulerState
 from .pump import Pump
 from .schedule import Schedule
 from .sensor import Sensor
@@ -37,6 +38,9 @@ __all__ = [
     "Sensor",
     "WaterSource",
     "Schedule",
+    "Program",
+    "ProgramStep",
+    "SchedulerState",
     "Command",
     "Alarm",
     "IrrigationCycle",

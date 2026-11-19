@@ -36,12 +36,20 @@ ZoneState = Literal[
     "warning",
     "faulted",
 ]
+CycleOutcome = Literal[
+    "completed",
+    "aborted",
+    "faulted",
+    "manual_stop",
+    "skipped",
+]
 
 SYSTEM_MODES: tuple[str, ...] = get_args(SystemMode)
 USER_ROLES: tuple[str, ...] = get_args(UserRole)
 COMMAND_TYPES: tuple[str, ...] = get_args(CommandType)
 COMMAND_STATUSES: tuple[str, ...] = get_args(CommandStatus)
 ZONE_STATES: tuple[str, ...] = get_args(ZoneState)
+CYCLE_OUTCOMES: tuple[str, ...] = get_args(CycleOutcome)
 
 TERMINAL_COMMAND_STATUSES = frozenset({"rejected", "completed", "failed", "timed_out"})
 # Zone states that occupy hydraulic capacity.

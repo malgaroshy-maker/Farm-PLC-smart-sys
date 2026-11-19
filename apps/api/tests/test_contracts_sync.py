@@ -25,6 +25,7 @@ def ts_union(name: str) -> tuple[str, ...]:
         ("CommandType", domain.COMMAND_TYPES),
         ("CommandStatus", domain.COMMAND_STATUSES),
         ("ZoneState", domain.ZONE_STATES),
+        ("CycleOutcome", domain.CYCLE_OUTCOMES),
     ],
 )
 def test_vocabulary_matches_contracts(ts_name, py_values):
