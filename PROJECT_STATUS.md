@@ -49,7 +49,7 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 | Notifications (push/email/SMS) and escalation for alarms | Production track |
 | Scenario suite runs manually against a live stack, not in CI | CI improvement |
 | Pipe routes are a plausible guess. Edit `tools/map-geometry/network.py` with the real routes | Owner input |
-| Weather location: need the farm's longitude (the sketch only shows ≈32.51°N) | Owner input → E |
+| Weather location: owner supplied the exact site (32.516250, 14.070361), see [docs/FARM_SITE.md](docs/FARM_SITE.md). Not yet used in code | E |
 | Dual-zone operation (`MAX_CONCURRENT_ZONES>1`) is supported by interlocks but not exercised by any scenario | After commissioning |
 
 ## Milestones
