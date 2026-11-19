@@ -341,6 +341,10 @@ async def expire_stale_commands(db: AsyncSession) -> list[Command]:
         c.status = "timed_out"
         c.completed_at = now_farm
         c.failure_reason = f"No response from controller within {limit:.0f}s"
+        if c.command_type == "start_zone":
+            from app.services.cycles import record_cycle_aborted_by_command
+
+            await record_cycle_aborted_by_command(db, c.id, c.failure_reason)
         await log_event(
             db,
             "command.timed_out",

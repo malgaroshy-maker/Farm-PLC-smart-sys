@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone D second review fixes (2026-11-19)
+- **API restart no longer catches up missed runs.** On the first tick after start-up, every program start between the last recorded tick and now is logged as `schedule.missed` (owner decision #4) instead of being fired.
+- **Timed-out starts close their cycle.** A start nobody picked up is now closed as `aborted` with the timeout reason, the same as failed and superseded starts.
+- **No invented water.** A run whose flow was measured as zero records 0 m³, not an estimate. A single sample is extrapolated and flagged `water_is_estimate`. The zone's nominal flow is never used.
+- Regression tests for all three (API 122).
+
 ### Milestone D Review Follow-up & Fixes (2026-11-19)
 - **Reports Query Parameters & Date Range:**
   - Standardized date query parameters on `from_date` and `to_date` (matching `docs/API.md`), retaining backward-compatible `from` and `to` aliases.

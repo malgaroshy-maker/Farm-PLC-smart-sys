@@ -338,3 +338,34 @@ async def test_scheduler_explicit_jump_marks_missed(client):
             assert len(ev_res.scalars().all()) >= 1
     finally:
         clock.farm_now = original_fn
+
+
+@pytest.mark.asyncio
+async def test_api_restart_after_downtime_marks_missed_not_fired(client):
+    """Regression: owner rule #4 — runs that fell inside API downtime are missed, not caught up."""
+    push_state(client)
+    _create_test_program(client, "Downtime Program", "08:00")
+    farm_tz = ZoneInfo(settings.farm_timezone)
+    now = clock.farm_now().astimezone(farm_tz)
+    before = datetime(now.year, now.month, now.day, 7, 0, tzinfo=farm_tz)
+    after = datetime(now.year, now.month, now.day, 9, 0, tzinfo=farm_tz)
+    original_fn = clock.farm_now
+    try:
+        async with async_session_factory() as db:
+            await scheduler._clear_state(db, STATE_ACTIVE_PROGRAM)
+            await scheduler._set_state(db, STATE_LAST_FARM_TIME, before.isoformat())
+            await db.commit()
+        scheduler.reset()  # a fresh API process has no in-memory state
+        clock.farm_now = lambda: after
+        async with async_session_factory() as db:
+            await scheduler.tick(db, await load_snapshots(db))
+            types = [t for (t,) in (await db.execute(select(EventLog.event_type))).all()]
+            starts = (
+                await db.execute(select(Command).where(Command.command_type == "start_zone"))
+            ).all()
+    finally:
+        clock.farm_now = original_fn
+        scheduler.reset()
+    assert "schedule.missed" in types
+    assert "program.started" not in types
+    assert starts == []

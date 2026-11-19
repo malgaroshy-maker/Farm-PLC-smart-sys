@@ -118,9 +118,18 @@ class SchedulerService:
             persisted = await self._get_state(db, STATE_LAST_FARM_TIME)
             if persisted:
                 try:
-                    self._last_farm_time = datetime.fromisoformat(persisted)
+                    restored = datetime.fromisoformat(persisted)
                 except Exception:
-                    self._last_farm_time = now_farm
+                    restored = None
+                if restored is not None and restored < now_farm:
+                    # Fresh process (API restart): everything between the last
+                    # recorded tick and now happened while we were down, so it
+                    # follows the owner's "missed runs" rule — never catch up.
+                    await self._handle_missed_runs(db, restored, now_farm, farm_tz)
+                self._last_farm_time = now_farm
+                await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
+                await db.commit()
+                return
             else:
                 self._last_farm_time = now_farm
                 await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())

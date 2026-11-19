@@ -198,3 +198,86 @@ async def test_reset_and_back_to_real_leaves_no_open_cycles(client):
         )
         open_cycles = res.scalars().all()
         assert len(open_cycles) == 0
+
+
+@pytest.mark.asyncio
+async def test_timed_out_start_closes_cycle_as_aborted(client):
+    """Regression: a start nobody picks up must not leave its cycle open forever."""
+    push_state(client)
+    admin = login(client, "admin")
+    resp = client.post(
+        "/api/v1/commands",
+        headers=admin,
+        json={"command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab"},
+    )
+    assert resp.status_code == 201
+    cmd_id = resp.json()["id"]
+
+    from app.core.timeutil import utcnow
+    from app.models.command import Command
+    from app.services.commands import expire_stale_commands
+
+    async with async_session_factory() as db:
+        cmd = await db.get(Command, cmd_id)
+        cmd.requested_at_real = utcnow() - timedelta(minutes=10)
+        await db.commit()
+        expired = await expire_stale_commands(db)
+        assert cmd_id in [c.id for c in expired]
+        cycle = (
+            (await db.execute(select(IrrigationCycle).where(IrrigationCycle.command_id == cmd_id)))
+            .scalars()
+            .one()
+        )
+        assert cycle.outcome == "aborted"
+        assert cycle.actual_end_at is not None
+        assert "No response from controller" in (cycle.failure_reason or "")
+
+
+@pytest.mark.asyncio
+async def test_zero_flow_run_uses_no_water(client):
+    """Regression: measured zero flow (valve never opened) must not be replaced by nominal flow."""
+    from app.services.cycles import integrate_zone_water_m3
+
+    start = clock.farm_now()
+    async with async_session_factory() as db:
+        for i in range(3):
+            db.add(
+                TelemetryPoint(
+                    metric_key="zone.flow_m3h",
+                    farm_id="farm_01",
+                    zone_id="zone_enab",
+                    ts=start + timedelta(seconds=10 * (i + 1)),
+                    value_numeric=0.0,
+                    value_text="1.0",
+                    source="simulator",
+                )
+            )
+        await db.commit()
+        water, estimate = await integrate_zone_water_m3(
+            db, "zone_enab", start, start + timedelta(minutes=2)
+        )
+    assert water == 0.0 and estimate is False
+
+
+@pytest.mark.asyncio
+async def test_single_sample_is_flagged_estimate(client):
+    from app.services.cycles import integrate_zone_water_m3
+
+    start = clock.farm_now()
+    async with async_session_factory() as db:
+        db.add(
+            TelemetryPoint(
+                metric_key="zone.flow_m3h",
+                farm_id="farm_01",
+                zone_id="zone_rumman_1",
+                ts=start + timedelta(seconds=30),
+                value_numeric=6.0,
+                value_text="1.0",
+                source="simulator",
+            )
+        )
+        await db.commit()
+        water, estimate = await integrate_zone_water_m3(
+            db, "zone_rumman_1", start, start + timedelta(minutes=30)
+        )
+    assert estimate is True and water == pytest.approx(3.0)

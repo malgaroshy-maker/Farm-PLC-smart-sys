@@ -77,23 +77,16 @@ async def integrate_zone_water_m3(
             prev_val = v
             prev_speed = speed
 
-        if total_m3 > 0:
-            return round(total_m3, 4), False
+        # Measured: a run with zero flow (e.g. valve never opened) used no water.
+        return round(total_m3, 4), False
 
-    # Fewer than 2 samples: estimate from available sample or nominal flow
+    # Fewer than 2 samples: extrapolate the single measured flow, flagged as an
+    # estimate. Never invent water from the zone's nominal flow.
     dt_hours = max(0.0, (end_utc - start_utc).total_seconds() / 3600.0)
-    flows = [v for _, v, _ in rows if v and v > 0]
-    if flows and dt_hours > 0:
-        avg_flow = sum(flows) / len(flows)
-        return round(avg_flow * dt_hours, 4), True
-
-    if dt_hours > 0:
-        zone = await db.get(Zone, zone_id)
-        if zone and zone.flow_min_m3h and zone.flow_max_m3h:
-            nominal_flow = (zone.flow_min_m3h + zone.flow_max_m3h) / 2.0
-            return round(nominal_flow * dt_hours, 4), True
-
-    return 0.0, False
+    if rows and dt_hours > 0:
+        return round((rows[0][1] or 0.0) * dt_hours, 4), True
+    # No samples at all: unknown, recorded as 0 and flagged so the UI shows ≈.
+    return 0.0, dt_hours > 0
 
 
 async def get_linked_alarms_json(

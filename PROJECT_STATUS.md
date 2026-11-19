@@ -34,7 +34,7 @@
 | Start script | ✅ | `run.bat` / `run.sh` (dev) and `run.bat demo` (phones + PWA). One window, first-run self-setup, a single `API_PORT`, clean Ctrl+C shutdown, `stop.bat` safety net, `--smoke` self-test. `run.bat reset` clears operating history for a clean demo (keeps users and settings). |
 | Phone / PWA | ✅ | Responsive layout with bottom navigation and a slide-in menu. Installable (manifest, icons, service worker that never caches `/api` or `/ws`). |
 | Web MVP | ✅ | Real login, live map (incl. starting/stopping state), dashboard side column (tank, pumps, alarms, trends, water today, next irrigation), zone panel with a duration picker + confirm and real cycle history, start/stop with interlock feedback, alarm chime + mute, reduce-motion toggle, global STOP ALL, Alarm Center (active/history, ack/reset, AR/EN guidance), Simulator page with Virtual Farm Clock panel, Schedules page with 24h timeline and drawer, Reports page with charts and CSV export, honest connection status. |
-| Tests + CI | ✅ | 118 API + 27 simulator + 36 web + 3 map-model tests (184 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
+| Tests + CI | ✅ | 122 API + 27 simulator + 36 web + 3 map-model tests (184 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
 
 ## Live scenario suite (2026-11-19)
 
