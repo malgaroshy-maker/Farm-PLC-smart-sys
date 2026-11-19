@@ -8,6 +8,7 @@ import {
   Key,
   MapPin,
   Zap,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useT } from '../lib/i18n';
@@ -19,6 +20,7 @@ import {
   type AiSettingsData,
   type AiModelOption,
   type AiTestResult,
+  type AiRecentCall,
 } from '../lib/api';
 import { AiSparklesIcon } from '../components/icons/FarmIcons';
 
@@ -49,10 +51,12 @@ const DEFAULT_SETTINGS: AiSettingsData = {
     longitude: 14.070361,
     timezone: 'Africa/Tripoli',
   },
+  recent_calls: [],
 };
 
 const DEFAULT_MODELS: AiModelOption[] = [
   { id: 'free/gemini-3.8-flash', name: 'Gemini 3.8 Flash (Free APInex)', is_free: true },
+  { id: 'free/glm-5.3-flash', name: 'GLM 5.3 Flash (Free APInex)', is_free: true },
   { id: 'free/gpt-4o-mini', name: 'GPT-4o Mini (Free APInex)', is_free: true },
   { id: 'free/deepseek-r1', name: 'DeepSeek R1 (Free APInex)', is_free: true },
   { id: 'gemini-2.5-flash', name: 'Direct Google Gemini 2.5 Flash', is_free: false },
@@ -102,6 +106,28 @@ export default function AiSettingsPage() {
     );
   }
 
+  const handlePrimaryProviderChange = (newPrimary: string) => {
+    const fallback = newPrimary === 'apinex' ? 'gemini' : 'apinex';
+    const newOrder = [newPrimary, fallback, 'rule_based'].filter((v, i, a) => a.indexOf(v) === i);
+    setSettings({
+      ...settings,
+      primary_provider: newPrimary,
+      fallback_provider: fallback,
+      provider_order: newOrder,
+    });
+  };
+
+  const handleFallbackProviderChange = (newFallback: string) => {
+    const newOrder = [settings.primary_provider, newFallback, 'rule_based'].filter(
+      (v, i, a) => a.indexOf(v) === i
+    );
+    setSettings({
+      ...settings,
+      fallback_provider: newFallback,
+      provider_order: newOrder,
+    });
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setSaveSuccess(false);
@@ -112,7 +138,7 @@ export default function AiSettingsPage() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch {
-      // If endpoint doesn't exist yet, preserve local state gracefully
+      // If endpoint doesn't exist yet or fails, preserve local state gracefully
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } finally {
@@ -151,6 +177,8 @@ export default function AiSettingsPage() {
       // Keep existing models
     }
   };
+
+  const recentCalls: AiRecentCall[] = settings.recent_calls || [];
 
   return (
     <div className="h-full flex flex-col gap-5 overflow-y-auto pb-10">
@@ -283,7 +311,7 @@ export default function AiSettingsPage() {
           </div>
         </section>
 
-        {/* Card 2: Provider Chain & Fallback */}
+        {/* Card 2: Provider Chain & Fallback (Editable) */}
         <section className="panel p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-white/5 pb-3">
             <div className="flex items-center gap-2">
@@ -300,39 +328,54 @@ export default function AiSettingsPage() {
           </div>
 
           <div className="space-y-3">
-            {/* Step 1: APInex Primary */}
-            <div className="p-3 rounded-xl bg-black/30 border border-[#00e5ff]/30 flex items-center justify-between gap-2">
-              <div>
+            {/* Primary Provider Selector */}
+            <div className="p-3 rounded-xl bg-black/30 border border-[#00e5ff]/30 space-y-2">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-[#00e5ff] text-black font-bold font-mono text-[11px] flex items-center justify-center">
                     1
                   </span>
                   <span className="text-xs font-bold text-[#e5e2e1]">{t('aiSettings.primaryProvider')}</span>
                 </div>
-                <div className="text-[11px] text-[#849396] ms-7">https://api.apinex.bond/v1</div>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/20">
+                  Primary
+                </span>
               </div>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/20">
-                Primary
-              </span>
+              <select
+                value={settings.primary_provider}
+                onChange={(e) => handlePrimaryProviderChange(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
+              >
+                <option value="apinex" className="bg-[#141416]">APInex Gateway (https://api.apinex.bond/v1)</option>
+                <option value="gemini" className="bg-[#141416]">Google Gemini API (Direct)</option>
+              </select>
             </div>
 
-            {/* Step 2: Direct Google Gemini */}
-            <div className="p-3 rounded-xl bg-black/30 border border-white/10 flex items-center justify-between gap-2">
-              <div>
+            {/* Fallback Provider Selector */}
+            <div className="p-3 rounded-xl bg-black/30 border border-white/10 space-y-2">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-white/15 text-[#e5e2e1] font-bold font-mono text-[11px] flex items-center justify-center">
                     2
                   </span>
                   <span className="text-xs font-bold text-[#e5e2e1]">{t('aiSettings.fallbackProvider')}</span>
                 </div>
-                <div className="text-[11px] text-[#849396] ms-7">GoogleProvider / Gemini API</div>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-[#849396]">
+                  Fallback
+                </span>
               </div>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-[#849396]">
-                Fallback
-              </span>
+              <select
+                value={settings.fallback_provider}
+                onChange={(e) => handleFallbackProviderChange(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
+              >
+                <option value="gemini" className="bg-[#141416]">Google Gemini API (Direct)</option>
+                <option value="apinex" className="bg-[#141416]">APInex Gateway (https://api.apinex.bond/v1)</option>
+                <option value="rule_based" className="bg-[#141416]">Rule-Based Offline Fallback</option>
+              </select>
             </div>
 
-            {/* Step 3: Rule-based Fallback */}
+            {/* Step 3: Rule-based Fallback (Always Active) */}
             <div className="p-3 rounded-xl bg-black/30 border border-white/5 flex items-center justify-between gap-2">
               <div>
                 <div className="flex items-center gap-2">
@@ -387,6 +430,29 @@ export default function AiSettingsPage() {
           </div>
 
           <div className="space-y-4 text-xs">
+            {/* Primary Default Model */}
+            <div className="space-y-1.5">
+              <label className="text-[#bac9cc] font-medium block">
+                {t('aiSettings.modelUsed')} (Primary Gateway)
+              </label>
+              <select
+                value={settings.primary_model}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    primary_model: e.target.value,
+                  })
+                }
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
+              >
+                {models.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-[#141416]">
+                    {m.name || m.id} {m.is_free ? '(Free)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Alarm Assistant Model */}
             <div className="space-y-1.5">
               <label className="text-[#bac9cc] font-medium block">
@@ -522,6 +588,82 @@ export default function AiSettingsPage() {
           </div>
         </section>
       </div>
+
+      {/* Recent AI Calls (Last 20) Table */}
+      <section className="panel p-5 space-y-3">
+        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+          <div className="flex items-center gap-2">
+            <Activity className="text-[#00e5ff]" size={18} />
+            <h2 className="text-sm font-bold text-[#e5e2e1]">{t('aiSettings.recentCalls')}</h2>
+          </div>
+          <span className="text-[11px] font-mono text-[#849396] px-2 py-0.5 rounded bg-white/5">
+            {recentCalls.length} / 20
+          </span>
+        </div>
+
+        {recentCalls.length === 0 ? (
+          <div className="py-8 text-center text-xs text-[#849396]">
+            {t('aiSettings.noRecentCalls')}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-start text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-white/10 text-[#849396] text-[11px]">
+                  <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.time')}</th>
+                  <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.feature')}</th>
+                  <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.provider')}</th>
+                  <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.model')}</th>
+                  <th className="py-2.5 px-3 text-start font-medium">{t('ai.latency')}</th>
+                  <th className="py-2.5 px-3 text-start font-medium">{t('aiSettings.fallbackReasonCol')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {recentCalls.map((call, idx) => (
+                  <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-[#bac9cc] whitespace-nowrap">
+                      {call.timestamp.replace('T', ' ').slice(0, 19)}
+                    </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-white/5 text-[#e5e2e1] border border-white/10">
+                        {call.feature}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                          call.provider === 'rule_based'
+                            ? 'bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/30'
+                            : 'bg-[#00e5ff]/15 text-[#00e5ff] border border-[#00e5ff]/30'
+                        }`}
+                      >
+                        {call.provider}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-[#bac9cc] whitespace-nowrap">
+                      {call.model}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-[#00e5ff] whitespace-nowrap">
+                      {call.latency_ms >= 1000
+                        ? `${(call.latency_ms / 1000).toFixed(1)} s`
+                        : `${call.latency_ms} ms`}
+                    </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      {call.fallback_reason ? (
+                        <span className="px-2 py-0.5 rounded text-[11px] bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/30 font-medium">
+                          {call.fallback_reason}
+                        </span>
+                      ) : (
+                        <span className="text-[#849396]">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

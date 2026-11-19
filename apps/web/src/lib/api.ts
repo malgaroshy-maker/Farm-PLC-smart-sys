@@ -114,6 +114,8 @@ export interface AlarmExplanation {
   provider?: string;
   model?: string;
   is_fallback?: boolean;
+  latency_ms?: number;
+  fallback_reason?: string;
 }
 
 export interface ChatMessage {
@@ -124,6 +126,8 @@ export interface ChatMessage {
   provider?: string;
   model?: string;
   is_fallback?: boolean;
+  latency_ms?: number;
+  fallback_reason?: string;
 }
 
 export interface ChatResponse {
@@ -131,6 +135,8 @@ export interface ChatResponse {
   provider?: string;
   model?: string;
   is_fallback?: boolean;
+  latency_ms?: number;
+  fallback_reason?: string;
 }
 
 export interface AdvisorSuggestion {
@@ -191,6 +197,15 @@ export interface DailyBriefing {
   generated_at: string;
 }
 
+export interface AiRecentCall {
+  timestamp: string;
+  feature: string;
+  provider: string;
+  model: string;
+  latency_ms: number;
+  fallback_reason?: string;
+}
+
 export interface AiSettingsData {
   enabled: boolean;
   primary_provider: string;
@@ -218,6 +233,7 @@ export interface AiSettingsData {
     longitude: number;
     timezone: string;
   };
+  recent_calls?: AiRecentCall[];
 }
 
 export interface AiModelOption {
@@ -251,9 +267,16 @@ export interface ZoneBaseline {
   status: 'normal' | 'high_flow_low_pressure' | 'low_flow_high_pressure' | 'insufficient_data';
 }
 
-export async function explainAlarm(alarmId: string, question?: string, lang = 'ar'): Promise<AlarmExplanation> {
+export async function explainAlarm(
+  alarmId: string,
+  question?: string,
+  lang = 'ar',
+  signal?: AbortSignal
+): Promise<AlarmExplanation> {
+  const startTime = performance.now();
   const raw = await apiFetch<Record<string, unknown>>('/api/v1/ai/explain-alarm', {
     method: 'POST',
+    signal,
     body: JSON.stringify({
       alarm_id: alarmId,
       alarm_code: alarmId.startsWith('ALM-') ? alarmId : undefined,
@@ -262,6 +285,7 @@ export async function explainAlarm(alarmId: string, question?: string, lang = 'a
       lang,
     }),
   });
+  const elapsed = Math.round(performance.now() - startTime);
 
   return {
     alarm_id: String(raw.alarm_id ?? raw.alarm_code ?? alarmId),
@@ -278,15 +302,23 @@ export async function explainAlarm(alarmId: string, question?: string, lang = 'a
     provider: raw.provider ? String(raw.provider) : raw.provider_used ? String(raw.provider_used) : 'APInex',
     model: raw.model ? String(raw.model) : raw.provider_used ? String(raw.provider_used) : 'free/gemini-3.8-flash',
     is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based')),
+    latency_ms: typeof raw.latency_ms === 'number' ? raw.latency_ms : typeof raw.latency === 'number' ? Math.round(raw.latency * 1000) : elapsed,
+    fallback_reason: raw.fallback_reason ? String(raw.fallback_reason) : undefined,
   };
 }
 
-export async function sendAiChat(messages: Array<{ role: string; content: string }>, lang = 'ar'): Promise<ChatResponse> {
+export async function sendAiChat(
+  messages: Array<{ role: string; content: string }>,
+  lang = 'ar',
+  signal?: AbortSignal
+): Promise<ChatResponse> {
+  const startTime = performance.now();
   const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
   const history = messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
 
   const raw = await apiFetch<Record<string, unknown>>('/api/v1/ai/chat', {
     method: 'POST',
+    signal,
     body: JSON.stringify({
       message: lastUserMsg,
       language: lang,
@@ -295,6 +327,7 @@ export async function sendAiChat(messages: Array<{ role: string; content: string
       history,
     }),
   });
+  const elapsed = Math.round(performance.now() - startTime);
 
   const replyText = String(raw.message ?? (lang === 'ar' ? raw.reply_ar || raw.reply : raw.reply || raw.reply_ar) ?? '');
   return {
@@ -302,6 +335,8 @@ export async function sendAiChat(messages: Array<{ role: string; content: string
     provider: raw.provider ? String(raw.provider) : raw.provider_used ? String(raw.provider_used) : 'APInex',
     model: raw.model ? String(raw.model) : raw.provider_used ? String(raw.provider_used) : 'free/gemini-3.8-flash',
     is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based')),
+    latency_ms: typeof raw.latency_ms === 'number' ? raw.latency_ms : typeof raw.latency === 'number' ? Math.round(raw.latency * 1000) : elapsed,
+    fallback_reason: raw.fallback_reason ? String(raw.fallback_reason) : undefined,
   };
 }
 
@@ -418,6 +453,21 @@ export async function fetchAiSettings(): Promise<AiSettingsData> {
           longitude: 14.070361,
           timezone: 'Africa/Tripoli',
         },
+    recent_calls: Array.isArray(raw.recent_calls)
+      ? (raw.recent_calls as Record<string, unknown>[]).map((c) => ({
+          timestamp: String(c.timestamp || c.created_at || new Date().toISOString()),
+          feature: String(c.feature || 'chat'),
+          provider: String(c.provider || c.provider_used || 'rule_based'),
+          model: String(c.model || 'rule-based-fallback'),
+          latency_ms:
+            typeof c.latency_ms === 'number'
+              ? c.latency_ms
+              : typeof c.latency === 'number'
+              ? Math.round(c.latency * 1000)
+              : 0,
+          fallback_reason: c.fallback_reason ? String(c.fallback_reason) : undefined,
+        }))
+      : [],
   };
 }
 

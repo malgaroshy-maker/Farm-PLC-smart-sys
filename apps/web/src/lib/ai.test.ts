@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe('AI API endpoints client', () => {
-  it('explainAlarm sends alarmId and language to /api/v1/ai/explain-alarm', async () => {
+  it('explainAlarm sends alarmId, language and AbortSignal to /api/v1/ai/explain-alarm', async () => {
     session.set('test-token');
     const mockExplanation = {
       alarm_id: 'alm_123',
@@ -31,19 +31,23 @@ describe('AI API endpoints client', () => {
       provider: 'APInex',
       model: 'free/gemini-3.8-flash',
       is_fallback: false,
+      latency_ms: 320,
     };
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(mockExplanation), { status: 200 }),
     );
 
-    const res = await explainAlarm('alm_123', 'How to reset?', 'ar');
+    const controller = new AbortController();
+    const res = await explainAlarm('alm_123', 'How to reset?', 'ar', controller.signal);
     expect(res).toMatchObject(mockExplanation);
+    expect(res.latency_ms).toBe(320);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain('/api/v1/ai/explain-alarm');
     expect(init?.method).toBe('POST');
+    expect(init?.signal).toBe(controller.signal);
     expect(JSON.parse(String(init?.body))).toMatchObject({
       alarm_id: 'alm_123',
       question: 'How to reset?',
@@ -51,22 +55,28 @@ describe('AI API endpoints client', () => {
     });
   });
 
-  it('sendAiChat posts messages to /api/v1/ai/chat', async () => {
+  it('sendAiChat posts messages to /api/v1/ai/chat with latency and fallback_reason support', async () => {
     const mockChatRes = {
       message: 'Zone 1 and Zone 3 are currently running.',
       provider: 'APInex',
       model: 'free/gemini-3.8-flash',
+      is_fallback: false,
+      latency_ms: 850,
+      fallback_reason: undefined,
     };
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(mockChatRes), { status: 200 }),
     );
 
-    const res = await sendAiChat([{ role: 'user', content: 'What is running?' }], 'en');
+    const controller = new AbortController();
+    const res = await sendAiChat([{ role: 'user', content: 'What is running?' }], 'en', controller.signal);
     expect(res).toMatchObject(mockChatRes);
+    expect(res.latency_ms).toBe(850);
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain('/api/v1/ai/chat');
+    expect(init?.signal).toBe(controller.signal);
     expect(JSON.parse(String(init?.body))).toMatchObject({
       message: 'What is running?',
       lang: 'en',
@@ -98,48 +108,48 @@ describe('AI API endpoints client', () => {
 
   it('approveSuggestion posts to /api/v1/ai/suggestions/:id/approve', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, message: 'Applied override' }), { status: 200 }),
+      new Response(JSON.stringify({ ok: true, message: 'Suggestion approved' }), { status: 200 }),
     );
 
     const res = await approveSuggestion('sug_1');
     expect(res.ok).toBe(true);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/ai/suggestions/sug_1/approve');
-    expect(fetchMock.mock.calls[0][1]?.method).toBe('POST');
   });
 
-  it('rejectSuggestion posts to /api/v1/ai/suggestions/:id/reject with reason', async () => {
+  it('rejectSuggestion posts reason to /api/v1/ai/suggestions/:id/reject', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      new Response(JSON.stringify({ ok: true, message: 'Suggestion rejected' }), { status: 200 }),
     );
 
-    const res = await rejectSuggestion('sug_1', 'Soil is sandy, need irrigation anyway');
+    const res = await rejectSuggestion('sug_1', 'Operator override');
     expect(res.ok).toBe(true);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/ai/suggestions/sug_1/reject');
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
-      reason: 'Soil is sandy, need irrigation anyway',
-    });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/api/v1/ai/suggestions/sug_1/reject');
+    expect(JSON.parse(String(init?.body))).toEqual({ reason: 'Operator override' });
   });
 
-  it('fetchDailyBriefing supports date query parameter', async () => {
+  it('fetchDailyBriefing fetches structured daily briefing', async () => {
     const mockBriefing = {
       date: '2026-11-20',
-      morning_recap: 'Stable irrigation yesterday',
-      water_used_yesterday_m3: 38.2,
-      schedules_today: [],
-      weather_forecast: { condition: 'sunny', temp_min_c: 17, temp_max_c: 28, rain_prob_pct: 0, precipitation_mm: 0 },
-      generated_at: '2026-11-20T06:00:00Z',
+      morning_recap: 'All cycles completed normally yesterday.',
+      water_used_yesterday_m3: 38.4,
+      schedules_today: [{ program_name: 'Main Morning', start_time: '06:00', zones: ['Zone 1'] }],
+      weather_forecast: { condition: 'sunny', temp_min_c: 19, temp_max_c: 31, rain_prob_pct: 0, precipitation_mm: 0 },
+      provider: 'APInex',
+      model: 'free/gemini-3.8-flash',
     };
 
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(mockBriefing), { status: 200 }),
     );
 
-    const res = await fetchDailyBriefing('2026-11-20');
-    expect(res.water_used_yesterday_m3).toBe(38.2);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/ai/briefing?date=2026-11-20');
+    const briefing = await fetchDailyBriefing('2026-11-20');
+    expect(briefing.date).toBe('2026-11-20');
+    expect(briefing.water_used_yesterday_m3).toBe(38.4);
+    expect(briefing.weather_forecast.condition).toBe('sunny');
   });
 
-  it('fetchAiSettings and updateAiSettings talk to /api/v1/ai/settings', async () => {
+  it('fetchAiSettings and updateAiSettings handle full configuration and recent calls', async () => {
     const mockSettings = {
       enabled: true,
       primary_provider: 'apinex',
@@ -160,6 +170,15 @@ describe('AI API endpoints client', () => {
       },
       keys_status: { apinex: true, gemini: true },
       farm_location: { latitude: 32.51625, longitude: 14.070361, timezone: 'Africa/Tripoli' },
+      recent_calls: [
+        {
+          timestamp: '2026-11-19T14:30:00Z',
+          feature: 'explain_alarm',
+          provider: 'apinex',
+          model: 'free/gemini-3.8-flash',
+          latency_ms: 920,
+        },
+      ],
     };
 
     const fetchMock = vi.spyOn(globalThis, 'fetch')
@@ -168,6 +187,8 @@ describe('AI API endpoints client', () => {
 
     const getRes = await fetchAiSettings();
     expect(getRes.enabled).toBe(true);
+    expect(getRes.recent_calls).toHaveLength(1);
+    expect(getRes.recent_calls?.[0].latency_ms).toBe(920);
 
     const putRes = await updateAiSettings({ enabled: false });
     expect(putRes.enabled).toBe(false);

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { X, AlertTriangle, ShieldAlert, Sparkles, Send, Wrench } from 'lucide-react';
+import { X, AlertTriangle, ShieldAlert, Sparkles, Send, Wrench, XCircle } from 'lucide-react';
 import type { Alarm } from '@algaroshy/contracts';
 import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { explainAlarm, type AlarmExplanation, type ChatMessage, sendAiChat } from '../../lib/api';
@@ -25,6 +25,9 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
   const [explanation, setExplanation] = useState<AlarmExplanation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const chatAbortControllerRef = useRef<AbortController | null>(null);
+
   // Follow-up chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [inputQuestion, setInputQuestion] = useState('');
@@ -41,14 +44,16 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-    explainAlarm(alarm.id, undefined, lang)
+    explainAlarm(alarm.id, undefined, lang, controller.signal)
       .then((res) => {
         if (!active) return;
         setExplanation(res);
       })
       .catch((err: unknown) => {
-        if (!active) return;
+        if (!active || controller.signal.aborted) return;
         // Fallback rule-based explanation derived directly from alarm metadata
         const fallback: AlarmExplanation = {
           alarm_id: alarm.id,
@@ -93,6 +98,7 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
           provider: 'rule_based',
           model: 'rule-based-fallback',
           is_fallback: true,
+          fallback_reason: 'rule_based_fallback',
         };
         setExplanation(fallback);
         if (err instanceof Error && !err.message.includes('404')) {
@@ -105,8 +111,59 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
 
     return () => {
       active = false;
+      controller.abort();
     };
   }, [alarm, lang]);
+
+  const handleCancelExplain = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setLoading(false);
+    const fallback: AlarmExplanation = {
+      alarm_id: alarm.id,
+      summary:
+        (lang === 'ar'
+          ? alarm.message_ar || alarm.message_en
+          : alarm.message_en || alarm.message_ar) || '',
+      likely_causes:
+        lang === 'ar'
+          ? [
+              `انحراف القيمة الحالية (${alarm.current_value ?? '--'}) عن الحد المقبول (${alarm.threshold_value ?? '--'})`,
+              'تم إلغاء الطلب بواسطة المشغّل وتم تطبيق التشخيص الميداني المباشر',
+            ]
+          : [
+              `Current telemetry value (${alarm.current_value ?? '--'}) crossed threshold (${alarm.threshold_value ?? '--'})`,
+              'Request cancelled by operator — direct field diagnosis loaded',
+            ],
+      steps:
+        lang === 'ar'
+          ? [
+              alarm.guidance_ar || alarm.guidance_en || 'تحقق من خط الري والصمامات ميدانياً',
+              'افحص مقياس الضغط ومؤشر التدفق على لوحة الأجهزة',
+            ]
+          : [
+              alarm.guidance_en || alarm.guidance_ar || 'Inspect irrigation line and valves on site',
+              'Check physical pressure gauge and flow meter readout',
+            ],
+      safety_note:
+        lang === 'ar'
+          ? 'تنبيه سلامة: لا تقم بتجاوز حمايات PLC أو تشغيل المضخة قسرياً عند هبوط الضغط الحاد.'
+          : 'Safety note: Never bypass PLC interlocks or force pump start during abnormal pressure drops.',
+      provider: 'rule_based',
+      model: 'rule-based-fallback',
+      is_fallback: true,
+      fallback_reason: 'cancelled_by_operator',
+    };
+    setExplanation(fallback);
+  };
+
+  const handleCancelChat = () => {
+    if (chatAbortControllerRef.current) {
+      chatAbortControllerRef.current.abort();
+    }
+    setChatLoading(false);
+  };
 
   const handleSendFollowUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,23 +181,42 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
     setInputQuestion('');
     setChatLoading(true);
 
+    const controller = new AbortController();
+    chatAbortControllerRef.current = controller;
+
     try {
-      // First attempt to query explain-alarm with question, or chat endpoint
-      const response = await explainAlarm(alarm.id, q, lang);
+      const response = await explainAlarm(alarm.id, q, lang, controller.signal);
       const assistantMsg: ChatMessage = {
         role: 'assistant',
         content: response.summary,
         provider: response.provider,
         model: response.model,
         is_fallback: response.is_fallback,
+        latency_ms: response.latency_ms,
+        fallback_reason: response.fallback_reason,
         created_at: new Date().toISOString(),
       };
       setChatMessages([...nextMessages, assistantMsg]);
     } catch {
+      if (controller.signal.aborted) {
+        setChatMessages([
+          ...nextMessages,
+          {
+            role: 'assistant',
+            content: t('ai.cancelled'),
+            provider: 'rule_based',
+            model: 'cancelled',
+            is_fallback: true,
+            created_at: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
+
       // Try general AI chat endpoint as secondary fallback
       try {
         const promptContext = `Context: Alarm ${alarm.alarm_code} (${alarm.name} / ${alarm.name_ar}), Zone ${alarm.zone_id ?? 'System'}. Question: ${q}`;
-        const chatRes = await sendAiChat([{ role: 'user', content: promptContext }], lang);
+        const chatRes = await sendAiChat([{ role: 'user', content: promptContext }], lang, controller.signal);
         setChatMessages([
           ...nextMessages,
           {
@@ -149,10 +225,13 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
             provider: chatRes.provider,
             model: chatRes.model,
             is_fallback: chatRes.is_fallback,
+            latency_ms: chatRes.latency_ms,
+            fallback_reason: chatRes.fallback_reason,
             created_at: new Date().toISOString(),
           },
         ]);
       } catch {
+        if (controller.signal.aborted) return;
         setChatMessages([
           ...nextMessages,
           {
@@ -164,6 +243,7 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
             provider: 'rule_based',
             model: 'rule-based-fallback',
             is_fallback: true,
+            fallback_reason: 'connection_fallback',
             created_at: new Date().toISOString(),
           },
         ]);
@@ -240,7 +320,7 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
         </div>
 
         {/* Provider Banner */}
-        <div className="px-4 py-2 border-b border-white/5 bg-black/40 flex items-center justify-between text-xs">
+        <div className="px-4 py-2 border-b border-white/5 bg-black/40 flex items-center justify-between text-xs flex-wrap gap-2">
           <div className="flex items-center gap-1.5 text-[#00e5ff]">
             <AiSparklesIcon size={15} />
             <span className="font-medium">
@@ -249,25 +329,48 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
                 : `${explanation?.provider || 'APInex'} · ${explanation?.model || 'free/gemini-3.8-flash'}`}
             </span>
           </div>
-          {explanation?.confidence !== undefined && (
-            <span className="text-[11px] text-[#849396] font-mono">
-              {Math.round(explanation.confidence * 100)}%
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {explanation?.latency_ms !== undefined && explanation.latency_ms > 0 && (
+              <span className="text-[11px] text-[#00e5ff] font-mono">
+                {explanation.latency_ms >= 1000
+                  ? `${(explanation.latency_ms / 1000).toFixed(1)} s`
+                  : `${explanation.latency_ms} ms`}
+              </span>
+            )}
+            {explanation?.fallback_reason && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/30">
+                {explanation.fallback_reason}
+              </span>
+            )}
+            {explanation?.confidence !== undefined && (
+              <span className="text-[11px] text-[#849396] font-mono">
+                {Math.round(explanation.confidence * 100)}%
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
           {loading ? (
-            <div className="space-y-4 py-8 animate-pulse">
-              <div className="h-4 bg-white/10 rounded w-3/4" />
-              <div className="h-20 bg-white/5 rounded-xl" />
-              <div className="h-4 bg-white/10 rounded w-1/2" />
-              <div className="space-y-2">
-                <div className="h-3 bg-white/5 rounded w-5/6" />
-                <div className="h-3 bg-white/5 rounded w-4/6" />
-                <div className="h-3 bg-white/5 rounded w-3/6" />
+            <div className="py-12 px-4 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="relative">
+                <div className="w-12 h-12 rounded-full border-4 border-[#00e5ff]/20 border-t-[#00e5ff] animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Sparkles size={18} className="text-[#00e5ff] animate-pulse" />
+                </div>
               </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-[#e5e2e1]">{t('ai.analyzingProgress')}</h3>
+                <p className="text-xs text-[#849396]">{alarm.alarm_code} · {pickName(lang, alarm.name, alarm.name_ar)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelExplain}
+                className="px-4 py-1.5 rounded-xl border border-white/20 hover:border-[#ff5449] hover:bg-[#ff5449]/10 text-xs text-[#bac9cc] hover:text-[#ffb4ab] transition-colors"
+              >
+                {t('ai.cancel')}
+              </button>
             </div>
           ) : (
             <>
@@ -374,12 +477,42 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
                         {msg.content}
                       </div>
                       {msg.role === 'assistant' && msg.provider && (
-                        <span className="text-[10px] text-[#849396] mt-1 px-1">
-                          {msg.is_fallback ? t('ai.ruleBasedLabel') : msg.model || msg.provider}
-                        </span>
+                        <div className="flex items-center gap-2 text-[10px] text-[#849396] mt-1 px-1">
+                          <span>
+                            {msg.is_fallback ? t('ai.ruleBasedLabel') : msg.model || msg.provider}
+                          </span>
+                          {msg.latency_ms !== undefined && msg.latency_ms > 0 && (
+                            <span className="font-mono text-[#00e5ff]">
+                              {msg.latency_ms >= 1000
+                                ? `${(msg.latency_ms / 1000).toFixed(1)} s`
+                                : `${msg.latency_ms} ms`}
+                            </span>
+                          )}
+                          {msg.fallback_reason && (
+                            <span className="font-mono px-1.5 py-0.2 rounded bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/30">
+                              {msg.fallback_reason}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
+                  {chatLoading && (
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/5 text-xs">
+                      <div className="flex items-center gap-2 text-[#849396]">
+                        <div className="w-3.5 h-3.5 border-2 border-[#00e5ff] border-t-transparent rounded-full animate-spin" />
+                        <span>{t('ai.analyzingProgress')}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCancelChat}
+                        className="text-[11px] text-[#ffb4ab] hover:underline flex items-center gap-1"
+                      >
+                        <XCircle size={13} />
+                        <span>{t('ai.cancel')}</span>
+                      </button>
+                    </div>
+                  )}
                   <div ref={chatBottomRef} />
                 </div>
               )}

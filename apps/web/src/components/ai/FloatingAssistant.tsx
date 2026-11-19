@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { X, Send, Bot } from 'lucide-react';
+import { X, Send, Bot, XCircle } from 'lucide-react';
 import { useFarmStore } from '../../store/farm';
 import { useT, fmtNum } from '../../lib/i18n';
 import { sendAiChat, type ChatMessage } from '../../lib/api';
@@ -21,6 +21,7 @@ export default function FloatingAssistant() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const state = useFarmStore((s) => s.state);
@@ -38,6 +39,26 @@ export default function FloatingAssistant() {
     { key: 'chat.quickPrompt.weatherForecast', text: t('chat.quickPrompt.weatherForecast') },
   ];
 
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setLoading(false);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: t('ai.cancelled'),
+        provider: 'rule_based',
+        model: 'cancelled',
+        is_fallback: true,
+        fallback_reason: 'cancelled_by_operator',
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  };
+
   const handleSend = async (queryText?: string) => {
     const text = (queryText ?? input).trim();
     if (!text || loading) return;
@@ -53,6 +74,9 @@ export default function FloatingAssistant() {
     if (!queryText) setInput('');
     setLoading(true);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       // Build lightweight state payload to provide prompt context even if backend tool lookup is bypassed
       const liveContext = `[Telemetry: P=${pressure.toFixed(2)}bar, Q=${flow.toFixed(1)}m3/h, RunningZones=${runningZones}, ActivePumps=${activePumps}, Alarms=${activeAlarms.length}]`;
@@ -63,7 +87,7 @@ export default function FloatingAssistant() {
           content: m.role === 'user' ? `${m.content}\n${liveContext}` : m.content,
         }));
 
-      const res = await sendAiChat(apiPayload, lang);
+      const res = await sendAiChat(apiPayload, lang, controller.signal);
       setMessages([
         ...nextMessages,
         {
@@ -72,10 +96,16 @@ export default function FloatingAssistant() {
           provider: res.provider,
           model: res.model,
           is_fallback: res.is_fallback,
+          latency_ms: res.latency_ms,
+          fallback_reason: res.fallback_reason,
           created_at: new Date().toISOString(),
         },
       ]);
     } catch {
+      if (controller.signal.aborted) {
+        return;
+      }
+
       // Fallback rule-based local answer when network/API fails
       let localFallback = '';
       if (text.includes('مناطق') || text.toLowerCase().includes('zone')) {
@@ -112,6 +142,7 @@ export default function FloatingAssistant() {
           provider: 'rule_based',
           model: 'rule-based-fallback',
           is_fallback: true,
+          fallback_reason: 'connection_fallback',
           created_at: new Date().toISOString(),
         },
       ]);
@@ -209,16 +240,40 @@ export default function FloatingAssistant() {
                   {m.content}
                 </div>
                 {m.role === 'assistant' && m.provider && m.provider !== 'system' && (
-                  <span className="text-[10px] text-[#849396] mt-1 px-1">
-                    {m.is_fallback ? t('ai.ruleBasedLabel') : m.model || m.provider}
-                  </span>
+                  <div className="flex items-center gap-2 text-[10px] text-[#849396] mt-1 px-1">
+                    <span>
+                      {m.is_fallback ? t('ai.ruleBasedLabel') : m.model || m.provider}
+                    </span>
+                    {m.latency_ms !== undefined && m.latency_ms > 0 && (
+                      <span className="font-mono text-[#00e5ff]">
+                        {m.latency_ms >= 1000
+                          ? `${(m.latency_ms / 1000).toFixed(1)} s`
+                          : `${m.latency_ms} ms`}
+                      </span>
+                    )}
+                    {m.fallback_reason && (
+                      <span className="font-mono px-1.5 py-0.2 rounded bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/30">
+                        {m.fallback_reason}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
             {loading && (
-              <div className="flex items-center gap-2 p-2 text-xs text-[#849396]">
-                <div className="w-3 h-3 rounded-full bg-[#00e5ff] animate-ping" />
-                <span>{t('ai.explaining')}</span>
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs animate-fadeIn">
+                <div className="flex items-center gap-2 text-[#849396]">
+                  <div className="w-3.5 h-3.5 border-2 border-[#00e5ff] border-t-transparent rounded-full animate-spin" />
+                  <span>{t('ai.analyzingProgress')}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="text-[11px] text-[#ffb4ab] hover:underline flex items-center gap-1"
+                >
+                  <XCircle size={13} />
+                  <span>{t('ai.cancel')}</span>
+                </button>
               </div>
             )}
             <div ref={chatBottomRef} />

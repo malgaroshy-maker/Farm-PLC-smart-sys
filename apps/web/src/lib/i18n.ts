@@ -401,6 +401,9 @@ const dict = {
   // Alarm Assistant ("Explain / اشرح")
   'ai.explain': { ar: 'اشرح', en: 'Explain' },
   'ai.explaining': { ar: 'جارٍ التحليل…', en: 'Analyzing…' },
+  'ai.analyzingProgress': { ar: 'جارٍ التحليل والتشخيص…', en: 'Analyzing and diagnosing…' },
+  'ai.cancel': { ar: 'إلغاء الطلب', en: 'Cancel request' },
+  'ai.cancelled': { ar: 'تم إلغاء الطلب بواسطة المشغّل', en: 'Request cancelled by operator' },
   'ai.diagnosis': { ar: 'التشخيص الذكي المقترح', en: 'Diagnostic Assessment' },
   'ai.likelyCauses': { ar: 'الأسباب المرجحة', en: 'Likely causes' },
   'ai.steps': { ar: 'خطوات التحقق والمعالجة الميدانية', en: 'Recommended field steps' },
@@ -410,6 +413,8 @@ const dict = {
   'ai.send': { ar: 'إرسال', en: 'Send' },
   'ai.ruleBasedLabel': { ar: 'إجابة تلقائية بدون ذكاء اصطناعي', en: 'Automated summary without AI' },
   'ai.provider': { ar: 'المزود', en: 'Provider' },
+  'ai.latency': { ar: 'الاستجابة', en: 'Latency' },
+  'ai.fallbackReason': { ar: 'سبب التراجع', en: 'Fallback reason' },
   // Floating Assistant
   'chat.title': { ar: 'المساعد الذكي للمزرعة', en: 'Farm Assistant' },
   'chat.online': { ar: 'متصل بالبيانات المباشرة', en: 'Live telemetry connected' },
@@ -458,6 +463,13 @@ const dict = {
   'aiSettings.saved': { ar: 'تم الحفظ بنجاح', en: 'Settings saved' },
   'aiSettings.refreshModels': { ar: 'تحديث قائمة النماذج', en: 'Refresh models list' },
   'aiSettings.noAdmin': { ar: 'هذه الصفحة مخصصة للمدير والمالك فقط', en: 'This page is for administrators only' },
+  'aiSettings.recentCalls': { ar: 'سجل استدعاءات الذكاء الاصطناعي (آخر 20)', en: 'Recent AI Calls (Last 20)' },
+  'aiSettings.time': { ar: 'الوقت', en: 'Time' },
+  'aiSettings.feature': { ar: 'الميزة', en: 'Feature' },
+  'aiSettings.provider': { ar: 'المزود', en: 'Provider' },
+  'aiSettings.model': { ar: 'النموذج', en: 'Model' },
+  'aiSettings.fallbackReasonCol': { ar: 'سبب التراجع', en: 'Fallback Reason' },
+  'aiSettings.noRecentCalls': { ar: 'لا توجد استدعاءات مسجلة بعد', en: 'No recent AI calls recorded yet' },
 } as const;
 
 export type MsgKey = keyof typeof dict;
