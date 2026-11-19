@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.clock import clock
-from app.database import get_db
+from app.database import async_session_factory, get_db
 from app.deps import Actor, get_actor, require_roles
 from app.models.ai import AISettings, AISuggestion
 from app.models.alarm import Alarm
@@ -523,11 +523,20 @@ async def api_test_ai(
     actor: Actor = Depends(require_admin),
 ):
     """Test AI model connection and measure response latency (admin only)."""
+    # Default to the settings saved in the admin page (DB), then .env.
+    async with async_session_factory() as db:
+        saved = await db.get(AISettings, "default")
     target_provider = (
-        body.provider if body and body.provider else settings.primary_provider or "apinex"
+        (body.provider if body and body.provider else None)
+        or (saved.primary_provider if saved else None)
+        or settings.primary_provider
+        or "apinex"
     ).lower()
     target_model = (
-        body.model if body and body.model else settings.apinex_model or "free/deepseek-v4-pro-0813"
+        (body.model if body and body.model else None)
+        or (saved.apinex_model if saved and target_provider == "apinex" else None)
+        or (saved.gemini_model if saved and target_provider != "apinex" else None)
+        or (settings.apinex_model if target_provider == "apinex" else settings.gemini_model)
     )
     test_prompt = body.prompt if body and body.prompt else "Test connection. Reply with OK."
 

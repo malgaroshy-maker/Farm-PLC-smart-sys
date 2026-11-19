@@ -65,6 +65,22 @@ _RECENT_CALLS: deque[dict[str, Any]] = deque(maxlen=20)
 _LAST_PRIMARY_FAILED: bool = False
 
 
+def classify_failure(error: str | None) -> str:
+    """Short machine-readable reason shown to admins when rule-based answers are used."""
+    e = (error or "").lower()
+    if not e:
+        return "unknown"
+    if "timed out" in e or "timeout" in e:
+        return "timeout"
+    if "tool" in e and "retr" in e:
+        return "tool_error"
+    if "validation" in e:
+        return "invalid_output"
+    if any(c in e for c in ("400", "401", "402", "403", "404", "429", "500", "502", "503", "504")):
+        return "provider_error"
+    return "error"
+
+
 def record_ai_call(
     feature: str,
     provider: str,
@@ -343,6 +359,7 @@ async def _run_with_retry_and_fallback(
     backoff = 0.5
     eff_timeout = timeout_sec or settings.ai_timeout_sec
     last_error: str | None = None
+    tried_second_model = False
     start_time = time.monotonic()
 
     while True:
@@ -401,6 +418,9 @@ async def _run_with_retry_and_fallback(
                 data.provider_used = provider_label
             if hasattr(data, "model_used"):
                 data.model_used = str(model_name)
+            if hasattr(data, "fallback_reason"):
+                # Set by us, never by the model (it may fill the field with e.g. "none").
+                data.fallback_reason = fallback_reason
 
             record_ai_call(
                 feature=feature_name,
@@ -440,6 +460,16 @@ async def _run_with_retry_and_fallback(
                 backoff *= 2.0
                 continue
 
+            # Non-transient failure (tool retries exhausted, invalid output, provider
+            # refused): give the second APInex model one chance before rule-based.
+            if not tried_second_model:
+                tried_second_model = True
+                try:
+                    override_model = get_apinex_fallback_model()
+                    log.warning("AI agent failed (%s); retrying once with fallback model", exc)
+                    continue
+                except Exception:  # noqa: BLE001
+                    pass
             log.warning("AI agent failed: %s; invoking rule-based fallback", exc)
             break
 
@@ -450,13 +480,16 @@ async def _run_with_retry_and_fallback(
         fallback_data.provider_used = "rule_based"
     if hasattr(fallback_data, "model_used"):
         fallback_data.model_used = "offline_rules"
+    reason = classify_failure(last_error)
+    if hasattr(fallback_data, "fallback_reason"):
+        fallback_data.fallback_reason = reason
 
     record_ai_call(
         feature=feature_name,
         provider="rule_based",
         model="offline_rules",
         latency_ms=latency_ms,
-        fallback_reason=last_error or "Unknown failure",
+        fallback_reason=f"{reason}: {(last_error or 'unknown')[:160]}",
     )
 
     if cache_key:

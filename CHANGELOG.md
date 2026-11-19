@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone E review fixes: Explain answers with real AI (2026-11-20)
+- **AI tools accept the arguments models naturally send.** `get_schedule`, `get_cycles` and `get_recent_telemetry` take an optional `zone_id`, and `get_forecast` takes `days`. Live, deepseek called `get_schedule(zone_id=…)`; the tool rejected it until its retries ran out, so every "Explain alarm" fell back to rule-based. With the real key, Explain now returns AI answers built from live tool data (17–22 s on the free tier).
+- **One retry on the second APInex model** (`muse-spark-1.3`) after a non-transient failure (tool or validation error, provider refusal), before rule-based.
+- **Every answer says why it fell back.** `fallback_reason` (`timeout` / `tool_error` / `invalid_output` / `provider_error` / `language_purity` / `error`) is set by the server, never by the model, and the admin call log keeps the detail.
+- **No invented weather in the forecast tool.** Missing daily data is now `null` instead of 30 °C / 0 mm / 4.5 mm ET₀.
+- "Test connection" uses the provider and model saved in the AI settings page, not only `.env`.
+- Regression tests (API 189).
+
 ### Milestone E Round 3 — Benchmarking, Arabic Purity & Honest Fallbacks (2026-11-19)
 - **AI Model Benchmark Tool (`tools/ai-bench`):**
   - Created maintained CLI benchmark runner `tools/ai-bench/ai_bench.py` and documentation `tools/ai-bench/README.md`.

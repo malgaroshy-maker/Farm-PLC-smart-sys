@@ -21,6 +21,7 @@ class AlarmExplanation(BaseModel):
     confidence: float = 0.95
     provider_used: str = "rule_based"
     model_used: str = ""
+    fallback_reason: str | None = None
 
 
 class AdvisorSuggestion(BaseModel):
@@ -36,6 +37,7 @@ class AdvisorSuggestion(BaseModel):
     confidence: float = 0.95
     provider_used: str = "rule_based"
     model_used: str = ""
+    fallback_reason: str | None = None
 
 
 class DailyBriefing(BaseModel):
@@ -54,6 +56,7 @@ class DailyBriefing(BaseModel):
     recommendations_ar: list[str] = Field(default_factory=list)
     provider_used: str = "rule_based"
     model_used: str = ""
+    fallback_reason: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -64,8 +67,8 @@ class ChatResponse(BaseModel):
     provider_used: str = "rule_based"
     model_used: str = ""
 
-
-# ── Request / Response models for API endpoints ──────────────
+    # ── Request / Response models for API endpoints ──────────────
+    fallback_reason: str | None = None
 
 
 class AlarmExplainRequest(BaseModel):

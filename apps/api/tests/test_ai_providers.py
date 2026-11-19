@@ -280,3 +280,101 @@ async def test_farm_context_block_only_db_crops():
     # Ensure hardcoded obsolete strings are not in the generated context
     assert "palms, citrus" not in block.lower()
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_tools_accept_zone_scoped_arguments(client):
+    """Regression (live review): deepseek called get_schedule(zone_id=...), which the tool
+    rejected until its retries ran out, so every Explain fell back to rule-based."""
+    clear_ai_cache()
+    expected = AlarmExplanation(
+        alarm_code="ALM-012",
+        severity="S2",
+        title="No flow",
+        title_ar="لا يوجد تدفق",
+        diagnosis="Zone-scoped tools worked",
+        diagnosis_ar="نجحت الأدوات",
+        safety_critical=True,
+        confidence=0.9,
+    )
+    turn = 0
+
+    def handler(messages, info):
+        nonlocal turn
+        turn += 1
+        if turn == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(tool_name="get_schedule", args={"zone_id": "zone_rumman_2"}),
+                    ToolCallPart(
+                        tool_name="get_cycles", args={"days": 2, "zone_id": "zone_rumman_2"}
+                    ),
+                    ToolCallPart(
+                        tool_name="get_recent_telemetry",
+                        args={"hours": 1, "zone_id": "zone_rumman_2"},
+                    ),
+                    ToolCallPart(tool_name="get_forecast", args={"days": 2}),
+                ]
+            )
+        return ModelResponse(
+            parts=[ToolCallPart(tool_name=info.output_tools[0].name, args=expected.model_dump())]
+        )
+
+    with alarm_agent.override(model=FunctionModel(handler)):
+        res = await explain_alarm(
+            alarm_data={"alarm_code": "ALM-012", "zone_id": "zone_rumman_2"}, lang="ar"
+        )
+    assert res.diagnosis == "Zone-scoped tools worked"
+    assert res.provider_used != "rule_based"
+    assert res.fallback_reason is None
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_rule_based_answer_says_why():
+    """A rule-based answer carries a short, classified fallback_reason."""
+    clear_ai_cache()
+
+    def always_fail(messages, info):
+        raise RuntimeError("Total cloud LLM network outage")
+
+    with alarm_agent.override(model=FunctionModel(always_fail)):
+        res = await explain_alarm(alarm_data={"alarm_code": "ALM-001"}, lang="ar")
+    assert res.provider_used == "rule_based"
+    assert res.fallback_reason == "error"
+
+
+def test_classify_failure():
+    from app.services.ai.agent import classify_failure
+
+    assert classify_failure("Timed out after 45.0s") == "timeout"
+    assert classify_failure("Tool 'get_schedule' exceeded max retries count of 2") == "tool_error"
+    assert classify_failure("status_code: 402, model_name: free/x") == "provider_error"
+    assert classify_failure(None) == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_model_cannot_set_fallback_reason(client):
+    """The model fills every schema field; fallback_reason must be overwritten by the server."""
+    clear_ai_cache()
+    expected = AlarmExplanation(
+        alarm_code="ALM-012",
+        severity="S2",
+        title="No flow",
+        title_ar="لا يوجد تدفق",
+        diagnosis="ok",
+        diagnosis_ar="تشخيص سليم",
+        safety_critical=True,
+        confidence=0.9,
+        fallback_reason="none",
+    )
+
+    def handler(messages, info):
+        return ModelResponse(
+            parts=[ToolCallPart(tool_name=info.output_tools[0].name, args=expected.model_dump())]
+        )
+
+    with alarm_agent.override(model=FunctionModel(handler)):
+        res = await explain_alarm(alarm_data={"alarm_code": "ALM-012"}, lang="ar")
+    assert res.fallback_reason is None
+    await engine.dispose()

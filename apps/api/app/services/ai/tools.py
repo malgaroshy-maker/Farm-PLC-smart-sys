@@ -147,8 +147,10 @@ async def get_zone_state(ctx: RunContext[AIDeps], zone_id: str) -> dict[str, Any
         return {"error": f"Failed to get zone state '{zone_id}': {exc}"}
 
 
-async def get_recent_telemetry(ctx: RunContext[AIDeps], hours: int = 1) -> dict[str, Any]:
-    """Retrieve summary of recent hydraulic telemetry (flow and pressure metrics)."""
+async def get_recent_telemetry(
+    ctx: RunContext[AIDeps], hours: int = 1, zone_id: str | None = None
+) -> dict[str, Any]:
+    """Recent hydraulic telemetry (flow and pressure). Optionally for one zone_id."""
     try:
         factory = (
             ctx.deps.session_factory
@@ -165,6 +167,8 @@ async def get_recent_telemetry(ctx: RunContext[AIDeps], hours: int = 1) -> dict[
                 .order_by(desc(TelemetryPoint.ts))
                 .limit(500)
             )
+            if zone_id:
+                stmt = stmt.where(TelemetryPoint.zone_id == zone_id)
             res = await db.execute(stmt)
             points = res.all()
 
@@ -194,8 +198,10 @@ async def get_recent_telemetry(ctx: RunContext[AIDeps], hours: int = 1) -> dict[
         return {"error": f"Failed to get recent telemetry: {exc}"}
 
 
-async def get_cycles(ctx: RunContext[AIDeps], days: int = 1) -> list[dict[str, Any]]:
-    """Retrieve irrigation cycle history for the past N days."""
+async def get_cycles(
+    ctx: RunContext[AIDeps], days: int = 1, zone_id: str | None = None
+) -> list[dict[str, Any]]:
+    """Irrigation cycle history for the past N days. Optionally for one zone_id."""
     try:
         factory = (
             ctx.deps.session_factory
@@ -215,6 +221,8 @@ async def get_cycles(ctx: RunContext[AIDeps], days: int = 1) -> list[dict[str, A
                 .order_by(desc(IrrigationCycle.created_at))
                 .limit(100)
             )
+            if zone_id:
+                stmt = stmt.where(IrrigationCycle.zone_id == zone_id)
             res = await db.execute(stmt)
             cycles = list(res.scalars().all())
 
@@ -236,8 +244,8 @@ async def get_cycles(ctx: RunContext[AIDeps], days: int = 1) -> list[dict[str, A
         return [{"error": f"Failed to get cycles: {exc}"}]
 
 
-async def get_schedule(ctx: RunContext[AIDeps]) -> dict[str, Any]:
-    """Retrieve configured irrigation schedules and sequential program steps."""
+async def get_schedule(ctx: RunContext[AIDeps], zone_id: str | None = None) -> dict[str, Any]:
+    """Configured irrigation programs and schedules. Optionally only those including zone_id."""
     try:
         factory = (
             ctx.deps.session_factory
@@ -258,6 +266,9 @@ async def get_schedule(ctx: RunContext[AIDeps]) -> dict[str, Any]:
             s_stmt = select(Schedule).where(Schedule.enabled.is_(True))
             s_res = await db.execute(s_stmt)
             schedules = list(s_res.scalars().all())
+            if zone_id:
+                programs = [p for p in programs if any(s.zone_id == zone_id for s in p.steps)]
+                schedules = [s for s in schedules if s.zone_id == zone_id]
 
             return {
                 "programs": [
@@ -295,8 +306,8 @@ async def get_schedule(ctx: RunContext[AIDeps]) -> dict[str, Any]:
         return {"error": f"Failed to get schedules: {exc}", "programs": [], "schedules": []}
 
 
-async def get_forecast(ctx: RunContext[AIDeps]) -> dict[str, Any]:
-    """Retrieve weather forecast, precipitation risk, and evapotranspiration (ET0)."""
+async def get_forecast(ctx: RunContext[AIDeps], days: int = 3) -> dict[str, Any]:
+    """Farm weather forecast: rain probability/amount, temperature, ET0 (up to 7 days)."""
     try:
         factory = (
             ctx.deps.session_factory
@@ -312,11 +323,12 @@ async def get_forecast(ctx: RunContext[AIDeps]) -> dict[str, Any]:
             "current_humidity_pct": forecast.current.humidity_pct,
             "current_condition": forecast.current.condition,
             "current_description": forecast.current.description,
-            "today_max_temp_c": today.temp_max_c if today else 30.0,
-            "today_min_temp_c": today.temp_min_c if today else 18.0,
-            "today_precipitation_mm": today.precipitation_total_mm if today else 0.0,
-            "today_precipitation_prob_pct": today.precipitation_probability_pct if today else 0.0,
-            "today_et0_mm": today.et0_mm if today else 4.5,
+            # No invented values: None when the forecast has no daily data.
+            "today_max_temp_c": today.temp_max_c if today else None,
+            "today_min_temp_c": today.temp_min_c if today else None,
+            "today_precipitation_mm": today.precipitation_total_mm if today else None,
+            "today_precipitation_prob_pct": today.precipitation_probability_pct if today else None,
+            "today_et0_mm": today.et0_mm if today else None,
             "days": [
                 {
                     "date": d.date,
@@ -326,7 +338,7 @@ async def get_forecast(ctx: RunContext[AIDeps]) -> dict[str, Any]:
                     "et0_mm": d.et0_mm,
                     "condition": d.condition,
                 }
-                for d in forecast.daily[:3]
+                for d in forecast.daily[: max(1, min(days, 7))]
             ],
         }
     except Exception as exc:

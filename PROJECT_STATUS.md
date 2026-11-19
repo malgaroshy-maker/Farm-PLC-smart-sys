@@ -38,7 +38,7 @@
 | Weather & Irrigation Advisor | ✅ | Open-Meteo weather client targeting exact farm coordinates (`32.516250, 14.070361`, Africa/Tripoli) with 3-hour caching and ET0 evapotranspiration extraction. Deterministic advisor rules: rain skip ($\ge 50\%$ or $\ge 2\text{ mm}$), heat extension ($\ge 38^\circ\text{C}$ or $\text{ET}_0 \ge 7\text{ mm}$ $\rightarrow +20\%$), and safe offline fallback. Suggestion cards with one-tap approve (5-second undo toast) creating single-day program run overrides honored by scheduler. |
 | Statistical Anomaly Detection | ✅ | Non-LLM statistical anomaly detection engine (`apps/api/app/services/anomaly.py`) computing median + MAD / robust z-score baselines per zone from completed cycles ($N \ge 3$). Evaluates live flow and pressure during irrigation: high flow + low pressure triggers S2 alarm ALM-046 (Possible leak); low flow + high pressure triggers S2 alarm ALM-047 (Possible clogged emitters). Debounce and valve-travel grace periods eliminate false positives. Baseline band visualized in Zone Drawer. |
 | Daily Morning Briefing | ✅ | Automated daily briefing synthesized at 06:00 farm time (`clock.farm_now()`). Summarizes yesterday's water consumption, cycle count and outcomes, tripped alarms, anomalies, and today's forecast. Stored in `ai_briefings` table; surfaced as collapsible top hero card on main dashboard and mobile status screen. |
-| Tests + CI | ✅ | 173 API + 27 simulator + 61 web + 3 map-model tests (264 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
+| Tests + CI | ✅ | 189 API + 27 simulator + 61 web + 3 map-model tests (264 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
 
 ## Live scenario suite (2026-11-19)
 
