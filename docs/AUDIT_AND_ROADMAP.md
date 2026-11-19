@@ -92,12 +92,12 @@ Each milestone ends in something you can run and show. Estimates assume one deve
 6. **Responsive layout + PWA** (manifest, service worker, installable, offline shell). Test at phone width, which covers the Android goal.
 7. **Polish pass:** loading/empty/error states, stale-data banner, toasts for command results.
 
-### Milestone D — Simulation time, schedules, cycles, reports (≈2 weeks)
+### Milestone D — Simulation time, schedules, cycles, reports (≈2 weeks) ✅ done 2026-11-19
 0. ✅ **Simulation time (Done 2026-11-19)** (spec: [SIMULATION_TIME.md](SIMULATION_TIME.md), decided with the owner 2026-11-19). One virtual farm clock shared by the API, simulator and UI. Live speed control in presenter mode (pause, 1×, 10×, 60×, 360×), jump to a time of day, step (+1 min), an amber SIMULATED TIME badge with speed, and "Back to real time" (which clears demo history). Locked to real time with a real PLC. Schedules (1–2) are built on this clock.
-1. Schedule CRUD with a conflict checker (overlap, combinations, pump capacity).
-2. Scheduler service (APScheduler) that issues commands through the same command service, so the same interlocks apply.
-3. An irrigation cycle log for each run: planned vs actual duration, water used, outcome, alarms.
-4. Reports: daily irrigation, water usage per zone, pump runtime, alarm history. CSV export; PDF later.
+1. ✅ **Schedule CRUD with conflict checker (Done 2026-11-19)** (spec: [SCHEDULES.md](SCHEDULES.md)). Sequential programs with ordered steps and durations, days of the week, live conflict validation (runtime, overlaps across days/midnight, combinations, concurrency). Day timeline UI with edit drawer and confirmation.
+2. ✅ **Scheduler service on the virtual farm clock (Done 2026-11-19)**. Ticks on `clock.farm_now()` inside monitor loop; executes through `submit_command` with `actor_type="scheduler"`; step sequencing waits for zone idle; handles pauses, clock jumps, and interlock skips with S1 alarm.
+3. ✅ **Irrigation cycle log (Done 2026-11-19)**. Records all runs (manual, scenario, scheduled); calculates speed-aware water volume integration, duration, outcome (`completed`, `aborted`, `faulted`, `manual_stop`, `skipped`), and linked alarms. Live in zone drawer history.
+4. ✅ **Reports and CSV export (Done 2026-11-19)**. Tabbed reports page (daily irrigation, water per zone, pump runtime, alarm history), Recharts charts + data tables, date range filtering, and UTF-8 BOM bilingual CSV exports. "Next irrigation" card ticking on simulation clock on dashboard and mobile.
 
 ### Milestone E — AI that earns its place (≈1.5–2 weeks)
 Ship **3 features well**, not 10 on paper. Each one must work without the AI service (rule-based fallback) and must only *suggest*:

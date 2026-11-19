@@ -8,6 +8,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone D (Steps 1–4) — Sequential programs, scheduler, cycle log, reports (2026-11-19)
+- **Sequential Irrigation Programs:**
+  - Owner-approved architecture in [docs/SCHEDULES.md](docs/SCHEDULES.md). Data model (`programs`, `program_steps`, `scheduler_state`) in Alembic migration `3d9f8e2a1b4c`.
+  - CRUD API (`/api/v1/schedules`) with permissions (Operator+ can enable/disable, Admin creates/edits/deletes).
+  - Strict conflict checker (`app/services/conflicts.py`): pure function validating max concurrent zones (`1`), 24 h total runtime limits, zone max runtimes, weekday overlaps across midnight and Sunday-to-Monday wraparound, forbidden zone combinations, and pump capacity. Returns structured bilingual AR/EN conflict details.
+  - Live `/api/v1/schedules/upcoming?hours=24` endpoint feeding dashboard next-irrigation card.
+- **Scheduler Service (Farm Clock):**
+  - Runs on the virtual farm clock (`clock.farm_now()`) driven by the monitor loop (`app/services/scheduler.py`). Removed unused `apscheduler` dependency.
+  - Persists last-fired timestamps per step in `scheduler_state` table to survive API restarts without double-firing.
+  - Issues zone commands strictly through `submit_command` with `actor_type="scheduler"`, ensuring all physical and hydraulic interlocks apply.
+  - Advances to the next step only after the previous zone reaches idle/off.
+  - Handles pause, speed changes (up to 360×), and monotonic clock jumps (aborts active run, updates anchor time, prevents mass-firing).
+  - Blocked-start interlock policy: skips blocked zone, records `skipped` cycle, raises S1 info alarm (`ALM-035`), and continues the program.
+  - WebSocket broadcasts: `schedule.fired`, `schedule.skipped`, `schedule.missed`, `program.started`, `program.finished`.
+- **Irrigation Cycle Log:**
+  - Complete run history in `irrigation_cycles` (`/api/v1/cycles`).
+  - Records planned vs actual start/end/duration in farm time, initiator (`actor_type`, `actor_id`), speed-aware trapezoidal water volume integration (`zone.flow_m3h`), outcome (`completed`, `aborted`, `faulted`, `manual_stop`, `skipped`), and linked alarm codes.
+  - Integrated with state sync (`app/routers/state.py`) on zone completion, fault, or abort.
+  - Embedded recent cycle history in the Zone Drawer with status chips, duration, and water usage.
+- **Reports & CSV Export:**
+  - Reports API (`/api/v1/reports`): daily irrigation, water usage per zone, pump runtime, and alarm history. Date ranges scoped to Tripoli local time.
+  - Bilingual CSV export with UTF-8 BOM (`\xef\xbb\xbf`) and Arabic/English headers for seamless Excel support.
+  - Web Reports page (`/reports`) featuring Recharts charts, formatted data tables, date range presets, empty states, and CSV downloads.
+  - Added duotone `ScheduleIcon` and `ReportsIcon` in `FarmIcons.tsx`.
+- **Dashboard Next Irrigation Card:**
+  - Added Next Irrigation card in the dashboard side panel and mobile status card.
+  - Ticks smoothly on `useFarmClock()` showing upcoming program, zone, time, and countdown.
+- **Simulator Scenarios:**
+  - `scheduled_day`: Creates a 3-zone program, jumps to 5 min before start, runs at 60×, and asserts 3 completed cycles with water > 0.
+  - `scheduled_blocked_start`: Validates low tank interlock skipping, S1 alarm ALM-035 generation, and subsequent direct-well step execution.
+- **Verification:** 112 API tests, 27 simulator tests, 32 web tests (171 total tests green). Live Playwright run verified program creation, conflict validation, execution on map at 60×, cycle log recording, next-irrigation card ticking, report generation, and UTF-8 BOM CSV export.
+
 ### Simulation time — virtual farm clock (2026-11-19)
 - **Shared Virtual Farm Clock:** Single source of truth in the API (`app/core/clock.py`), persisted via Alembic migration (`farm_clock` table). Monotonic progression, locked to real time unless `CONTROLLER_MODE=simulator`.
 - **Clock Endpoints & Events:** `GET /api/v1/sim/clock` and `POST /api/v1/sim/clock` (admin only in simulation mode). Audit events (`clock.speed_changed`, `clock.paused`, `clock.resumed`, `clock.stepped`, `clock.jumped`, `clock.reset_to_real`) and real-time WebSocket broadcast `clock.changed`.

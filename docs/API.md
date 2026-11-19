@@ -59,24 +59,60 @@ Replace or update combination matrix.
 ### PATCH /api/v1/valves/{valveId}
 ### PATCH /api/v1/sensors/{sensorId}
 
-## 5. Schedules
+## 5. Schedules & Programs
+
+Sequential irrigation programs (Milestone D). Each program defines a start time in farm local time (`Africa/Tripoli`), a weekday mask, and an ordered list of zone steps with durations.
 
 ### GET /api/v1/schedules
+List all irrigation programs with their ordered steps and computed total duration.
+Accessible to all authenticated users.
+
+### GET /api/v1/schedules/upcoming?hours=24
+Returns scheduled upcoming runs in the next N hours (in farm local time). Feeds dashboard cards.
+
+### POST /api/v1/schedules/check-conflicts
+Validates a program against current schedule without persisting. Returns `{ "ok": true }` or `{ "ok": false, "conflict": { "code", "message_en", "message_ar", "details" } }`.
+
 ### POST /api/v1/schedules
-Create schedule.
+Create a new program. Admin only. Runs conflict checks before saving; rejects with 409 Conflict if an overlap or hydraulic conflict is found.
 ```json
 {
-  "zone_id": "zone_olive_1",
-  "recurrence_rule": "FREQ=DAILY",
+  "name": "Morning Pomegranate Run",
   "start_time_local": "06:00",
-  "duration_min": 45,
-  "season": "summer",
-  "priority": 1
+  "weekday_mask": "1,2,3,4,5,6,7",
+  "steps": [
+    { "zone_id": "zone_rumman_1", "step_order": 1, "duration_min": 30 },
+    { "zone_id": "zone_rumman_2", "step_order": 2, "duration_min": 30 }
+  ]
 }
 ```
 
-### PATCH /api/v1/schedules/{scheduleId}
-### DELETE /api/v1/schedules/{scheduleId}
+### GET /api/v1/schedules/{programId}
+Get single program with steps.
+
+### PATCH /api/v1/schedules/{programId}
+Update program details or steps. Admin only. Validates conflicts.
+
+### PATCH /api/v1/schedules/{programId}/toggle
+Toggle program enabled / disabled state (`{ "enabled": boolean }`). Accessible to Operator and Admin.
+
+### DELETE /api/v1/schedules/{programId}
+Delete a program. Admin only.
+
+## 5b. Irrigation Cycle Log
+
+Tracks execution history for all zone runs (manual, scheduled, scenario).
+
+### GET /api/v1/cycles
+Query cycle history with filters:
+- `zone_id`: filter by zone
+- `program_id`: filter by program
+- `outcome`: completed | aborted | faulted | manual_stop | skipped
+- `from_date` / `to_date`: ISO timestamps or farm dates
+- `page` / `limit`: pagination (default limit 50)
+
+### GET /api/v1/cycles/recent/{zoneId}?limit=5
+Returns the most recent N cycles for a given zone. Feeds the zone drawer history.
 
 ## 6. Commands
 
@@ -160,13 +196,25 @@ Filters:
 
 ## 9. Reports
 
-### GET /api/v1/reports/daily-irrigation
-### GET /api/v1/reports/water-usage
-### GET /api/v1/reports/pump-runtime
-### GET /api/v1/reports/alarm-history
+Aggregated operational reports grounded in farm local time (`Africa/Tripoli`).
 
-Export parameter:
-- `format=csv|xlsx|pdf` where implemented
+Query Parameters for all reports:
+- `from_date` (YYYY-MM-DD): Start date in farm local time (default: today - 7 days)
+- `to_date` (YYYY-MM-DD): End date in farm local time (default: today)
+- `format` (json | csv): Data format (default: json). When `format=csv`, returns a CSV file with `text/csv; charset=utf-8` header and UTF-8 Byte Order Mark (`\ufeff`) so Excel renders Arabic characters cleanly.
+- `lang` (ar | en): Language for CSV column headers. When `ar`, column headers are Arabic.
+
+### GET /api/v1/reports/daily-irrigation
+Aggregated daily water usage (m³) and cycle counts (total, completed, aborted, skipped).
+
+### GET /api/v1/reports/water-usage
+Aggregated water consumption and total runtimes per zone.
+
+### GET /api/v1/reports/pump-runtime
+Cumulative runtime hours and start counts per pump.
+
+### GET /api/v1/reports/alarm-history
+Historical alarm occurrences grouped by alarm code, severity, and bilingual title.
 
 ## 10. Admin
 

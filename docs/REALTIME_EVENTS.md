@@ -41,6 +41,33 @@ Marks data no longer fresh.
 ### system.mode.changed
 System off/auto/manual/maintenance change.
 
+### schedule.fired
+Emitted when a scheduled program or step is due and fires.
+
+### schedule.skipped
+Emitted when an interlock or safety constraint blocks a scheduled start (e.g. low tank, open critical alarm). Accompanied by reason and S1 info alarm.
+
+### schedule.missed
+Emitted when the farm clock jumped past a scheduled run or an API outage occurred. Recorded as missed without mass-firing.
+
+### program.started
+Emitted when an automated irrigation program begins execution.
+
+### program.finished
+Emitted when an automated irrigation program completes all its sequential steps.
+
+### program.step_started
+Emitted when a specific zone step in a program begins.
+
+### program.step_completed
+Emitted when a program step completes and zone returns to idle before next step.
+
+### cycle.started
+Emitted when an irrigation cycle begins (manual, scheduled, or scenario).
+
+### cycle.ended
+Emitted when an irrigation cycle concludes with duration, outcome, and integrated water usage (m³).
+
 ## 3. Envelope
 
 ```json
