@@ -13,7 +13,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -234,22 +234,38 @@ async function waitFor(url, label, timeoutMs = 60_000, check = (r) => r.ok) {
   die(`${label} did not become ready within ${timeoutMs / 1000}s.`);
 }
 
-function isVirtualOrLinkLocal(addr) {
+function isVirtualOrLinkLocal(addr, ifaceName = '') {
   if (!addr) return true;
   // 169.254.x.x (link-local)
   if (addr.startsWith('169.254.')) return true;
-  // 192.168.56.x (VirtualBox)
-  if (addr.startsWith('192.168.56.')) return true;
-  // 172.16–31.x.x (Docker bridge / private container subnet)
-  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(addr)) return true;
+  // Exclude virtual adapters by interface name (VirtualBox, vEthernet/Hyper-V, Docker, WSL)
+  if (ifaceName) {
+    const lower = ifaceName.toLowerCase();
+    if (
+      lower.includes('virtualbox') ||
+      lower.includes('vethernet') ||
+      lower.includes('hyper-v') ||
+      lower.includes('docker') ||
+      lower.includes('wsl')
+    ) {
+      return true;
+    }
+  }
   return false;
 }
 
 function lanUrls(port) {
-  return Object.values(os.networkInterfaces())
-    .flat()
-    .filter((i) => i && i.family === 'IPv4' && !i.internal && !isVirtualOrLinkLocal(i.address))
-    .map((i) => `http://${i.address}:${port}`);
+  const interfaces = os.networkInterfaces();
+  const urls = [];
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    if (!addrs) continue;
+    for (const info of addrs) {
+      if (info.family === 'IPv4' && !info.internal && !isVirtualOrLinkLocal(info.address, name)) {
+        urls.push(`http://${info.address}:${port}`);
+      }
+    }
+  }
+  return urls;
 }
 
 function openBrowser(url) {
@@ -342,7 +358,18 @@ async function main() {
   if (OPEN_BROWSER) openBrowser(webUrl);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+function isEntrypoint() {
+  if (!process.argv[1]) return false;
+  try {
+    const metaPath = realpathSync(fileURLToPath(import.meta.url)).toLowerCase();
+    const argvPath = realpathSync(path.resolve(process.argv[1])).toLowerCase();
+    return metaPath === argvPath;
+  } catch {
+    return path.resolve(fileURLToPath(import.meta.url)).toLowerCase() === path.resolve(process.argv[1]).toLowerCase();
+  }
+}
+
+if (isEntrypoint()) {
   main().catch((e) => die(e?.stack || String(e)));
 }
 

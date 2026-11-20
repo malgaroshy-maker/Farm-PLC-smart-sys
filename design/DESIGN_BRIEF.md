@@ -104,12 +104,12 @@ All of the above is implemented on branch `ui-round-2`. Approved samples are in 
 
 | # | Topic | Decision |
 |---|-------|----------|
-| 1 | Satellite / Geometry | Skip geometry correction for Milestone F — keep the current traced polygons (within ±12% of sketch legend). Document georeferencing workflow for future satellite tracing. |
+| 1 | Satellite / Geometry | Use satellite imagery to correct the drawing. Keep our generated photoreal map (offline, consistent look), but re-trace zones, tracks, buildings (tank, booster, control room, wellhead) and the mainline/valves to match reality. Attribution: "Source: Esri, Maxar, Earthstar Geographics". Show overlay & area table to owner before replacing geometry. |
 | 2 | Weather widget position | Top-right corner of the map (above the zoom controls). |
 | 3 | Legend collapsibility | Collapsed by default on mobile (< 640px), expanded on desktop. Toggle button always visible; preference saved in `farm.legendOpen`. |
 | 4 | AI model badge | Always visible — small, unobtrusive gray badge below the answer (`model_used` stripped of `free/` prefix + provider, or amber fallback notice). |
 | 5 | Default report range | Last 7 days (`Africa/Tripoli` local time). |
-| 6 | Phone bottom navigation | 4 primary items: Dashboard (`/`), Map (`/map`), Alarms (`/alarms`), Schedules (`/schedules`). Zones, Equipment, Events, Reports housed in the hamburger menu (`≡`). |
+| 6 | Phone bottom navigation | 4 primary items: Dashboard (`/`), Zones (`/zones`), Alarms (`/alarms`), Schedules (`/schedules`). `/map` redirects to `/`. |
 
 ## Weather on the map
 - **WeatherWidget (`WeatherWidget.tsx`)**: Glass panel (`.panel`) top-right of map.
