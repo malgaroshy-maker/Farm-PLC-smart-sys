@@ -71,6 +71,8 @@ async def get_or_generate_daily_briefing(
     ]
 
     # Alarms
+    from app.core.alarm_catalog import CATALOG
+
     a_stmt = select(Alarm).where((Alarm.triggered_at >= cutoff) | (Alarm.status == "active"))
     a_res = await db.execute(a_stmt)
     alarms_models = list(a_res.scalars().all())
@@ -80,8 +82,8 @@ async def get_or_generate_daily_briefing(
             "alarm_code": a.alarm_code,
             "severity": a.severity,
             "status": a.status,
-            "name": a.name,
-            "name_ar": a.name_ar,
+            "name": CATALOG[a.alarm_code].name if a.alarm_code in CATALOG else a.alarm_code,
+            "name_ar": CATALOG[a.alarm_code].name_ar if a.alarm_code in CATALOG else a.alarm_code,
         }
         for a in alarms_models
     ]

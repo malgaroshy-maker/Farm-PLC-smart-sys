@@ -501,7 +501,8 @@ const dict = {
   'aiSettings.modelVerdict.unavailable_402': { ar: 'غير متاح (يتطلب اشتراك)', en: 'Subscription only (402)' },
   'aiSettings.modelVerdict.unavailable_400': { ar: 'غير متاح (لا يدعم المحادثة)', en: 'No chat support (400)' },
   // weather
-  'weather.noData': { ar: 'لا توجد بيانات طقس', en: 'No weather data' },
+  'weather.noData': { ar: 'لا توجد توقعات لهذا الوقت', en: 'No forecast for this time' },
+  'weather.noDataGeneric': { ar: 'لا توجد بيانات طقس', en: 'No weather data' },
   'weather.wind': { ar: 'الرياح', en: 'Wind' },
   'weather.rain': { ar: 'المطر', en: 'Rain' },
   'weather.humidity': { ar: 'الرطوبة', en: 'Humidity' },

@@ -13,11 +13,11 @@ export function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
-export function wsUrl(token: string): string {
+export function wsUrl(token?: string): string {
   const base = API_BASE || window.location.origin;
   const url = new URL('/ws', base);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.searchParams.set('token', token);
+  if (token) url.searchParams.set('token', token);
   return url.toString();
 }
 
@@ -73,6 +73,7 @@ function errorMessage(body: unknown, status: number): string {
     if (typeof b.detail === 'string') return b.detail;
     if (Array.isArray(b.detail)) return 'Invalid request';
   }
+  if (typeof body === 'string' && body.trim().length > 0 && body.length < 120) return body.trim();
   return `Request failed (${status})`;
 }
 
@@ -85,7 +86,14 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   const res = await fetch(apiUrl(path), { ...init, headers });
   const text = await res.text();
-  const body: unknown = text ? JSON.parse(text) : null;
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
 
   if (!res.ok) {
     if (res.status === 401 && token) {

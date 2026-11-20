@@ -64,11 +64,14 @@ async def get_alarm(ctx: RunContext[AIDeps], alarm_id: str) -> dict[str, Any]:
             if not alarm:
                 return {"error": f"Alarm '{alarm_id}' not found"}
 
+            from app.core.alarm_catalog import CATALOG
+
+            spec = CATALOG.get(alarm.alarm_code)
             return {
                 "id": alarm.id,
                 "alarm_code": alarm.alarm_code,
-                "name": alarm.name,
-                "name_ar": alarm.name_ar,
+                "name": spec.name if spec else alarm.alarm_code,
+                "name_ar": spec.name_ar if spec else alarm.alarm_code,
                 "severity": alarm.severity,
                 "category": alarm.category,
                 "status": alarm.status,
@@ -81,7 +84,7 @@ async def get_alarm(ctx: RunContext[AIDeps], alarm_id: str) -> dict[str, Any]:
                 "message_ar": alarm.message_ar,
                 "guidance_en": alarm.guidance_en,
                 "guidance_ar": alarm.guidance_ar,
-                "condition_active": alarm.condition_active,
+                "condition_active": alarm.status in ("active_unacked", "active_acked"),
             }
     except Exception as exc:
         log.warning("get_alarm tool error: %s", exc)

@@ -82,6 +82,48 @@ async def test_get_or_generate_daily_briefing(client):
 
 
 @pytest.mark.asyncio
+async def test_briefing_with_real_alarms_in_db(client):
+    """Regression test: verify daily briefing succeeds with real Alarm rows in DB (no a.name AttributeError)."""
+    from uuid import uuid4
+
+    from app.models.alarm import Alarm
+
+    _set_dummy_weather()
+    async with async_session_factory() as db:
+        now = clock.farm_now()
+        alarm1 = Alarm(
+            id=f"alm_{uuid4().hex[:8]}",
+            alarm_code="ALM-001",
+            severity="S1",
+            category="water_source",
+            status="active_unacked",
+            triggered_at=now,
+            message_en="Low tank level",
+            message_ar="مستوى الخزان منخفض",
+        )
+        alarm2 = Alarm(
+            id=f"alm_{uuid4().hex[:8]}",
+            alarm_code="ALM-012",
+            severity="S2",
+            category="process",
+            status="cleared",
+            triggered_at=now,
+            message_en="No flow detected",
+            message_ar="لا يوجد تدفق",
+        )
+        db.add_all([alarm1, alarm2])
+        await db.commit()
+
+        date_str = now.strftime("%Y-%m-%d")
+        briefing = await get_or_generate_daily_briefing(
+            db, target_date=date_str, force_refresh=True
+        )
+        assert briefing is not None
+        assert briefing.title is not None
+        assert briefing.summary is not None
+
+
+@pytest.mark.asyncio
 async def test_scheduled_briefing_on_farm_time(client):
     """Briefing generated when farm clock reaches 06:00, skipped before 06:00, and runs only once."""
     _set_dummy_weather()

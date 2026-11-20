@@ -51,11 +51,20 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
   }
 
   if (error && !briefing) {
+    const friendlyMsg =
+      lang === 'ar'
+        ? 'تعذر تحميل الموجز الصباحي حالياً'
+        : 'Daily briefing currently unavailable';
     return (
-      <div className="panel p-3.5 border-[#ff5449]/20 bg-[#ff5449]/5 text-xs text-[#ffb4ab] flex items-center justify-between gap-2">
+      <div
+        data-testid="briefing-error-state"
+        className="panel p-3.5 border-[#ff5449]/20 bg-[#ff5449]/5 text-xs text-[#ffb4ab] flex items-center justify-between gap-2"
+      >
         <div className="flex items-center gap-2">
           <AlertCircle size={16} className="text-[#ff5449] shrink-0" />
-          <span>{t('briefing.title')}: {error}</span>
+          <span>
+            {t('briefing.title')}: {friendlyMsg}
+          </span>
         </div>
       </div>
     );
