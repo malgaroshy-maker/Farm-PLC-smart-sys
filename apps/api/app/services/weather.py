@@ -74,6 +74,7 @@ class WeatherData(BaseModel):
     wind_direction: str = "N"
     precipitation_mm: float = 0.0
     precipitation_probability_pct: float = 0.0
+    cloud_cover_pct: float = 0.0
     uv_index: float = 0.0
     et0_mm: float = 0.0
     condition: str = "clear"
@@ -174,8 +175,8 @@ class WeatherService:
             "latitude": settings.weather_latitude,
             "longitude": settings.weather_longitude,
             "timezone": settings.weather_timezone,
-            "current": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,wind_direction_10m,weather_code",
-            "hourly": "temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,wind_speed_10m,wind_direction_10m,et0_fao_evapotranspiration,weather_code",
+            "current": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,wind_direction_10m,weather_code,cloud_cover",
+            "hourly": "temperature_2m,relative_humidity_2m,precipitation,precipitation_probability,wind_speed_10m,wind_direction_10m,et0_fao_evapotranspiration,weather_code,cloud_cover",
             "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,weather_code",
         }
 
@@ -197,6 +198,7 @@ class WeatherService:
             wind_direction=str(cur_raw.get("wind_direction_10m", "0")),
             precipitation_mm=float(cur_raw.get("precipitation", 0.0)),
             precipitation_probability_pct=0.0,
+            cloud_cover_pct=float(cur_raw.get("cloud_cover", 0.0)),
             uv_index=0.0,
             et0_mm=0.0,
             condition=cur_wmo["condition"],
@@ -247,6 +249,7 @@ class WeatherService:
         h_precip = hourly_raw.get("precipitation", [])
         h_prob = hourly_raw.get("precipitation_probability", [])
         h_wind = hourly_raw.get("wind_speed_10m", [])
+        h_cloud = hourly_raw.get("cloud_cover", [])
         h_et0 = hourly_raw.get("et0_fao_evapotranspiration", [])
         h_codes = hourly_raw.get("weather_code", [])
 
@@ -271,6 +274,9 @@ class WeatherService:
                     else 0.0,
                     precipitation_probability_pct=float(h_prob[j])
                     if j < len(h_prob) and h_prob[j] is not None
+                    else 0.0,
+                    cloud_cover_pct=float(h_cloud[j])
+                    if j < len(h_cloud) and h_cloud[j] is not None
                     else 0.0,
                     et0_mm=float(h_et0[j]) if j < len(h_et0) and h_et0[j] is not None else 0.2,
                     condition=wmo["condition"],
@@ -298,6 +304,7 @@ class WeatherService:
                 wind_speed_kmh=forecast.current.wind_speed_kmh,
                 precipitation_mm=forecast.current.precipitation_mm,
                 precipitation_probability_pct=forecast.current.precipitation_probability_pct,
+                cloud_cover_pct=forecast.current.cloud_cover_pct,
                 condition=forecast.current.condition,
                 description=forecast.current.description,
                 description_ar=forecast.current.description_ar,
@@ -336,6 +343,7 @@ class WeatherService:
             wind_direction="180",
             precipitation_mm=0.0,
             precipitation_probability_pct=0.0,
+            cloud_cover_pct=0.0,
             et0_mm=5.0,
             condition="clear",
             description="Clear sky (offline fallback)",

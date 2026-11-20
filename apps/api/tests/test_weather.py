@@ -15,6 +15,7 @@ MOCK_METEO_PAYLOAD = {
         "wind_speed_10m": 16.5,
         "wind_direction_10m": 120,
         "weather_code": 0,
+        "cloud_cover": 42.0,
     },
     "daily": {
         "time": ["2026-11-19", "2026-11-20"],
@@ -32,6 +33,7 @@ MOCK_METEO_PAYLOAD = {
         "precipitation": [0.0, 0.0],
         "precipitation_probability": [10, 10],
         "wind_speed_10m": [16.5, 17.0],
+        "cloud_cover": [40.0, 55.0],
         "et0_fao_evapotranspiration": [0.6, 0.7],
         "weather_code": [0, 0],
     },
@@ -50,9 +52,13 @@ async def test_weather_fetch_success():
         assert route.called
         assert forecast.cached is False
         assert forecast.current.temperature_c == 29.5
+        assert forecast.current.cloud_cover_pct == 42.0
         assert forecast.current.condition == "clear"
         assert forecast.current.description == "Clear sky"
         assert forecast.current.description_ar == "سماء صافية"
+        assert len(forecast.hourly) == 2
+        assert forecast.hourly[0].cloud_cover_pct == 40.0
+        assert forecast.hourly[1].cloud_cover_pct == 55.0
         assert len(forecast.daily) == 2
         assert forecast.daily[0].et0_mm == 5.6
         assert forecast.daily[0].temp_max_c == 33.0
@@ -121,3 +127,37 @@ def test_weather_health_reporting():
     assert h["latitude"] == settings.weather_latitude
     assert h["longitude"] == settings.weather_longitude
     assert h["timezone"] == settings.weather_timezone
+
+
+@pytest.mark.asyncio
+async def test_weather_cloud_cover_persistence_and_fallback(client):
+    """Verify cloud_cover_pct is stored in WeatherCache in DB and fallback defaults to 0.0."""
+    from sqlalchemy import select
+
+    from app.database import async_session_factory
+    from app.models.ai import WeatherCache
+
+    weather_service.reset_cache()
+
+    # 1. Fetch with db session persists cloud_cover_pct to WeatherCache
+    with respx.mock(base_url="https://api.open-meteo.com") as respx_mock:
+        respx_mock.get("/v1/forecast").respond(200, json=MOCK_METEO_PAYLOAD)
+        async with async_session_factory() as session:
+            forecast = await weather_service.get_forecast(db=session)
+            assert forecast.current.cloud_cover_pct == 42.0
+
+            # Verify persisted column in WeatherCache
+            row = (
+                await session.execute(
+                    select(WeatherCache).order_by(WeatherCache.fetched_at.desc()).limit(1)
+                )
+            ).scalar_one()
+            assert row.cloud_cover_pct == 42.0
+
+    # 2. Offline fallback has honest default 0.0
+    weather_service.reset_cache()
+    with respx.mock(base_url="https://api.open-meteo.com") as respx_mock:
+        respx_mock.get("/v1/forecast").respond(500)
+        fallback = await weather_service.get_forecast()
+        assert fallback.source == "offline_fallback"
+        assert fallback.current.cloud_cover_pct == 0.0

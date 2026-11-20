@@ -76,6 +76,7 @@ class WeatherCache(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     raw_payload_json: Mapped[str | None] = mapped_column(Text)
     et0_mm: Mapped[float | None] = mapped_column(Float)
+    cloud_cover_pct: Mapped[float] = mapped_column(Float, default=0.0, nullable=True)
 
 
 class WeatherAdvisory(Base, IdentityMixin):

@@ -234,10 +234,21 @@ async function waitFor(url, label, timeoutMs = 60_000, check = (r) => r.ok) {
   die(`${label} did not become ready within ${timeoutMs / 1000}s.`);
 }
 
+function isVirtualOrLinkLocal(addr) {
+  if (!addr) return true;
+  // 169.254.x.x (link-local)
+  if (addr.startsWith('169.254.')) return true;
+  // 192.168.56.x (VirtualBox)
+  if (addr.startsWith('192.168.56.')) return true;
+  // 172.16–31.x.x (Docker bridge / private container subnet)
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(addr)) return true;
+  return false;
+}
+
 function lanUrls(port) {
   return Object.values(os.networkInterfaces())
     .flat()
-    .filter((i) => i && i.family === 'IPv4' && !i.internal && !i.address.startsWith('169.254.'))
+    .filter((i) => i && i.family === 'IPv4' && !i.internal && !isVirtualOrLinkLocal(i.address))
     .map((i) => `http://${i.address}:${port}`);
 }
 
@@ -331,4 +342,8 @@ async function main() {
   if (OPEN_BROWSER) openBrowser(webUrl);
 }
 
-main().catch((e) => die(e?.stack || String(e)));
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((e) => die(e?.stack || String(e)));
+}
+
+export { isVirtualOrLinkLocal, lanUrls };

@@ -3,7 +3,7 @@ Clear the farm's operating history for a clean demo.
 
 Deletes alarms, commands, the event log, telemetry, device state snapshots
 and irrigation cycles. Keeps users (and their passwords), zones, pumps,
-valves, sensors, schedules and all configuration.
+valves, sensors, schedules, programs, program steps and all configuration.
 
 Run with the API stopped:
     cd apps/api
@@ -20,9 +20,13 @@ from app.models.alarm import Alarm
 from app.models.command import Command
 from app.models.event_log import EventLog
 from app.models.irrigation_cycle import IrrigationCycle
-from app.models.program import SchedulerState
+from app.models.program import Program, SchedulerState
 from app.models.telemetry import DeviceStateSnapshot, TelemetryPoint
 
+# Operating history models to clear.
+# Note: Programs and program_steps are intentionally preserved: they represent configured
+# farm irrigation automation logic and schedules. A demo reset clears only transient
+# operating history (cycles, telemetry_points, event_log, alarms).
 HISTORY = [
     Alarm,
     Command,
@@ -35,17 +39,22 @@ HISTORY = [
 
 
 async def reset_history() -> dict[str, int]:
-    from app.services.scenarios import cleanup_scenario_programs, runner
     from app.services.scheduler import scheduler
     from app.services.telemetry import recorder
 
-    await runner.stop()
     recorder._last_farm = None
     recorder._last_real = None
     scheduler.reset()
     removed: dict[str, int] = {}
     async with async_session_factory() as db:
-        await cleanup_scenario_programs(db)
+        # Query and display enabled programs that are preserved
+        prog_stmt = select(Program.name).where(Program.enabled.is_(True)).order_by(Program.name)
+        enabled_programs = list((await db.execute(prog_stmt)).scalars().all())
+        if enabled_programs:
+            print(f"Preserving enabled programs: {', '.join(enabled_programs)}")
+        else:
+            print("Preserving enabled programs: (none)")
+
         for model in HISTORY:
             n = (await db.execute(select(func.count()).select_from(model))).scalar_one()
             await db.execute(delete(model))

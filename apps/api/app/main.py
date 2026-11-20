@@ -8,6 +8,7 @@ Run from apps/api:  alembic upgrade head && uvicorn app.main:app --reload --port
 import asyncio
 import contextlib
 import logging
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -40,8 +41,44 @@ from app.services.scenarios import runner
 log = logging.getLogger("app")
 
 
+class TokenRedactingFilter(logging.Filter):
+    """Redacts ?token=<anything> query parameters in uvicorn access logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = re.sub(r"\?token=[^\s&'\"]+", "?token=[REDACTED]", record.msg)
+        if record.args:
+            if isinstance(record.args, tuple):
+                record.args = tuple(
+                    re.sub(r"\?token=[^\s&'\"]+", "?token=[REDACTED]", a)
+                    if isinstance(a, str)
+                    else a
+                    for a in record.args
+                )
+            elif isinstance(record.args, dict):
+                record.args = {
+                    k: (
+                        re.sub(r"\?token=[^\s&'\"]+", "?token=[REDACTED]", v)
+                        if isinstance(v, str)
+                        else v
+                    )
+                    for k, v in record.args.items()
+                }
+        return True
+
+
+def install_token_redacting_filter() -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, TokenRedactingFilter) for f in access_logger.filters):
+        access_logger.addFilter(TokenRedactingFilter())
+
+
+install_token_redacting_filter()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    install_token_redacting_filter()
     settings.check_production_safety()
     if settings.secret_key == DEFAULT_SECRET:
         log.warning("SECRET_KEY is the development default — set a real one before deploying.")
