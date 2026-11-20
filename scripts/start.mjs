@@ -181,7 +181,17 @@ function start(tag, cmd, cmdArgs, opts) {
       buf += d.toString();
       const lines = buf.split(/\r?\n/);
       buf = lines.pop();
-      for (const l of lines) if (l.trim()) log(tag, l);
+      for (const l of lines) {
+        if (!l.trim()) continue;
+        // Suppress Vite's Network log lines for virtual/link-local adapters
+        if (tag === 'web') {
+          const m = l.match(/Network:\s+https?:\/\/([^:/]+)(?::\d+)?/i);
+          if (m && isVirtualOrLinkLocal(m[1].trim())) {
+            continue;
+          }
+        }
+        log(tag, l);
+      }
     });
   };
   pipe(child.stdout);
@@ -236,9 +246,13 @@ async function waitFor(url, label, timeoutMs = 60_000, check = (r) => r.ok) {
 
 function isVirtualOrLinkLocal(addr, ifaceName = '') {
   if (!addr) return true;
-  // 169.254.x.x (link-local)
+  // 169.254.0.0/16 (link-local)
   if (addr.startsWith('169.254.')) return true;
-  // Exclude virtual adapters by interface name (VirtualBox, vEthernet/Hyper-V, Docker, WSL)
+  // 192.168.56.0/24 (VirtualBox default host-only subnet)
+  if (addr.startsWith('192.168.56.')) return true;
+  // 127.0.0.0/8 (loopback)
+  if (addr.startsWith('127.')) return true;
+  // Exclude virtual adapters by interface name (VirtualBox, vEthernet/Hyper-V, Docker, WSL, VMware, Loopback)
   if (ifaceName) {
     const lower = ifaceName.toLowerCase();
     if (
@@ -246,7 +260,9 @@ function isVirtualOrLinkLocal(addr, ifaceName = '') {
       lower.includes('vethernet') ||
       lower.includes('hyper-v') ||
       lower.includes('docker') ||
-      lower.includes('wsl')
+      lower.includes('wsl') ||
+      lower.includes('vmware') ||
+      lower.includes('loopback')
     ) {
       return true;
     }
@@ -254,8 +270,7 @@ function isVirtualOrLinkLocal(addr, ifaceName = '') {
   return false;
 }
 
-function lanUrls(port) {
-  const interfaces = os.networkInterfaces();
+function lanUrls(port, interfaces = os.networkInterfaces()) {
   const urls = [];
   for (const [name, addrs] of Object.entries(interfaces)) {
     if (!addrs) continue;
