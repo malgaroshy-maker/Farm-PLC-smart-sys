@@ -52,3 +52,68 @@ export function isRaining(forecast: WeatherData | null | undefined): boolean {
   const prob = forecast.precipitation_probability_pct ?? 0;
   return hasRainWord || prob >= 60;
 }
+
+export interface ActiveWeatherSelection {
+  current: WeatherData | null;
+  next6: WeatherData[];
+  inRange: boolean;
+}
+
+/**
+ * Select the forecast and next 6 hourly items matching current farm time (Africa/Tripoli).
+ * If farm time is outside the forecast range, returns { current: null, next6: [], inRange: false }.
+ */
+export function selectForecastForFarmTime(
+  forecast: { current?: WeatherData; hourly?: WeatherData[] } | null,
+  farmNowIso: string
+): ActiveWeatherSelection {
+  if (!forecast || !forecast.hourly || forecast.hourly.length === 0) {
+    return { current: null, next6: [], inRange: false };
+  }
+
+  const farmTime = new Date(
+    farmNowIso.includes('Z') || /[+-]\d{2}/.test(farmNowIso) ? farmNowIso : `${farmNowIso}Z`
+  );
+  const farmTimeMs = farmTime.getTime();
+  if (Number.isNaN(farmTimeMs)) {
+    return { current: null, next6: [], inRange: false };
+  }
+
+  const parsedHourly = forecast.hourly.map((h) => {
+    const tsStr =
+      h.timestamp.includes('Z') || /[+-]\d{2}/.test(h.timestamp)
+        ? h.timestamp
+        : `${h.timestamp}+02:00`;
+    const tMs = new Date(tsStr).getTime();
+    return { item: h, tMs };
+  });
+
+  const firstMs = parsedHourly[0].tMs;
+  const lastMs = parsedHourly[parsedHourly.length - 1].tMs;
+
+  // If farm time is before forecast starts or after it ends (with 30m grace), it is out of range
+  if (farmTimeMs < firstMs - 30 * 60 * 1000 || farmTimeMs > lastMs + 60 * 60 * 1000) {
+    return { current: null, next6: [], inRange: false };
+  }
+
+  // Find closest hourly entry
+  let bestIdx = 0;
+  let minDiff = Math.abs(parsedHourly[0].tMs - farmTimeMs);
+  for (let i = 1; i < parsedHourly.length; i++) {
+    const diff = Math.abs(parsedHourly[i].tMs - farmTimeMs);
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestIdx = i;
+    }
+  }
+
+  // If closest entry is more than 90m away, consider out of range
+  if (minDiff > 90 * 60 * 1000) {
+    return { current: null, next6: [], inRange: false };
+  }
+
+  const current = parsedHourly[bestIdx].item;
+  const next6 = parsedHourly.slice(bestIdx + 1, bestIdx + 7).map((p) => p.item);
+
+  return { current, next6, inRange: true };
+}

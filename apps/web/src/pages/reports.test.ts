@@ -144,7 +144,7 @@ describe('Reports page unit tests', () => {
     it('Phone nav has exactly 4 bottom items', () => {
       const items = getBottomNavItems(3);
       expect(items).toHaveLength(4);
-      expect(items.map((i) => i.path)).toEqual(['/', '/map', '/alarms', '/schedules']);
+      expect(items.map((i) => i.path)).toEqual(['/', '/zones', '/alarms', '/schedules']);
       expect(items.find((i) => i.path === '/alarms')?.badge).toBe(3);
     });
 

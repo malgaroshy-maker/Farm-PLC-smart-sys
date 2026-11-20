@@ -34,7 +34,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<DashboardLayout />}>
               <Route index element={<Dashboard />} />
-              <Route path="map" element={<Dashboard />} />
+              <Route path="map" element={<Navigate to="/" replace />} />
               <Route path="zones" element={<ZonesPage />} />
               <Route path="schedules" element={<SchedulesPage />} />
               <Route path="equipment" element={<EquipmentPage />} />

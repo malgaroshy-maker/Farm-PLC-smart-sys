@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { MsgKey } from './i18n';
-import { AlarmIcon, MapIcon, ScheduleIcon, type IconProps } from '../components/icons/FarmIcons';
+import { AlarmIcon, MapIcon, ScheduleIcon, ZonesIcon, type IconProps } from '../components/icons/FarmIcons';
 
 export interface NavItemConfig {
   key: MsgKey;
@@ -12,7 +12,7 @@ export interface NavItemConfig {
 export function getBottomNavItems(alarmCount = 0): NavItemConfig[] {
   return [
     { key: 'nav.dashboard', path: '/', icon: MapIcon },
-    { key: 'nav.map', path: '/map', icon: MapIcon },
+    { key: 'nav.zones', path: '/zones', icon: ZonesIcon },
     { key: 'nav.alarms', path: '/alarms', icon: AlarmIcon, badge: alarmCount },
     { key: 'nav.schedules', path: '/schedules', icon: ScheduleIcon },
   ];

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Gauge } from 'lucide-react';
 import FarmMap from '../components/map/FarmMap';
 import KPICard from '../components/KPICard';
@@ -16,10 +17,23 @@ const CYAN = '#00e5ff';
 const GREY = '#849396';
 
 export default function Dashboard() {
-  const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedZone = searchParams.get('zone');
   const [suggestions, setSuggestions] = useState<AdvisorSuggestion[]>([]);
   const { state, sendCommand } = useFarmConnector();
   const { t } = useT();
+
+  const handleSelectZone = (id: string | null) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set('zone', id);
+        else next.delete('zone');
+        return next;
+      },
+      { replace: true }
+    );
+  };
 
   useEffect(() => {
     let active = true;
@@ -76,7 +90,7 @@ export default function Dashboard() {
 
       <div className="flex-1 min-h-0 grid gap-3 lg:gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="aspect-[1000/887] lg:aspect-auto lg:min-h-[560px]">
-          <FarmMap state={state} selectedZone={selectedZone} onZoneSelect={setSelectedZone} />
+          <FarmMap state={state} selectedZone={selectedZone} onZoneSelect={handleSelectZone} />
         </div>
         <aside className="space-y-3 lg:overflow-y-auto lg:pe-1">
           {activeSuggestions.length > 0 && (
@@ -98,7 +112,7 @@ export default function Dashboard() {
       <ZoneDrawer
         zoneId={selectedZone}
         zoneState={state?.zones?.find((z) => z.zone_id === selectedZone)}
-        onClose={() => setSelectedZone(null)}
+        onClose={() => handleSelectZone(null)}
         onCommand={sendCommand}
       />
     </div>

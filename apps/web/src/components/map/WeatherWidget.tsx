@@ -25,10 +25,12 @@ function formatHour(ts: string, lang: Lang): string {
 export default function WeatherWidget({
   forecast,
   hourly = [],
+  next6: propNext6,
   lang: propLang,
 }: {
   forecast: WeatherData | null;
   hourly?: WeatherData[];
+  next6?: WeatherData[];
   lang?: Lang;
 }) {
   const storeLang = useI18nStore((s) => s.lang);
@@ -55,7 +57,7 @@ export default function WeatherWidget({
   const windAngle = parseWindDirection(forecast.wind_direction, forecast.wind_direction_10m);
   const icon = conditionIcon(forecast.condition);
   const rainProb = forecast.precipitation_probability_pct ?? 0;
-  const next6 = hourly.slice(0, 6);
+  const next6 = propNext6 && propNext6.length > 0 ? propNext6 : hourly.slice(0, 6);
 
   const windArrow = (
     <svg

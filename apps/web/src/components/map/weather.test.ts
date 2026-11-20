@@ -3,8 +3,8 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import WeatherWidget from './WeatherWidget';
 import WeatherOverlay from './WeatherOverlay';
-import { parseWindDirection, conditionIcon, isRaining } from './weatherUtils';
-import type { WeatherData } from '../../lib/api';
+import { parseWindDirection, conditionIcon, isRaining, selectForecastForFarmTime } from './weatherUtils';
+import type { WeatherData, WeatherForecast } from '../../lib/api';
 
 describe('Weather on Farm Map (Milestone F)', () => {
   let container: HTMLDivElement;
@@ -55,12 +55,12 @@ describe('Weather on Farm Map (Milestone F)', () => {
       act(() => {
         root.render(React.createElement(WeatherWidget, { forecast: null, lang: 'ar' }));
       });
-      expect(container.textContent).toContain('لا توجد بيانات طقس');
+      expect(container.textContent).toContain('لا توجد توقعات لهذا الوقت');
 
       act(() => {
         root.render(React.createElement(WeatherWidget, { forecast: null, lang: 'en' }));
       });
-      expect(container.textContent).toContain('No weather data');
+      expect(container.textContent).toContain('No forecast for this time');
     });
 
     it('Wind arrow rotates to correct angle (check the SVG transform string)', () => {
@@ -265,6 +265,62 @@ describe('Weather on Farm Map (Milestone F)', () => {
 
       localStorage.setItem('farm.legendOpen', 'true');
       expect(localStorage.getItem('farm.legendOpen')).toBe('true');
+    });
+  });
+
+  describe('Farm Time Hourly Forecast Alignment', () => {
+    const mockHourly: WeatherData[] = Array.from({ length: 48 }, (_, i) => {
+      const h = String(i % 24).padStart(2, '0');
+      const d = i < 24 ? '2026-11-20' : '2026-11-21';
+      return {
+        timestamp: `${d}T${h}:00`,
+        temperature_c: 18 + (i % 10),
+        humidity_pct: 50,
+        wind_speed_kmh: 10 + (i % 5),
+        precipitation_probability_pct: i === 15 ? 70 : 10,
+        condition: i === 15 ? 'rain' : 'clear',
+        description: 'Clear',
+        description_ar: 'صافٍ',
+      };
+    });
+
+    const mockForecast: WeatherForecast = {
+      current: mockHourly[12],
+      hourly: mockHourly,
+      daily: [],
+      last_fetched_at: '2026-11-20T12:00:00Z',
+      source: 'test',
+      cached: false,
+    };
+
+    it('selects forecast in range at 1x real time', () => {
+      const res = selectForecastForFarmTime(mockForecast, '2026-11-20T12:00:00+02:00');
+      expect(res.inRange).toBe(true);
+      expect(res.current?.timestamp).toBe('2026-11-20T12:00');
+      expect(res.next6).toHaveLength(6);
+      expect(res.next6[0].timestamp).toBe('2026-11-20T13:00');
+    });
+
+    it('selects forecast for farm hour mid-forecast', () => {
+      const res = selectForecastForFarmTime(mockForecast, '2026-11-21T08:00:00+02:00');
+      expect(res.inRange).toBe(true);
+      expect(res.current?.timestamp).toBe('2026-11-21T08:00');
+      expect(res.next6).toHaveLength(6);
+      expect(res.next6[0].timestamp).toBe('2026-11-21T09:00');
+    });
+
+    it('returns no data when farm time is beyond forecast range (e.g. 14 Dec)', () => {
+      const res = selectForecastForFarmTime(mockForecast, '2026-12-14T10:00:00+02:00');
+      expect(res.inRange).toBe(false);
+      expect(res.current).toBeNull();
+      expect(res.next6).toHaveLength(0);
+    });
+
+    it('WeatherWidget displays "لا توجد توقعات لهذا الوقت" when out of range (null forecast)', () => {
+      act(() => {
+        root.render(React.createElement(WeatherWidget, { forecast: null, lang: 'ar' }));
+      });
+      expect(container.textContent).toContain('لا توجد توقعات لهذا الوقت');
     });
   });
 });

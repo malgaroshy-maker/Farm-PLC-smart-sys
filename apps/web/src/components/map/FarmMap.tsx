@@ -14,6 +14,7 @@ import { EQUIPMENT_SIZE, SPRITES, TEXTURES, TRUNK_LENGTH, TRUNK_PARENT, ZONES, t
 import { TreeCanvas, WetCanvas } from './MapCanvases';
 import { WeatherOverlay } from './WeatherOverlay';
 import WeatherWidget from './WeatherWidget';
+import { selectForecastForFarmTime } from './weatherUtils';
 import FarmLife from './FarmLife';
 import { apiFetch, type WeatherData, type WeatherForecast } from '../../lib/api';
 import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
@@ -471,23 +472,15 @@ export default function FarmMap({
     };
   }, []);
 
-  const activeWeather = useMemo(() => {
-    if (!currentWeather) return null;
-    if (clock.speed < 10 || hourlyWeather.length === 0) {
-      return currentWeather;
-    }
-    const farmTime = clock.farmNow.getTime();
-    let best = hourlyWeather[0];
-    let minDiff = Math.abs(Date.parse(best.timestamp) - farmTime);
-    for (let i = 1; i < hourlyWeather.length; i++) {
-      const diff = Math.abs(Date.parse(hourlyWeather[i].timestamp) - farmTime);
-      if (diff < minDiff) {
-        minDiff = diff;
-        best = hourlyWeather[i];
-      }
-    }
-    return best || currentWeather;
-  }, [currentWeather, hourlyWeather, clock.speed, clock.farmNow]);
+  const weatherSelection = useMemo(() => {
+    return selectForecastForFarmTime(
+      { current: currentWeather ?? undefined, hourly: hourlyWeather },
+      clock.farmNow.toISOString()
+    );
+  }, [currentWeather, hourlyWeather, clock.farmNow]);
+
+  const activeWeather = weatherSelection.current;
+  const next6Hourly = weatherSelection.next6;
 
   const zones = useMemo(() => Object.fromEntries((state?.zones ?? []).map((z) => [z.zone_id, z])), [state?.zones]);
   const pumps = useMemo(() => Object.fromEntries((state?.pumps ?? []).map((p) => [p.pump_id, p])), [state?.pumps]);
@@ -502,6 +495,47 @@ export default function FarmMap({
     }
     return m;
   }, [alarms]);
+
+  const visibleChips = useMemo(() => {
+    const candidates = ZONES.map((z) => {
+      const live = zones[z.id];
+      const alarm = (alarmsByZone[z.id] ?? []).find((a) => a.condition_active) ?? null;
+      const isSelected = selectedZone === z.id;
+      let priority = z.small ? 100 : 200;
+      if (live?.state && TRANSITIONAL.has(live.state)) priority = 400;
+      if (live?.state === 'running') priority = 500;
+      if (isSelected) priority = 800;
+      if (alarm) priority = 1000 + (SEVERITY[alarm.severity]?.rank ?? 0) * 100;
+
+      const w = z.small ? 60 : 120;
+      const h = z.small ? 26 : 46;
+      const [cx, cy] = z.label;
+      const box = { x: cx - w / 2, y: cy - h / 2, w, h };
+      return { z, priority, box };
+    }).sort((a, b) => b.priority - a.priority);
+
+    const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
+    const visible: Record<string, boolean> = {};
+
+    for (const c of candidates) {
+      const collides = placed.some(
+        (p) =>
+          !(
+            c.box.x + c.box.w < p.x ||
+            p.x + p.w < c.box.x ||
+            c.box.y + c.box.h < p.y ||
+            p.y + p.h < c.box.y
+          )
+      );
+      if (!collides) {
+        placed.push(c.box);
+        visible[c.z.id] = true;
+      } else {
+        visible[c.z.id] = false;
+      }
+    }
+    return visible;
+  }, [zones, alarmsByZone, selectedZone]);
   const alarmedEquipment = useMemo(() => {
     const s = new Set<string>();
     for (const a of alarms) {
@@ -597,7 +631,7 @@ export default function FarmMap({
       </div>
 
       <div className="absolute top-14 end-3 z-20">
-        <WeatherWidget forecast={activeWeather} hourly={hourlyWeather} lang={lang} />
+        <WeatherWidget forecast={activeWeather} hourly={hourlyWeather} next6={next6Hourly} lang={lang} />
       </div>
 
       {(focused || selectedZone || zoomed) && (
@@ -680,7 +714,9 @@ export default function FarmMap({
                   {night > 0 && <rect x={VX} y={VY} width={VW} height={VH} fill="#0a1430" opacity={night * 0.6} style={{ mixBlendMode: 'multiply' }} pointerEvents="none" />}
                   <Lamps night={night} />
                   {ZONES.map((z) => (
-                    <Chip key={z.id} z={z} live={zones[z.id]} alarm={(alarmsByZone[z.id] ?? []).find((a) => a.condition_active) ?? null} lang={lang} />
+                    visibleChips[z.id] ? (
+                      <Chip key={z.id} z={z} live={zones[z.id]} alarm={(alarmsByZone[z.id] ?? []).find((a) => a.condition_active) ?? null} lang={lang} />
+                    ) : null
                   ))}
                 </svg>
               </div>
