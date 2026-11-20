@@ -41,7 +41,7 @@ class APIClient:
         ws_proto = "wss://" if root.startswith("https://") else "ws://"
         host_part = root.split("://", 1)[1] if "://" in root else root
         self.ws_host = host_part
-        self.ws_url = f"{ws_proto}{host_part}/ws?token={token}"
+        self.ws_url = f"{ws_proto}{host_part}/ws"
 
     async def sync_clock(self) -> None:
         try:
@@ -96,6 +96,7 @@ class APIClient:
         while self.running:
             try:
                 async with websockets.connect(self.ws_url) as ws:
+                    await ws.send(json.dumps({"type": "auth", "token": self.token}))
                     print(f"[SIMULATOR] Connected to WebSocket at {self.ws_host}")
                     while self.running:
                         msg = await ws.recv()

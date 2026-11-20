@@ -138,10 +138,11 @@ export const useFarmStore = create<FarmStore>((set, get) => {
 
   const open = (token: string) => {
     if (get().link === 'idle') set({ link: 'connecting' });
-    const ws = new WebSocket(wsUrl(token));
+    const ws = new WebSocket(wsUrl());
     socket = ws;
 
     ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', token }));
       backoff = 1000;
       stopPolling();
       set({ link: 'live' });
