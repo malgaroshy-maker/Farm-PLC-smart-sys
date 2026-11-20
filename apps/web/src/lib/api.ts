@@ -727,3 +727,53 @@ export async function fetchZoneBaseline(zoneId: string): Promise<ZoneBaseline> {
     message: raw.message ? String(raw.message) : undefined,
   };
 }
+
+// ─── Weather Types & Client (Milestone F) ──────────────────────────────
+
+export interface WeatherData {
+  timestamp: string;
+  temperature_c: number;
+  humidity_pct: number;
+  wind_speed_kmh: number;
+  wind_direction?: string | number;
+  wind_direction_10m?: number;
+  precipitation_mm?: number;
+  precipitation_probability_pct?: number;
+  cloud_cover_pct?: number;
+  uv_index?: number;
+  et0_mm?: number;
+  condition?: string;
+  description?: string;
+  description_ar?: string;
+}
+
+export interface WeatherDaySummary {
+  date: string;
+  temp_min_c: number;
+  temp_max_c: number;
+  humidity_avg_pct?: number;
+  precipitation_total_mm?: number;
+  precipitation_probability_pct?: number;
+  et0_mm?: number;
+  condition?: string;
+  description?: string;
+  description_ar?: string;
+}
+
+export interface WeatherForecast {
+  current: WeatherData;
+  hourly: WeatherData[];
+  daily: WeatherDaySummary[];
+  last_fetched_at?: string;
+  source?: string;
+  cached?: boolean;
+}
+
+export async function fetchCurrentWeather(): Promise<WeatherData> {
+  return apiFetch<WeatherData>('/api/v1/ai/weather/current');
+}
+
+export async function fetchWeatherForecast(forceRefresh = false): Promise<WeatherForecast> {
+  const query = forceRefresh ? '?force_refresh=true' : '';
+  return apiFetch<WeatherForecast>(`/api/v1/ai/weather/forecast${query}`);
+}

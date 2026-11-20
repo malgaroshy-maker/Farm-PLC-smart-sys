@@ -15,6 +15,7 @@ import {
   type IconProps,
 } from '../components/icons/FarmIcons';
 import FloatingAssistant from '../components/ai/FloatingAssistant';
+import InstallPrompt from '../components/InstallPrompt';
 import { usePrefs } from '../lib/prefs';
 import { useAuth } from '../lib/auth';
 import { session } from '../lib/api';
@@ -26,6 +27,7 @@ import { usePresenter } from '../lib/presenter';
 import { useFarmClock } from '../lib/clock';
 import SimTimeBadge from '../components/clock/SimTimeBadge';
 import ClockHeaderChip from '../components/clock/ClockHeaderChip';
+import { getBottomNavItems } from '../lib/nav';
 
 const LINK: Record<LinkStatus, { key: MsgKey; color: string }> = {
   idle: { key: 'link.connecting', color: '#849396' },
@@ -86,6 +88,8 @@ export default function DashboardLayout() {
     ...(showTech ? [{ key: 'nav.simulator' as MsgKey, path: '/simulator', icon: SimulatorIcon }] : []),
     ...(isAdmin ? [{ key: 'nav.aiSettings' as MsgKey, path: '/settings/ai', icon: AiSparklesIcon }] : []),
   ];
+
+  const bottomNav = getBottomNavItems(alarmCount);
 
   const sidebar = (
     <aside className="w-64 h-full border-e border-white/10 bg-[#141416]/90 backdrop-blur-xl flex flex-col">
@@ -169,8 +173,16 @@ export default function DashboardLayout() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 shrink-0 border-b border-white/10 bg-[#0e0e0e]/80 backdrop-blur-xl flex items-center gap-3 px-3 lg:px-6">
-          <button className="lg:hidden p-2 text-[#bac9cc]" onClick={() => setMenuOpen(true)} aria-label="menu">
+        <InstallPrompt />
+        <header
+          className="h-14 shrink-0 border-b border-white/10 bg-[#0e0e0e]/80 backdrop-blur-xl flex items-center gap-3 px-3 lg:px-6"
+          style={{
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+            paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+          }}
+        >
+          <button className="lg:hidden p-2 text-[#bac9cc] min-h-[44px] min-w-[44px] flex items-center justify-center" onClick={() => setMenuOpen(true)} aria-label="menu">
             <Menu size={22} />
           </button>
           <img src="/map/logo.webp" alt="" className="w-7 h-7 lg:hidden" />
@@ -222,24 +234,38 @@ export default function DashboardLayout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-20 lg:pb-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
           <Outlet />
         </main>
         <FloatingAssistant />
 
         {/* mobile bottom navigation */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 h-16 bg-[#141416]/95 backdrop-blur-xl border-t border-white/10 grid grid-cols-4">
-          {nav.slice(0, 4).map(({ key, path, icon: Icon, badge }) => (
+        <nav
+          aria-label={t('nav.bottomNav')}
+          className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[#141416]/95 backdrop-blur-xl border-t border-white/10 grid grid-cols-4"
+          style={{
+            paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          {bottomNav.map(({ key, path, icon: Icon, badge }) => (
             <NavLink
               key={path}
               to={path}
-              end={path === '/'}
-              className={({ isActive }) => `flex flex-col items-center justify-center gap-1 text-[11px] relative ${isActive ? 'text-[#00e5ff]' : 'text-[#849396]'}`}
+              end={path === '/' || path === '/map'}
+              aria-label={t(key)}
+              className={({ isActive }) =>
+                `min-h-[44px] min-w-[44px] py-1.5 flex flex-col items-center justify-center gap-1 text-[11px] relative transition-colors ${
+                  isActive ? 'text-[#00e5ff] font-bold bg-[#00e5ff]/5' : 'text-[#849396] hover:text-[#e5e2e1]'
+                }`
+              }
             >
               <Icon size={20} />
-              {t(key)}
+              <span className="truncate max-w-full px-0.5">{t(key)}</span>
               {!!badge && (
-                <span className="absolute top-1.5 start-1/2 ms-2 min-w-5 px-1 rounded-full text-[10px] font-bold font-mono text-[#0e0e0e]" style={{ backgroundColor: worst ? SEVERITY[worst].color : '#849396' }}>
+                <span
+                  className="absolute top-1 start-1/2 ms-2 min-w-5 px-1 rounded-full text-[10px] font-bold font-mono text-[#0e0e0e]"
+                  style={{ backgroundColor: worst ? SEVERITY[worst].color : '#849396' }}
+                >
                   {badge}
                 </span>
               )}

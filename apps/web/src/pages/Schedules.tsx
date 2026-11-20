@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Edit2, AlertTriangle, Check, Clock, Calendar } from 'lucide-react';
+import { Plus, Trash2, Edit2, AlertTriangle, Check, Clock, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
 import type { ConflictError, Program, ProgramCreate } from '@algaroshy/contracts';
 import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useFarmClock, farmHourAndMonth } from '../lib/clock';
 import { pickName, useT, type MsgKey } from '../lib/i18n';
 import { ScheduleIcon, AiSparklesIcon } from '../components/icons/FarmIcons';
 import { CROP_ICON } from '../components/icons/cropIcon';
 import SuggestionCard from '../components/ai/SuggestionCard';
 import { fetchAiSuggestions, type AdvisorSuggestion } from '../lib/api';
+import {
+  getDayInitial,
+  reorderSteps,
+  type StepDraft,
+} from '../lib/schedulesHelper';
 
 const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
 const CYAN = '#00e5ff';
@@ -37,13 +43,12 @@ function formatDays(days: number[]): string {
 
 const PRESETS = [15, 30, 45, 60];
 
-interface StepDraft {
-  zone_id: string;
-  duration_min: number;
-}
-
 export default function SchedulesPage() {
   const { t, lang, isRtl } = useT();
+  const { farmNow } = useFarmClock(lang);
+  const { hour: currentHourFrac } = farmHourAndMonth(farmNow);
+  const nowPct = Math.max(0, Math.min(100, (currentHourFrac / 24) * 100));
+
   const { can } = useAuth();
   const isAdmin = can('owner_admin');
   const canToggle = can('owner_admin', 'operator');
@@ -166,7 +171,13 @@ export default function SchedulesPage() {
             <Calendar size={14} className="text-[#00e5ff]" />
             {t('schedules.timeline')}
           </span>
-          <span className="text-[11px] text-[#849396]">00:00 – 24:00 (Africa/Tripoli)</span>
+          <div className="flex items-center gap-2 text-[11px] text-[#849396]">
+            <span className="flex items-center gap-1 text-[#ff5449] font-mono font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#ff5449] animate-pulse" />
+              {lang === 'ar' ? 'الوقت الحالي' : 'Farm time now'}
+            </span>
+            <span>• 00:00 – 24:00 (Africa/Tripoli)</span>
+          </div>
         </div>
 
         {/* Timeline Header (Hours) */}
@@ -202,6 +213,13 @@ export default function SchedulesPage() {
                     <div className="border-r border-white h-full" />
                     <div className="border-r border-white h-full" />
                   </div>
+
+                  {/* Farm clock now-line indicator */}
+                  <div
+                    style={isRtl ? { right: `${nowPct}%` } : { left: `${nowPct}%` }}
+                    className="absolute top-0 bottom-0 w-0.5 bg-[#ff5449] z-20 pointer-events-none shadow-[0_0_6px_rgba(255,84,73,0.9)]"
+                    title={`Now: ${farmNow.toLocaleTimeString()}`}
+                  />
 
                   {/* Program blocks */}
                   {dayPrograms.map((p) => {
@@ -315,7 +333,7 @@ export default function SchedulesPage() {
                               : 'bg-white/5 text-[#849396] border border-white/5'
                           }`}
                         >
-                          {t(d.key)[0]}
+                          {getDayInitial(d.dayNum, lang, t(d.key))}
                         </span>
                       );
                     })}
@@ -452,6 +470,16 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
 
   const removeStep = (idx: number) => {
     setSteps((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const moveStepUp = (idx: number) => {
+    if (idx <= 0) return;
+    setSteps((prev) => reorderSteps(prev, idx, idx - 1));
+  };
+
+  const moveStepDown = (idx: number) => {
+    if (idx >= steps.length - 1) return;
+    setSteps((prev) => reorderSteps(prev, idx, idx + 1));
   };
 
   const updateStepZone = (idx: number, zone_id: string) => {
@@ -631,9 +659,34 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
                     className="p-3 rounded-xl bg-black/40 border border-white/10 space-y-3 relative group"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="w-5 h-5 rounded-full bg-white/10 text-[11px] font-mono font-bold flex items-center justify-center text-[#849396]">
-                        {idx + 1}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-white/10 text-[11px] font-mono font-bold flex items-center justify-center text-[#849396]">
+                          {idx + 1}
+                        </span>
+                        {/* Up / Down reorder button pair */}
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => moveStepUp(idx)}
+                            disabled={idx === 0}
+                            aria-label={t('schedules.moveUp')}
+                            title={t('schedules.moveUp')}
+                            className="p-0.5 rounded text-[#849396] hover:text-[#00e5ff] hover:bg-white/10 disabled:opacity-20 disabled:hover:text-[#849396] disabled:hover:bg-transparent transition-colors"
+                          >
+                            <ArrowUp size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveStepDown(idx)}
+                            disabled={idx === steps.length - 1}
+                            aria-label={t('schedules.moveDown')}
+                            title={t('schedules.moveDown')}
+                            className="p-0.5 rounded text-[#849396] hover:text-[#00e5ff] hover:bg-white/10 disabled:opacity-20 disabled:hover:text-[#849396] disabled:hover:bg-transparent transition-colors"
+                          >
+                            <ArrowDown size={12} />
+                          </button>
+                        </div>
+                      </div>
 
                       {/* Zone Selector */}
                       <div className="flex-1 min-w-0 flex items-center gap-2">

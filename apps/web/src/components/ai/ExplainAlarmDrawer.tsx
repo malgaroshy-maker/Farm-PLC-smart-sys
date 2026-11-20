@@ -1,11 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
-import { X, AlertTriangle, ShieldAlert, Sparkles, Send, Wrench, XCircle } from 'lucide-react';
+import { X, AlertTriangle, ShieldAlert, Sparkles, Send, Wrench, XCircle, Copy, Check } from 'lucide-react';
 import type { Alarm } from '@algaroshy/contracts';
 import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { explainAlarm, type AlarmExplanation, type ChatMessage, sendAiChat } from '../../lib/api';
 import { SEVERITY } from '../../lib/alarms';
 import { pickName, useT } from '../../lib/i18n';
 import { AiSparklesIcon } from '../icons/FarmIcons';
+import ModelBadge from './ModelBadge';
+import { useElapsedSeconds } from '../../hooks/useElapsedSeconds';
 
 interface ExplainAlarmDrawerProps {
   alarm: Alarm | null;
@@ -33,6 +35,27 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
   const [inputQuestion, setInputQuestion] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  // Timers & Copy states
+  const elapsedSec = useElapsedSeconds(loading);
+  const chatElapsedSec = useElapsedSeconds(chatLoading);
+  const [copiedSummary, setCopiedSummary] = useState(false);
+  const [copiedChatIdx, setCopiedChatIdx] = useState<number | null>(null);
+
+  const handleCopyText = async (text: string, isSummary = true, idx?: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (isSummary) {
+        setCopiedSummary(true);
+        setTimeout(() => setCopiedSummary(false), 2000);
+      } else if (idx !== undefined) {
+        setCopiedChatIdx(idx);
+        setTimeout(() => setCopiedChatIdx(null), 2000);
+      }
+    } catch {
+      /* clipboard write failed */
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -366,7 +389,9 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
                 </div>
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-bold text-[#e5e2e1]">{t('ai.analyzingProgress')}</h3>
+                <h3 className="text-sm font-bold text-[#e5e2e1]">
+                  {lang === 'ar' ? `جاري التفكير... (${elapsedSec} ث)` : `Thinking... (${elapsedSec}s)`}
+                </h3>
                 <p className="text-xs text-[#849396]">{alarm.alarm_code} · {pickName(lang, alarm.name, alarm.name_ar)}</p>
               </div>
               <button
@@ -386,15 +411,38 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
               )}
 
               {/* Diagnosis Summary Card */}
-              <section className="panel p-4 space-y-2 border-[#00e5ff]/20">
-                <div className="flex items-center gap-2 text-xs font-bold text-[#00e5ff]">
-                  <Sparkles size={15} />
-                  <span>{t('ai.diagnosis')}</span>
+              <section className="panel p-4 space-y-3 border-[#00e5ff]/20">
+                <div className="flex items-center justify-between text-xs font-bold text-[#00e5ff]">
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={15} />
+                    <span>{t('ai.diagnosis')}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(explanation ? pickName(lang, explanation.summary, explanation.summary_ar) : '')}
+                    className="flex items-center gap-1 text-[11px] text-[#849396] hover:text-[#e5e2e1] px-2 py-1 rounded-lg hover:bg-white/10 transition-colors"
+                    title={t('ai.copy')}
+                    aria-label={t('ai.copy')}
+                  >
+                    {copiedSummary ? <Check size={13} className="text-[#00e5ff]" /> : <Copy size={13} />}
+                    <span>{copiedSummary ? t('ai.copied') : t('ai.copy')}</span>
+                  </button>
                 </div>
                 <p className="text-sm text-[#e5e2e1] leading-relaxed">
                   {explanation ? pickName(lang, explanation.summary, explanation.summary_ar) : ''}
                 </p>
+                <div className="pt-1 flex items-center justify-between flex-wrap gap-2">
+                  <ModelBadge modelUsed={explanation?.model_used || explanation?.model} provider={explanation?.provider} />
+                </div>
               </section>
+
+              {/* Rule-based notice when fallback */}
+              {(explanation?.provider === 'rule_based' || explanation?.is_fallback || explanation?.fallback_reason) && (
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-400" />
+                  <p className="leading-relaxed">{t('ai.ruleBasedNotice')}</p>
+                </div>
+              )}
 
               {/* Likely Causes */}
               {((explanation?.likely_causes && explanation.likely_causes.length > 0) ||
@@ -463,9 +511,9 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
               {/* Follow-up chat thread */}
               {chatMessages.length > 0 && (
                 <div className="space-y-3 pt-2 border-t border-white/10">
-                  {chatMessages.map((msg, i) => (
+                  {chatMessages.map((msg, idx) => (
                     <div
-                      key={i}
+                      key={idx}
                       className={`flex flex-col ${
                         msg.role === 'user'
                           ? isRtl ? 'items-start' : 'items-end'
@@ -481,28 +529,25 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
                       >
                         {msg.content}
                       </div>
-                      {msg.role === 'assistant' && msg.provider && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-[#849396] mt-1 px-1 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">
-                            {msg.is_fallback ? t('ai.ruleBasedLabel') : msg.provider}
-                          </span>
-                          {!msg.is_fallback && (msg.model_used || msg.model) && (
-                            <span className="font-mono text-[#00e5ff] px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
-                              {msg.model_used || msg.model}
-                            </span>
-                          )}
-                          {msg.latency_ms !== undefined && msg.latency_ms > 0 && (
-                            <span className="font-mono text-[#00e5ff]">
-                              {msg.latency_ms >= 1000
-                                ? `${(msg.latency_ms / 1000).toFixed(1)} s`
-                                : `${msg.latency_ms} ms`}
-                            </span>
-                          )}
-                          {msg.fallback_reason && (
-                            <span className="font-mono px-1.5 py-0.2 rounded bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/30">
-                              {msg.fallback_reason}
-                            </span>
-                          )}
+                      {msg.role === 'assistant' && (
+                        <div className="w-full flex items-center justify-between gap-2 mt-1 px-1">
+                          <ModelBadge modelUsed={msg.model_used || msg.model} provider={msg.provider} />
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(msg.content, false, idx)}
+                            className="flex items-center gap-1 text-[10px] text-[#849396] hover:text-[#e5e2e1] p-1 rounded hover:bg-white/10"
+                            title={t('ai.copy')}
+                            aria-label={t('ai.copy')}
+                          >
+                            {copiedChatIdx === idx ? <Check size={12} className="text-[#00e5ff]" /> : <Copy size={12} />}
+                            <span>{copiedChatIdx === idx ? t('ai.copied') : t('ai.copy')}</span>
+                          </button>
+                        </div>
+                      )}
+                      {msg.role === 'assistant' && (msg.provider === 'rule_based' || msg.is_fallback || msg.fallback_reason) && (
+                        <div className="flex items-start gap-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] mt-1 max-w-[85%]">
+                          <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-400" />
+                          <span>{t('ai.ruleBasedNotice')}</span>
                         </div>
                       )}
                     </div>
@@ -511,7 +556,7 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
                     <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/5 text-xs">
                       <div className="flex items-center gap-2 text-[#849396]">
                         <div className="w-3.5 h-3.5 border-2 border-[#00e5ff] border-t-transparent rounded-full animate-spin" />
-                        <span>{t('ai.analyzingProgress')}</span>
+                        <span>{lang === 'ar' ? `جاري التفكير... (${chatElapsedSec} ث)` : `Thinking... (${chatElapsedSec}s)`}</span>
                       </div>
                       <button
                         type="button"

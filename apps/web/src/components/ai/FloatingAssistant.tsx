@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react';
-import { X, Send, Bot, XCircle } from 'lucide-react';
+import { X, Send, Bot, XCircle, Copy, Check, AlertTriangle } from 'lucide-react';
 import { useFarmStore } from '../../store/farm';
 import { useT, fmtNum } from '../../lib/i18n';
 import { sendAiChat, type ChatMessage } from '../../lib/api';
 import { AiSparklesIcon, FlowIcon, GaugeIcon, PumpIcon, ZonesIcon } from '../icons/FarmIcons';
+import ModelBadge from './ModelBadge';
+import { useElapsedSeconds } from '../../hooks/useElapsedSeconds';
 
 export default function FloatingAssistant() {
   const { t, lang, isRtl } = useT();
@@ -21,8 +23,20 @@ export default function FloatingAssistant() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const elapsedSec = useElapsedSeconds(loading);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  const handleCopy = async (text: string, idx: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 2000);
+    } catch {
+      /* clipboard write failed */
+    }
+  };
 
   const state = useFarmStore((s) => s.state);
   const activeAlarms = state?.active_alarms ?? [];
@@ -132,7 +146,7 @@ export default function FloatingAssistant() {
           onClick={() => setIsOpen(true)}
           title={t('chat.title')}
           aria-label={t('chat.title')}
-          className="fixed bottom-6 end-6 z-40 p-3.5 rounded-full bg-gradient-to-tr from-[#00e5ff] to-[#00b0ff] text-[#0e0e0e] shadow-[0_4px_20px_rgba(0,229,255,0.4)] hover:shadow-[0_6px_25px_rgba(0,229,255,0.6)] hover:scale-105 transition-all flex items-center justify-center group"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-6 end-4 sm:end-6 z-40 p-3.5 rounded-full bg-gradient-to-tr from-[#00e5ff] to-[#00b0ff] text-[#0e0e0e] shadow-[0_4px_20px_rgba(0,229,255,0.4)] hover:shadow-[0_6px_25px_rgba(0,229,255,0.6)] hover:scale-105 transition-all flex items-center justify-center group"
         >
           <AiSparklesIcon size={24} accent="#0e0e0e" className="group-hover:rotate-12 transition-transform" />
           <span className="sr-only">{t('chat.title')}</span>
@@ -145,7 +159,7 @@ export default function FloatingAssistant() {
           role="dialog"
           aria-modal="true"
           aria-label={t('chat.title')}
-          className="fixed bottom-4 end-4 z-50 w-[420px] max-w-[calc(100vw-2rem)] h-[620px] max-h-[calc(100vh-2rem)] flex flex-col bg-[#141416]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-4 end-2 sm:end-4 z-50 w-[420px] max-w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-2rem)] h-[620px] max-h-[calc(100vh-5.5rem-env(safe-area-inset-bottom,0px))] sm:max-h-[calc(100vh-2rem)] flex flex-col bg-[#141416]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
         >
           {/* Header */}
           <div className="p-3.5 border-b border-white/10 bg-white/5 flex items-center justify-between gap-2">
@@ -211,29 +225,54 @@ export default function FloatingAssistant() {
                 >
                   {m.content}
                 </div>
-                {m.role === 'assistant' && m.provider && m.provider !== 'system' && (
-                  <div className="flex items-center gap-1.5 text-[10px] text-[#849396] mt-1 px-1 flex-wrap">
-                    <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5">
-                      {m.is_fallback ? t('ai.ruleBasedLabel') : m.provider}
-                    </span>
-                    {!m.is_fallback && (m.model_used || m.model) && (
-                      <span className="font-mono text-[#00e5ff] px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
-                        {m.model_used || m.model}
-                      </span>
+                {m.role === 'assistant' && (
+                  <>
+                    <div className="flex items-center justify-between gap-2 mt-1.5 px-1 w-full max-w-[85%]">
+                      <ModelBadge modelUsed={m.model_used || m.model} provider={m.provider} />
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(m.content, idx)}
+                        className="flex items-center gap-1 text-[10px] text-[#849396] hover:text-[#e5e2e1] p-1 rounded hover:bg-white/10 transition-colors"
+                        title={t('ai.copy')}
+                        aria-label={t('ai.copy')}
+                      >
+                        {copiedIdx === idx ? <Check size={12} className="text-[#00e5ff]" /> : <Copy size={12} />}
+                        <span>{copiedIdx === idx ? t('ai.copied') : t('ai.copy')}</span>
+                      </button>
+                    </div>
+
+                    {/* Rule-based notice */}
+                    {(m.provider === 'rule_based' || m.is_fallback || m.fallback_reason) && (
+                      <div className="flex items-start gap-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] mt-1 max-w-[85%]">
+                        <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-400" />
+                        <span>{t('ai.ruleBasedNotice')}</span>
+                      </div>
                     )}
-                    {m.latency_ms !== undefined && m.latency_ms > 0 && (
-                      <span className="font-mono text-[#00e5ff]">
-                        {m.latency_ms >= 1000
-                          ? `${(m.latency_ms / 1000).toFixed(1)} s`
-                          : `${m.latency_ms} ms`}
-                      </span>
-                    )}
-                    {m.fallback_reason && (
-                      <span className="font-mono px-1.5 py-0.2 rounded bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/30">
-                        {m.fallback_reason}
-                      </span>
-                    )}
-                  </div>
+
+                    {/* Follow-up suggestion chips */}
+                    <div className="flex flex-wrap gap-1.5 mt-2 max-w-[85%]">
+                      {(m.content.includes('ALM-') || m.content.toLowerCase().includes('alarm') || m.content.includes('إنذار') || m.content.includes('عطل')
+                        ? [
+                            { text: t('chat.chip.meanings') },
+                            { text: t('chat.chip.fix') },
+                          ]
+                        : [
+                            { text: t('chat.chip.forecast') },
+                            { text: t('chat.chip.farmStatus') },
+                          ]
+                      ).map((chip, cIdx) => (
+                        <button
+                          key={cIdx}
+                          type="button"
+                          onClick={() => handleSend(chip.text)}
+                          disabled={loading}
+                          className="px-2.5 py-1 rounded-full text-[10px] bg-[#00e5ff]/10 hover:bg-[#00e5ff]/20 text-[#00e5ff] border border-[#00e5ff]/30 transition-colors disabled:opacity-40"
+                        >
+                          {chip.text}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             ))}
@@ -241,7 +280,7 @@ export default function FloatingAssistant() {
               <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs animate-fadeIn">
                 <div className="flex items-center gap-2 text-[#849396]">
                   <div className="w-3.5 h-3.5 border-2 border-[#00e5ff] border-t-transparent rounded-full animate-spin" />
-                  <span>{t('ai.analyzingProgress')}</span>
+                  <span>{lang === 'ar' ? `جاري التفكير... (${elapsedSec} ث)` : `Thinking... (${elapsedSec}s)`}</span>
                 </div>
                 <button
                   type="button"

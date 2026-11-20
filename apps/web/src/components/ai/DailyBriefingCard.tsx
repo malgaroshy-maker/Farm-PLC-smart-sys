@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Calendar, CloudRain, AlertCircle } from 'lucide
 import { fetchDailyBriefing, type DailyBriefing } from '../../lib/api';
 import { fmtNum, pickName, useT } from '../../lib/i18n';
 import { AiSparklesIcon, DropIcon, WeatherIcon } from '../icons/FarmIcons';
+import ModelBadge from './ModelBadge';
 
 interface DailyBriefingCardProps {
   initialCollapsed?: boolean;
@@ -120,10 +121,13 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
       </div>
 
       {/* Recap text (always visible or expandable) */}
-      <div className="pt-3">
+      <div className="pt-3 space-y-2">
         <p className="text-xs sm:text-sm text-[#bac9cc] leading-relaxed">
           {recapText}
         </p>
+        <div className="pt-1">
+          <ModelBadge modelUsed={briefing.model_used || briefing.model} provider={briefing.provider} />
+        </div>
       </div>
 
       {/* Collapsible Key Indicators: Water used, Today's programs, Weather */}

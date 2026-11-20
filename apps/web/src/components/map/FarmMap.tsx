@@ -7,12 +7,15 @@
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch';
-import { Maximize, Moon, Sun, SunMoon, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronDown, ChevronUp, Maximize, Moon, Sun, SunMoon, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Alarm, AlarmSeverity, FarmMapState, PumpLiveState, ValveLiveState, ZoneLiveState } from '@algaroshy/contracts';
 import { FARM, polygonPath, polylinePath, type Point } from '@algaroshy/map-model';
 import { EQUIPMENT_SIZE, SPRITES, TEXTURES, TRUNK_LENGTH, TRUNK_PARENT, ZONES, type ZoneLayout } from './farmLayout';
 import { TreeCanvas, WetCanvas } from './MapCanvases';
+import { WeatherOverlay } from './WeatherOverlay';
+import WeatherWidget from './WeatherWidget';
 import FarmLife from './FarmLife';
+import { apiFetch, type WeatherData, type WeatherForecast } from '../../lib/api';
 import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
 import { SEVERITY, topSeverity } from '../../lib/alarms';
 import { usePrefs } from '../../lib/prefs';
@@ -25,6 +28,21 @@ type UiState = 'running' | 'busy' | 'fault' | 'idle';
 const TRANSITIONAL = new Set(['queued', 'starting_pump', 'opening_valve', 'validating_flow', 'stopping']);
 const [VX, VY, VW, VH] = FARM.viewBox;
 const CYAN = '#00e5ff';
+
+const LEGEND_OPEN_KEY = 'farm.legendOpen';
+
+function initialLegendOpen(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const saved = localStorage.getItem(LEGEND_OPEN_KEY);
+    if (saved !== null) {
+      return saved === 'true';
+    }
+    return window.innerWidth >= 640;
+  } catch {
+    return true;
+  }
+}
 
 function uiState(z?: ZoneLiveState): UiState {
   if (!z) return 'idle';
@@ -386,12 +404,90 @@ export default function FarmMap({
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [zoomed, setZoomed] = useState(false);
+  const [legendOpen, setLegendOpen] = useState<boolean>(initialLegendOpen);
+  const [currentWeather, setCurrentWeather] = useState<WeatherData | null>(null);
+  const [hourlyWeather, setHourlyWeather] = useState<WeatherData[]>([]);
   const clock = useFarmClock();
   const { night, dusk } = lighting(light, clock.hour);
   const zoomRef = useRef<ReactZoomPanPinchContentRef>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const zoomedRef = useRef(false);
+
+  const toggleLegend = () => {
+    setLegendOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(LEGEND_OPEN_KEY, String(next));
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWeather() {
+      try {
+        const cur = await apiFetch<WeatherData>('/api/v1/ai/weather/current');
+        if (cancelled) return;
+        setCurrentWeather(cur);
+
+        try {
+          const fc = await apiFetch<WeatherForecast>('/api/v1/ai/weather/forecast');
+          if (!cancelled && fc?.hourly) {
+            setHourlyWeather(fc.hourly);
+          }
+        } catch {
+          /* optional forecast */
+        }
+      } catch {
+        // Fallback check if forecast was mocked instead of current
+        try {
+          const fc = await apiFetch<WeatherForecast>('/api/v1/ai/weather/forecast');
+          if (!cancelled && fc?.current) {
+            setCurrentWeather(fc.current);
+            setHourlyWeather(fc.hourly ?? []);
+            return;
+          }
+        } catch {
+          /* optional forecast fallback */
+        }
+
+        if (!cancelled) {
+          setCurrentWeather(null);
+          setHourlyWeather([]);
+        }
+      }
+    }
+
+    loadWeather();
+    const interval = setInterval(loadWeather, 15 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const activeWeather = useMemo(() => {
+    if (!currentWeather) return null;
+    if (clock.speed < 10 || hourlyWeather.length === 0) {
+      return currentWeather;
+    }
+    const farmTime = clock.farmNow.getTime();
+    let best = hourlyWeather[0];
+    let minDiff = Math.abs(Date.parse(best.timestamp) - farmTime);
+    for (let i = 1; i < hourlyWeather.length; i++) {
+      const diff = Math.abs(Date.parse(hourlyWeather[i].timestamp) - farmTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        best = hourlyWeather[i];
+      }
+    }
+    return best || currentWeather;
+  }, [currentWeather, hourlyWeather, clock.speed, clock.farmNow]);
 
   const zones = useMemo(() => Object.fromEntries((state?.zones ?? []).map((z) => [z.zone_id, z])), [state?.zones]);
   const pumps = useMemo(() => Object.fromEntries((state?.pumps ?? []).map((p) => [p.pump_id, p])), [state?.pumps]);
@@ -461,13 +557,28 @@ export default function FarmMap({
 
   return (
     <div ref={rootRef} className="w-full h-full rounded-2xl overflow-hidden relative border border-white/[0.07] bg-[#0b0b0b] shadow-2xl" style={{ containerType: 'size' }}>
-      <div className="absolute top-3 start-3 z-20 max-w-[calc(100%-9rem)] flex flex-wrap gap-x-3 gap-y-1 text-[11px] sm:text-xs panel px-2.5 py-1.5 pointer-events-none">
-        {(['running', 'busy', 'fault', 'idle'] as UiState[]).map((s) => (
-          <span key={s} className="flex items-center gap-1.5" style={{ color: s === 'idle' ? '#bac9cc' : STATE_COLOR[s] }}>
-            <span className="w-2.5 h-2.5 rounded-sm border" style={{ borderColor: STATE_COLOR[s], background: s === 'idle' ? 'transparent' : `${STATE_COLOR[s]}33` }} />
-            {t(`map.legend.${s}` as MsgKey)}
-          </span>
-        ))}
+      <div className="absolute top-3 start-3 z-20 max-w-[calc(100%-9rem)] flex items-center gap-1.5 panel px-2 py-1 text-[11px] sm:text-xs">
+        <button
+          type="button"
+          onClick={toggleLegend}
+          data-testid="legend-toggle"
+          className="p-1 rounded text-[#849396] hover:text-[#e5e2e1] cursor-pointer transition-colors"
+          title={t('map.legend.toggle')}
+          aria-label={t('map.legend.toggle')}
+          aria-expanded={legendOpen}
+        >
+          {legendOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+        {legendOpen && (
+          <div data-testid="legend-items" className="flex flex-wrap gap-x-3 gap-y-1">
+            {(['running', 'busy', 'fault', 'idle'] as UiState[]).map((s) => (
+              <span key={s} className="flex items-center gap-1.5" style={{ color: s === 'idle' ? '#bac9cc' : STATE_COLOR[s] }}>
+                <span className="w-2.5 h-2.5 rounded-sm border" style={{ borderColor: STATE_COLOR[s], background: s === 'idle' ? 'transparent' : `${STATE_COLOR[s]}33` }} />
+                {t(`map.legend.${s}` as MsgKey)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="absolute top-3 end-3 z-20 flex gap-1 panel p-1">
@@ -483,6 +594,10 @@ export default function FarmMap({
             <Icon size={16} />
           </button>
         ))}
+      </div>
+
+      <div className="absolute top-14 end-3 z-20">
+        <WeatherWidget forecast={activeWeather} hourly={hourlyWeather} lang={lang} />
       </div>
 
       {(focused || selectedZone || zoomed) && (
@@ -528,6 +643,7 @@ export default function FarmMap({
               >
                 <Ground />
                 <WetCanvas zones={zones} animate={!reduceMotion} />
+                <WeatherOverlay forecast={activeWeather} reduceMotion={reduceMotion} />
                 <TreeCanvas zones={zones} month={clock.month} />
                 <svg viewBox={`${VX} ${VY} ${VW} ${VH}`} className="absolute inset-0 w-full h-full" role="img" aria-label={t('map.title')}>
                   <OverlayDefs />

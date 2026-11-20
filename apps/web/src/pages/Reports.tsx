@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Download, BarChart3 } from 'lucide-react';
+import { Download as DownloadIcon, BarChart3 } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -22,6 +22,7 @@ import { useFarmClock } from '../lib/clock';
 import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
 import { ReportsIcon } from '../components/icons/FarmIcons';
 import { CROP_ICON } from '../components/icons/cropIcon';
+import { computeReportDateRange, type RangePreset } from '../lib/reportsHelper';
 
 const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
 const CYAN = '#00e5ff';
@@ -30,7 +31,6 @@ const GREEN = '#7ee787';
 const RED = '#ff5449';
 
 type ReportTab = 'daily' | 'water' | 'pumps' | 'alarms';
-type RangePreset = 'today' | 'week' | 'month';
 
 const PUMP_NAMES: Record<string, [string, string]> = {
   pump_booster_01: ['Booster pump', 'مضخة التعزيز'],
@@ -46,32 +46,9 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  // Compute dates in farm timezone (Africa/Tripoli)
+  // Compute dates in farm timezone (Africa/Tripoli) — defaults to last 7 days
   const { fromDate, toDate } = useMemo(() => {
-    const to = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Africa/Tripoli',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(farmNow);
-
-    const d = new Date(farmNow);
-    if (rangePreset === 'today') {
-      return { fromDate: to, toDate: to };
-    }
-    if (rangePreset === 'week') {
-      d.setDate(d.getDate() - 6);
-    } else {
-      d.setDate(d.getDate() - 29);
-    }
-    const from = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Africa/Tripoli',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d);
-
-    return { fromDate: from, toDate: to };
+    return computeReportDateRange(rangePreset, farmNow);
   }, [farmNow, rangePreset]);
 
   // Report data states
@@ -200,10 +177,10 @@ export default function ReportsPage() {
           <button
             onClick={handleExportCsv}
             disabled={downloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-[#00e5ff] hover:bg-white/10 transition-colors"
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#00e5ff]/15 border border-[#00e5ff]/40 text-xs font-bold text-[#00e5ff] hover:bg-[#00e5ff]/25 transition-all shadow-sm"
           >
-            <Download size={14} />
-            {downloading ? t('common.loading') : t('reports.exportCsv')}
+            <DownloadIcon size={15} />
+            <span>{downloading ? t('common.loading') : t('reports.exportCsv')}</span>
           </button>
         </div>
       </div>
@@ -269,7 +246,7 @@ export default function ReportsPage() {
           ) : tab === 'daily' ? (
             dailyData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-[#849396]">
-                {t('reports.noData')}
+                {t('reports.empty')}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -294,7 +271,7 @@ export default function ReportsPage() {
           ) : tab === 'water' ? (
             waterData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-[#849396]">
-                {t('reports.noData')}
+                {t('reports.empty')}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -335,7 +312,7 @@ export default function ReportsPage() {
           ) : tab === 'pumps' ? (
             pumpData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-[#849396]">
-                {t('reports.noData')}
+                {t('reports.empty')}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -368,7 +345,7 @@ export default function ReportsPage() {
           ) : (
             alarmData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-[#849396]">
-                {t('reports.noData')}
+                {t('reports.empty')}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -398,10 +375,10 @@ export default function ReportsPage() {
           <span className="text-xs font-bold text-[#bac9cc]">{t('reports.detailedRecords')}</span>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[560px]">
           {tab === 'daily' && (
             <table className="w-full text-xs text-start">
-              <thead className="bg-white/5 text-[#849396] font-bold border-b border-white/5">
+              <thead className="sticky top-0 z-10 bg-[#161618] text-[#849396] font-bold border-b border-white/10 shadow-xs">
                 <tr>
                   <th className="p-3 text-start">{t('reports.date')}</th>
                   <th className="p-3 text-end">{t('reports.waterM3')}</th>
@@ -414,7 +391,7 @@ export default function ReportsPage() {
                 {dailyData.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-[#849396]">
-                      {t('reports.noData')}
+                      {t('reports.empty')}
                     </td>
                   </tr>
                 ) : (
@@ -436,7 +413,7 @@ export default function ReportsPage() {
 
           {tab === 'water' && (
             <table className="w-full text-xs text-start">
-              <thead className="bg-white/5 text-[#849396] font-bold border-b border-white/5">
+              <thead className="sticky top-0 z-10 bg-[#161618] text-[#849396] font-bold border-b border-white/10 shadow-xs">
                 <tr>
                   <th className="p-3 text-start">{t('reports.zone')}</th>
                   <th className="p-3 text-start">{t('reports.crop')}</th>
@@ -449,7 +426,7 @@ export default function ReportsPage() {
                 {waterData.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-[#849396]">
-                      {t('reports.noData')}
+                      {t('reports.empty')}
                     </td>
                   </tr>
                 ) : (
@@ -478,7 +455,7 @@ export default function ReportsPage() {
 
           {tab === 'pumps' && (
             <table className="w-full text-xs text-start">
-              <thead className="bg-white/5 text-[#849396] font-bold border-b border-white/5">
+              <thead className="sticky top-0 z-10 bg-[#161618] text-[#849396] font-bold border-b border-white/10 shadow-xs">
                 <tr>
                   <th className="p-3 text-start">{t('reports.pump')}</th>
                   <th className="p-3 text-end">{t('reports.runtimeHours')}</th>
@@ -489,7 +466,7 @@ export default function ReportsPage() {
                 {pumpData.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="p-6 text-center text-[#849396]">
-                      {t('reports.noData')}
+                      {t('reports.empty')}
                     </td>
                   </tr>
                 ) : (
@@ -510,7 +487,7 @@ export default function ReportsPage() {
 
           {tab === 'alarms' && (
             <table className="w-full text-xs text-start">
-              <thead className="bg-white/5 text-[#849396] font-bold border-b border-white/5">
+              <thead className="sticky top-0 z-10 bg-[#161618] text-[#849396] font-bold border-b border-white/10 shadow-xs">
                 <tr>
                   <th className="p-3 text-start">{t('reports.alarmCode')}</th>
                   <th className="p-3 text-start">{t('reports.alarmTitle')}</th>
@@ -522,7 +499,7 @@ export default function ReportsPage() {
                 {alarmData.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="p-6 text-center text-[#849396]">
-                      {t('reports.noData')}
+                      {t('reports.empty')}
                     </td>
                   </tr>
                 ) : (
