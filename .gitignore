@@ -103,3 +103,8 @@ design/assets-raw/log_*.txt
 # Local screenshots and verification dumps
 screenshots/
 
+
+# Satellite imagery for tracing only (licensed for checking, not redistributed)
+design/satellite/*.jpg
+design/satellite/*.png
+design/satellite/*.tif

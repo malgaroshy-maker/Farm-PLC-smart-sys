@@ -1,0 +1,16 @@
+{
+ "z": 17,
+ "tiles": 16,
+ "size": [
+  794,
+  796
+ ],
+ "m_per_px": 1.007,
+ "bbox": [
+  14.0661,
+  32.51265,
+  14.07462,
+  32.51985
+ ],
+ "attribution": "Esri, Maxar, Earthstar Geographics"
+}

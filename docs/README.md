@@ -23,8 +23,9 @@
 13. `HARDWARE_BOM_DRAFT.md` — preliminary hardware blocks and field instrumentation list
 14. `TEST_PLAN.md` — acceptance tests, scenario tests, and commissioning checks
 15. `AI_AGENT_RUNBOOK.md` — prompts, build order, and rules for AI coding agents
-16. `FARM_SITE.md` — exact farm coordinates (weather, sun position, satellite checks)
-17. `farm_layout.svg` — current farm layout graphic reference
+16. `MAP_SURVEY.md` — satellite survey: block → zone, buildings, boundary (owner-confirmed)
+17. `FARM_SITE.md` — exact farm coordinates (weather, sun position, satellite checks)
+18. `farm_layout.svg` — current farm layout graphic reference
 
 ## Suggested Build Order
 
