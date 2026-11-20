@@ -158,3 +158,60 @@ async def test_scheduled_briefing_on_farm_time(client):
             assert b3 is None
     finally:
         clock.farm_now = original_now
+
+
+@pytest.mark.asyncio
+async def test_farm_context_block_builds_from_db_with_exact_zone_count():
+    """Verify build_farm_context_block queries DB and explicitly states the exact zone count (12)."""
+    from app.services.ai.agent import build_farm_context_block
+
+    context_str = await build_farm_context_block(async_session_factory)
+    assert "12" in context_str
+    assert "Farm Facts: The farm has exactly 12 irrigation zones" in context_str
+    # Verify zone names & crops from DB are present
+    assert "zone_zaytoun" in context_str or "Z1" in context_str or "Zone" in context_str
+
+
+@pytest.mark.asyncio
+async def test_briefing_arabic_et0_and_clean_purity(client):
+    """Verify briefing formats ET0 cleanly in Arabic ('التبخر-نتح المرجعي ET₀ = ...') and contains no garbled text."""
+    from app.services.ai.rules import rule_service
+    from app.services.weather import WeatherData, WeatherDaySummary, WeatherForecast
+
+    now_iso = clock.farm_now().isoformat()
+    cur = WeatherData(
+        timestamp=now_iso,
+        temperature_c=22.0,
+        humidity_pct=50.0,
+        wind_speed_kmh=10.0,
+        precipitation_mm=0.0,
+        precipitation_probability_pct=15.0,
+        et0_mm=3.28,
+    )
+    day = WeatherDaySummary(
+        date="2026-11-20",
+        temp_min_c=18.0,
+        temp_max_c=31.5,
+        precipitation_probability_pct=15.0,
+        precipitation_total_mm=0.0,
+        et0_mm=3.28,
+    )
+    dummy_forecast = WeatherForecast(
+        current=cur,
+        daily=[day],
+        hourly=[cur],
+        last_fetched_at=now_iso,
+        source="test",
+        cached=False,
+    )
+
+    briefing = rule_service.daily_briefing(
+        date_str="2026-11-20",
+        forecast=dummy_forecast,
+        cycles=[],
+        alarms=[],
+    )
+
+    assert "التبخر-نتح المرجعي ET₀ = 3.28 مم" in briefing.weather_summary_ar
+    assert "pent reference" not in briefing.weather_summary_ar
+    assert "13" not in briefing.summary_ar

@@ -223,12 +223,20 @@ class RuleBasedService:
         today_fc = forecast.daily[0] if forecast and forecast.daily else None
         t_max = today_fc.temp_max_c if today_fc else cur_temp
         p_prob = today_fc.precipitation_probability_pct if today_fc else 0.0
+        et0 = (
+            today_fc.et0_mm
+            if today_fc
+            else (forecast.current.et0_mm if forecast and forecast.current else None)
+        )
 
         title_en = f"Daily Operations Briefing — {date_str}"
         title_ar = f"التقرير اليومي للعمليات — {date_str}"
 
-        w_summary_en = f"Current temp {cur_temp:.1f}°C, forecast high {t_max:.1f}°C. Rain chance {p_prob:.0f}%."
-        w_summary_ar = f"درجة الحرارة الحالية {cur_temp:.1f}م°، العظمى المتوقعة {t_max:.1f}م°. احتمال الأمطار {p_prob:.0f}%."
+        et0_en = f", ET₀ {et0:.2f} mm" if et0 is not None else ""
+        et0_ar = f"، التبخر-نتح المرجعي ET₀ = {et0:.2f} مم" if et0 is not None else ""
+
+        w_summary_en = f"Current temp {cur_temp:.1f}°C, forecast high {t_max:.1f}°C. Rain chance {p_prob:.0f}%{et0_en}."
+        w_summary_ar = f"درجة الحرارة الحالية {cur_temp:.1f}م°، العظمى المتوقعة {t_max:.1f}م°، احتمال الأمطار {p_prob:.0f}%{et0_ar}."
 
         irr_en = f"Executed {len(cycles)} cycle(s) delivering {total_water:.1f} m³ of water ({len(completed)} completed, {len(aborted)} interrupted)."
         irr_ar = f"تم تنفيذ {len(cycles)} دورة ري بإجمالي استهلاك {total_water:.1f} م³ ({len(completed)} مكتملة، {len(aborted)} متوقفة)."

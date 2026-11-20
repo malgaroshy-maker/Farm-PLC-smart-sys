@@ -161,6 +161,8 @@ def check_response_purity(response_obj: Any) -> PurityReport:
         texts_to_check.append(response_obj.reasoning_ar)
 
     # DailyBriefing fields
+    if hasattr(response_obj, "title_ar") and response_obj.title_ar:
+        texts_to_check.append(response_obj.title_ar)
     if hasattr(response_obj, "summary_ar") and response_obj.summary_ar:
         texts_to_check.append(response_obj.summary_ar)
     if hasattr(response_obj, "weather_summary_ar") and response_obj.weather_summary_ar:
