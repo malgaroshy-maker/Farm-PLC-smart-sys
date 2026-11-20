@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
-**Last Updated:** 2026-11-19
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ (AI: alarm assistant, weather advisor, anomaly detection, daily briefing) → next is **Milestone F: map accuracy, weather on the map, UI polish**, then the Production track (Siemens OPC UA adapter, hosting, hardening)
+**Last Updated:** 2026-11-20
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (Map Weather & UI Polish) → next is the **Production track** (Siemens S7-1200/1500 OPC UA adapter, hosting, hardening)
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -38,7 +38,8 @@
 | Weather & Irrigation Advisor | ✅ | Open-Meteo weather client targeting exact farm coordinates (`32.516250, 14.070361`, Africa/Tripoli) with 3-hour caching and ET0 evapotranspiration extraction. Deterministic advisor rules: rain skip ($\ge 50\%$ or $\ge 2\text{ mm}$), heat extension ($\ge 38^\circ\text{C}$ or $\text{ET}_0 \ge 7\text{ mm}$ $\rightarrow +20\%$), and safe offline fallback. Suggestion cards with one-tap approve (5-second undo toast) creating single-day program run overrides honored by scheduler. |
 | Statistical Anomaly Detection | ✅ | Non-LLM statistical anomaly detection engine (`apps/api/app/services/anomaly.py`) computing median + MAD / robust z-score baselines per zone from completed cycles ($N \ge 3$). Evaluates live flow and pressure during irrigation: high flow + low pressure triggers S2 alarm ALM-046 (Possible leak); low flow + high pressure triggers S2 alarm ALM-047 (Possible clogged emitters). Debounce and valve-travel grace periods eliminate false positives. Baseline band visualized in Zone Drawer. |
 | Daily Morning Briefing | ✅ | Automated daily briefing synthesized at 06:00 farm time (`clock.farm_now()`). Summarizes yesterday's water consumption, cycle count and outcomes, tripped alarms, anomalies, and today's forecast. Stored in `ai_briefings` table; surfaced as collapsible top hero card on main dashboard and mobile status screen. |
-| Tests + CI | ✅ | 189 API + 27 simulator + 61 web + 3 map-model tests (264 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
+| Weather on Map & UI Polish | ✅ | Glass weather widget (temp, meteorological wind arrow, rain %, 6h hourly forecast tooltip), dynamic rain and cloud-shadow canvas overlays, collapsible legend with persistence. 4-item phone bottom nav (Dashboard, Map, Alarms, Schedules) with $\ge 44\text{px}$ targets, safe-area insets, always-visible AI model badge, elapsed query seconds timer, copy button, friendly rule-based banner, 7-day default reports range with sticky headers and CSV export, PWA install prompt. WS token redaction in logs, launcher LAN IP filter, preserved programs in demo reset. |
+| Tests + CI | ✅ | 194 API + 27 simulator + 84 web + 3 map-model + 4 scripts tests (312 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
 
 ## Live scenario suite (2026-11-19)
 
@@ -63,6 +64,7 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 | **C: Demo-quality UI + PWA** | ✅ Done 2026-11-18 |
 | **D: Simulation time, schedules, cycles, reports** | ✅ Done 2026-11-19 |
 | **E: AI (alarm assistant, weather advisor, anomaly detection, daily briefing)** | ✅ Done 2026-11-19 |
+| **F: Map weather & UI polish** | ✅ Done 2026-11-20 |
 | Production track (PLC adapter, hosting, hardening) | ⬜ After the demo |
 
 ## Decisions

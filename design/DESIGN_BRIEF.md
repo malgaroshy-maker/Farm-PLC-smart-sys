@@ -95,3 +95,53 @@ Focus: **map realism, map animations, dashboard layout, pages & panels styling**
 
 ## Round 2 — status (2026-11-18)
 All of the above is implemented on branch `ui-round-2`. Approved samples are in `design/samples-r2/`. Final assets are in `apps/web/public/map` (trees, farm-life sprites) and `apps/web/public/art` (detail, login and empty-state art).
+
+---
+
+# Milestone F — Map Weather & UI Polish (decided 2026-11-20)
+
+## Owner decisions
+
+| # | Topic | Decision |
+|---|-------|----------|
+| 1 | Satellite / Geometry | Skip geometry correction for Milestone F — keep the current traced polygons (within ±12% of sketch legend). Document georeferencing workflow for future satellite tracing. |
+| 2 | Weather widget position | Top-right corner of the map (above the zoom controls). |
+| 3 | Legend collapsibility | Collapsed by default on mobile (< 640px), expanded on desktop. Toggle button always visible; preference saved in `farm.legendOpen`. |
+| 4 | AI model badge | Always visible — small, unobtrusive gray badge below the answer (`model_used` stripped of `free/` prefix + provider, or amber fallback notice). |
+| 5 | Default report range | Last 7 days (`Africa/Tripoli` local time). |
+| 6 | Phone bottom navigation | 4 primary items: Dashboard (`/`), Map (`/map`), Alarms (`/alarms`), Schedules (`/schedules`). Zones, Equipment, Events, Reports housed in the hamburger menu (`≡`). |
+
+## Weather on the map
+- **WeatherWidget (`WeatherWidget.tsx`)**: Glass panel (`.panel`) top-right of map.
+  - Temperature in `<bdi>{temp}°C</bdi>`.
+  - Wind arrow rotated to meteorological "from" convention (points toward source).
+  - Wind speed (`km/h`) and precipitation probability badge (`💧 {prob}%`).
+  - Condition icons (🌤️, 🌧️, ⛈️, ☁️, 🌫️).
+  - Hover/tap tooltip with next 6 hourly forecast items.
+  - Mobile responsive: collapses to compact badge on mobile with tap-to-expand.
+  - Virtual clock sync: fast-forwards forecast to match farm virtual hour at $\ge 10\times$ speed.
+  - Honest no-data state: "لا توجد بيانات طقس" / "No weather data" on API unavailability.
+- **WeatherOverlay (`WeatherOverlay.tsx`)**: High-performance canvas layer (`pointer-events: none`).
+  - Animated raindrops via `requestAnimationFrame` when raining or precipitation probability $\ge 60\%$.
+  - Cloud-shadow tint (opacity 0.08) when `cloud_cover_pct` $\ge 70\%$.
+  - Respects `prefers-reduced-motion`: shows static blue tint without frame animation.
+
+## UI Polish & Phone Experience
+- **Navigation & Mobile layout**:
+  - 4 bottom navigation items with guaranteed $\ge 44\text{px}$ touch targets.
+  - Safe-area insets (`env(safe-area-inset-bottom)`, `env(safe-area-inset-top)`).
+  - Floating AI assistant offset so it never obscures the bottom nav bar.
+  - PWA install prompt banner with dismiss memory (`farm.installDismissed`).
+  - Viewport-fit cover and horizontal scroll prevention at $375\text{px}$ width.
+- **AI Panels (`ModelBadge.tsx`)**:
+  - Model badge displayed on Alarm Assistant, Floating Chat, and Daily Briefing.
+  - Dynamic elapsed seconds counter ("جاري التفكير... (٣ ث)" / "Thinking... (3s)") during AI queries.
+  - Friendly rule-based banner with ⚠️ callout when fallback is triggered.
+  - One-click copy-to-clipboard on AI answers with 2-second checkmark confirmation.
+  - Contextual follow-up suggestion chips in Floating Assistant.
+- **Schedules & Reports**:
+  - Vertical now-line on 24h schedule timeline linked to virtual farm clock.
+  - Distinct Arabic day initials (`ن`, `ث`, `ر`, `خ`, `ج`, `س`, `ح`).
+  - Step reordering in edit drawer with functional `↑ / ↓` controls.
+  - Default 7-day range in Reports with sticky table headers and prominent CSV export.
+

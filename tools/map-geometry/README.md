@@ -27,3 +27,19 @@ All 15 features fall within ±12%. Most are within ±5%. The small, consistent o
 | Boundary | 1.08 | | |
 
 Requires `opencv-python-headless` and `numpy`.
+
+## Satellite Imagery & Georeferencing Workflow (Milestone F)
+
+On 2026-11-20, the owner decided to keep the current traced polygons for Milestone F and prepare the satellite georeferencing workflow for when satellite imagery is provided:
+
+1. **Bbox Coordinates:** Site centroid is `32.516250, 14.070361` (32°30'58.5"N, 14°04'13.3"E).
+   ±400 m bounding box:
+   - Latitude: `[32.51265, 32.51985]`
+   - Longitude: `[14.06611, 14.07461]`
+2. **Imagery Storage:** Store high-resolution satellite imagery or orthophotos under `design/satellite/` (e.g. `design/satellite/site_ortho.png`). Document imagery source, capture date, resolution, and licensing in `design/satellite/README.md`.
+3. **Control Point Georeferencing:**
+   - Map ground control points (GCPs): tank corner, wellhead enclosure, mainline boundary tees, and road intersections.
+   - Transform coordinates into the SVG coordinate space (`viewBox="0 0 1000 650"`).
+   - Re-run `network.py` and `finalize.py` with updated waypoints.
+4. **Validation:** Ensure re-traced zone polygons maintain area ratios within ±12% of the surveyed legend in `packages/map-model/src/index.test.ts`.
+

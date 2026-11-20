@@ -8,6 +8,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone F — Map Weather & UI Polish (2026-11-20)
+- **Live Weather on the Photoreal Map:**
+  - Integrated `WeatherWidget` glass panel into `FarmMap` at top-right above zoom controls with temperature (`<bdi>{temp}°C</bdi>`), meteorological wind arrow pointing towards wind source, wind speed, precipitation probability badge, and condition icons.
+  - Hover/tap tooltip displays next 6 hours of forecast; mobile breakpoint (< 640px) automatically collapses to a compact chip with tap-to-expand.
+  - Virtual clock synchronization: at $\ge 10\times$ simulation speed, forecast display seamlessly reflects the current virtual farm hour.
+  - `WeatherOverlay` canvas: runs high-performance `requestAnimationFrame` raindrops when raining or rain probability $\ge 60\%$, and cloud-shadow tint when `cloud_cover_pct` $\ge 70\%$. Honors `prefers-reduced-motion` with static tint.
+  - Collapsible map legend with state persistence in `localStorage` (`farm.legendOpen`), defaulting to collapsed on mobile and open on desktop.
+- **UI Polish, Phone Experience & PWA:**
+  - Re-architected phone bottom navigation to 4 core items: Dashboard (`/`), Map (`/map`), Alarms (`/alarms`), Schedules (`/schedules`), moving secondary pages to the slide-out hamburger menu.
+  - Touch targets guaranteed $\ge 44\text{px}$ and safe-area inset padding applied (`env(safe-area-inset-bottom)`, `env(safe-area-inset-top)`).
+  - Floating AI assistant dynamically offsets above the bottom navigation bar on mobile devices.
+  - PWA install banner prompt listening to `beforeinstallprompt` with persistent dismissal memory (`farm.installDismissed`).
+  - Meta viewport updated with `viewport-fit=cover` and horizontal scrolling eliminated at 375px.
+- **AI Panels & Feedback Enhancements:**
+  - Added always-visible `ModelBadge` below AI answers across Alarm Assistant, Floating Chat, and Daily Briefing with clean model names (stripping `free/`) or an amber fallback banner when running offline.
+  - Dynamic elapsed seconds counter ("جاري التفكير... (٣ ث)" / "Thinking... (3s)") during AI generations.
+  - One-click copy-to-clipboard on AI responses with 2-second checkmark feedback.
+  - Interactive follow-up suggestion chips in Floating Assistant.
+- **Schedules & Reports Improvements:**
+  - Vertical now-line on the 24-hour schedule timeline indicating current virtual farm clock position.
+  - Disambiguated single-letter Arabic day abbreviations (`ن`, `ث`, `ر`, `خ`, `ج`, `س`, `ح`).
+  - Interactive step reordering with `↑ / ↓` controls in program edit drawer.
+  - Reports default date range updated to last 7 days (`Africa/Tripoli` time) with sticky table headers and prominent CSV export button.
+- **Backend, Security & Ops:**
+  - Added `cloud_cover_pct` to `WeatherData` schema, Open-Meteo query parameters, and `WeatherCache` database model with Alembic migration `1b84f3124c4a`.
+  - Installed `TokenRedactingFilter` on `uvicorn.access` loggers, preventing query param leakage (`?token=[REDACTED]`).
+  - Updated `run.bat reset` to preserve user irrigation programs and steps while purging transient history.
+  - Filtered link-local (`169.254.x.x`), VirtualBox (`192.168.56.x`), and Docker bridge (`172.16–31.x.x`) IP addresses from launcher LAN display.
+  - Documented satellite georeferencing workflow and bounding box in `tools/map-geometry/README.md`.
+
+
 ### Milestone E review fixes: Explain answers with real AI (2026-11-20)
 - **AI tools accept the arguments models naturally send.** `get_schedule`, `get_cycles` and `get_recent_telemetry` take an optional `zone_id`, and `get_forecast` takes `days`. Live, deepseek called `get_schedule(zone_id=…)`; the tool rejected it until its retries ran out, so every "Explain alarm" fell back to rule-based. With the real key, Explain now returns AI answers built from live tool data (17–22 s on the free tier).
 - **One retry on the second APInex model** (`muse-spark-1.3`) after a non-transient failure (tool or validation error, provider refusal), before rule-based.

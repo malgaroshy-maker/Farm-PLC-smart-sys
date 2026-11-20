@@ -109,11 +109,12 @@ Each milestone ends in something you can run and show. Estimates assume one deve
 
 Crop vision, voice and seasonal learning stay **deferred** until there's real hardware and data.
 
-### Milestone F — Map accuracy, weather on the map, UI polish (next)
+### Milestone F — Map accuracy, weather on the map, UI polish ✅ done 2026-11-20
 Decided with the owner on 2026-11-20. Prompt: [prompts/milestone-f-map-ui-polish.md](prompts/milestone-f-map-ui-polish.md).
-- **Satellite-corrected drawing.** Keep the generated photoreal map (it works offline), but re-trace the zones, tracks, buildings and pipes from satellite imagery at the exact site ([FARM_SITE.md](FARM_SITE.md)). The owner confirms the corrections.
-- **Weather on the map** from the live Open-Meteo forecast.
-- **UI polish:** dashboard and map interactions, the AI panels, Schedules and Reports, and the phone experience.
+1. ✅ **Map geometry & satellite workflow (Done 2026-11-20).** Owner chose to keep verified traced polygons (within ±12% of surveyed sketch); documented satellite workflow and ±400 m bbox in `tools/map-geometry/README.md`.
+2. ✅ **Weather on the map (Done 2026-11-20).** Top-right glass widget with temperature, meteorological wind arrow, wind speed, rain probability, condition icons, and 6-hour forecast tooltip. Dynamic rain and cloud-shadow canvas overlays respecting `prefers-reduced-motion` and synced to the virtual farm clock. Collapsible zone state legend with persistence.
+3. ✅ **UI polish & phone experience (Done 2026-11-20).** 4-item phone bottom navigation (Dashboard, Map, Alarms, Schedules) with $\ge 44\text{px}$ touch targets and safe-area insets. Always-visible AI model badge (`model_used`), elapsed query timer, copy button, and friendly fallback banners. 7-day default report range with sticky headers and CSV export. PWA install banner.
+4. ✅ **Security & ops fixes (Done 2026-11-20).** WS token redaction in Uvicorn access logs. Filtered virtual and link-local adapter IPs in launcher. Preserved enabled irrigation programs in demo reset.
 
 ### Later — Production track (after the demo)
 - **PLC adapter interface** (`read_tags()`, `write_command()`, `health()`), with the simulator as the first implementation. Then **OPC UA on Siemens S7-1200/1500**: the owner chose this on 2026-11-20. Validate against PLCSIM Advanced before touching hardware.
