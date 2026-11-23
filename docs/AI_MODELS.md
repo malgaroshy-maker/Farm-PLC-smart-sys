@@ -84,3 +84,10 @@ A maintained benchmark CLI tool is available in [`tools/ai-bench/`](../tools/ai-
    ```
 
 The runner enforces `asyncio.Semaphore(2)` concurrency, evaluates Arabic language purity (Hangul, CJK, Kana, Cyrillic, and disallowed English words), outputs a Markdown comparison table, and records structured JSON results.
+
+## Re-test 2026-11-23 (Milestone G2)
+All 22 free models were tested in parallel on two tasks: a chat answer from the live snapshot and a structured alarm explanation.
+- **Working:** `deepseek-v4-pro-0813` (fastest; default), `minimax-m3.1-flash` (**new backup**: the only one with clean Arabic on both tasks), `deepseek-v4.1-flash`, `deepseek-v4-flash-0731`, `glm-5.3-flash`, `glm-5.3-flashx`, `gemini-4-hydrogen`. Most of these mix in English or Italian words such as "downstream" and "quindi"; the purity guard catches them.
+- **Now 402 (subscription only):** `muse-spark-1.3` (the previous backup), `gemini-3.8-flash`, `hy4`, `hy4-flash`, `mimo-v2.6-pro`, `kimi-k3`, plus the earlier list.
+- **Errored or timed out:** `gpt-6-luna`, `qwen-3.8-max`.
+- **Speed varies with provider load:** `deepseek-v4-pro` took 4.5 s alone and 14–20 s at busy times. Tool round-trips added 20–40 s per answer before the G2 two-step chat.

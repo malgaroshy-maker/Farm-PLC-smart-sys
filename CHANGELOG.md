@@ -8,6 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone G2 — AI: faster, smarter, cleaner Arabic (2026-11-23)
+- **Live snapshot in every prompt:** tank, pumps, flow and pressure, zones irrigating, soil moisture (average and driest), active alarms, next irrigation, and today's and tomorrow's weather with ET₀. Before this, the model had no tank data and answered "I wasn't given the tank level".
+- **Two-step chat** (owner choice):
+  - A tool-free pass answers from the snapshot in one model request.
+  - Only questions about history (past cycles, trends) run the slower tool pass.
+  - Answers stay whole, shown with the existing thinking indicator. Models are tried one at a time, never raced (owner choice).
+- **Backup model is now `minimax-m3.1-flash`.** All 22 free models were re-tested on 2026-11-23:
+  - 13 now return 402 or error, including the old backup `muse-spark-1.3`, `gemini-3.8-flash` and `hy4-flash`.
+  - Minimax was the only model with clean Arabic on both the chat and alarm tasks.
+  - Catalog, defaults, `.env.example` and the saved setting were updated (migration `a0b1c2d3e4f5`).
+- **Cleaner Arabic.**
+  - A farm glossary and writing rules go into every system prompt.
+  - A deterministic normalizer fixes Arabic-Indic digits and wrong terms (e.g. "التبخر والتعرق" becomes "التبخر-نتح").
+  - Real farm names (program and zone names such as "Live Trio") no longer trip the purity guard and throw away good answers.
+- **Smarter advice.**
+  - The server decides from rain, heat/ET₀, soil moisture and the water delivered in the last 48 h. New rules: halve irrigation when rain is coming but the soil is dry; reduce 20 % on cool days with moist soil.
+  - The AI only explains the decision and can never change the action.
+  - The inputs and the rule are saved with the suggestion and shown behind an expandable **"why?"**. The affected zones are now actually filled in.
+- **When AI is down:** the rule-based fallback answers tank, next-irrigation, driest-zone and alarm questions from live data, and names the real crops. It used to list palms, figs and citrus.
+- **AI usage view** on the AI settings page:
+  - Every answer is logged in `ai_call_log` (migration `9e6f7a8b9c0d`) with latency, model requests, tokens and fallback.
+  - The panel shows calls, share answered by AI, average and slowest-5 % time, and tokens per feature and per model over 1, 7 or 30 days.
+
 ### Milestone G1 — Performance & reliability (2026-11-23)
 - **Telemetry charts are faster.** A composite index `(metric_key, zone_id, ts)` (migration `8d5e6f7a8b9c`) took one chart query from 78 ms to 11 ms. Bucket averaging now runs in SQL, so a 60-point chart reads about 60 rows instead of up to 5,000. `series()` went from 82–90 ms to 2–12 ms on the real 318k-row database.
 - **Fixed:** charts included samples later than the current farm time, left over from a simulated "future". The 60-point flow chart returned 5,084 points.

@@ -25,7 +25,7 @@ Context: the owner is the only user for now; users and roles UI is deferred. Hos
   - Crash-safe startup.
   - A health page covering API, DB, simulator/PLC link, AI provider and weather.
 
-## G2: AI
+## G2: AI ✅ done 2026-11-23 (details in CHANGELOG)
 - **Faster.** Stream replies, cache repeated questions, and trim prompts. Today answers take 5–22 s.
 - **Smarter advice.**
   - Combine weather (ET₀, rain), soil moisture, and each zone's cycle history and baseline.
