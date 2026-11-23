@@ -80,10 +80,14 @@ function useZoneHistory(zoneId: string, minutes: number): ChartRow[] {
     };
     void load();
     const interval = speed >= 60 ? 3000 : speed >= 10 ? 6000 : 15000;
-    const id = setInterval(load, interval);
+    // skip refreshes while the tab is hidden; catch up as soon as it is visible again
+    const id = setInterval(() => document.visibilityState !== 'hidden' && void load(), interval);
+    const onVisible = () => document.visibilityState === 'visible' && void load();
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       live = false;
       clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [zoneId, minutes, speed]);
   return rows;

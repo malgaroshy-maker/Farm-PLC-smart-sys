@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { usePoll } from '../../lib/poll';
 import type { NextIrrigationInfo } from '@algaroshy/contracts';
 import { ZONE_SEEDS } from '@algaroshy/contracts';
-import { apiFetch } from '../../lib/api';
 import { parseUtcDate, useFarmClock } from '../../lib/clock';
 import { pickName, useT } from '../../lib/i18n';
 import { ScheduleIcon } from '../icons/FarmIcons';
@@ -21,29 +20,9 @@ function formatCountdown(totalSec: number): string {
 export default function NextIrrigationCard() {
   const { t, lang } = useT();
   const { farmNow, speed } = useFarmClock(lang);
-  const [upcoming, setUpcoming] = useState<NextIrrigationInfo | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const fetchUpcoming = async () => {
-      try {
-        const list = await apiFetch<NextIrrigationInfo[]>('/api/v1/schedules/upcoming?hours=24');
-        if (active) {
-          setUpcoming(list.length > 0 ? list[0] : null);
-        }
-      } catch {
-        if (active) setUpcoming(null);
-      }
-    };
-
-    fetchUpcoming();
-    const pollInterval = speed >= 60 ? 3000 : speed >= 10 ? 6000 : 15000;
-    const id = setInterval(fetchUpcoming, pollInterval);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, [speed]);
+  // shared poll: the phone and desktop copies of this card make one request, paused while hidden
+  const list = usePoll<NextIrrigationInfo[]>('/api/v1/schedules/upcoming?hours=24', speed >= 60 ? 3000 : speed >= 10 ? 6000 : 15000);
+  const upcoming = list && list.length > 0 ? list[0] : null;
 
   const zoneSeed = upcoming ? SEED[upcoming.zone_id] : null;
   const Crop = zoneSeed ? CROP_ICON[zoneSeed.crop_type] : null;

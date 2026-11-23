@@ -13,8 +13,27 @@ import { OTHER_TREES, ZONES } from './farmLayout';
 import { spriteFor, treesFor, type Tree } from './trees';
 
 const [, , VW, VH] = FARM.viewBox;
-// sharper on large screens; phones keep a smaller canvas to save memory
-const CANVAS_W = typeof window !== "undefined" && window.innerWidth >= 1200 ? 3600 : 2400;
+// sharper on large screens; phones keep a smaller canvas to save memory and fill time
+const VIEW_W = typeof window !== 'undefined' ? window.innerWidth : 1200;
+const CANVAS_W = VIEW_W >= 1200 ? 3600 : VIEW_W >= 700 ? 2400 : 1800;
+
+/** One pre-rendered damp-soil spot, stamped under every wet tree (no per-tree gradients per frame). */
+let wetSpot: HTMLCanvasElement | null = null;
+function getWetSpot(): HTMLCanvasElement | null {
+  if (wetSpot || typeof document === 'undefined') return wetSpot;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(38,24,10,0.62)');
+  grad.addColorStop(0.7, 'rgba(48,30,12,0.32)');
+  grad.addColorStop(1, 'rgba(48,30,12,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  wetSpot = c;
+  return c;
+}
 const S = CANVAS_W / VW;
 const CANVAS_H = Math.round(VH * S);
 
@@ -138,10 +157,14 @@ export const WetCanvas = memo(function WetCanvas({
     if (!ctx) return;
     let raf = 0;
     let last = 0;
+    let clear = false; // nothing drawn: skip work entirely while no zone irrigates
 
     const draw = (now: number) => {
       const live = zonesRef.current;
+      const anyFlowing = ZONES.some((z) => (live[z.id]?.flow_m3h ?? 0) > 0.05);
+      if (!anyFlowing && clear) return;
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      clear = !anyFlowing;
       for (const z of ZONES) {
         const zl = live[z.id];
         const flowing = (zl?.flow_m3h ?? 0) > 0.05;
@@ -152,14 +175,8 @@ export const WetCanvas = memo(function WetCanvas({
           const x = t.x * S;
           const y = t.y * S;
           const r = t.size * S * (0.45 + 0.35 * wet);
-          const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-          g.addColorStop(0, 'rgba(38,24,10,0.62)');
-          g.addColorStop(0.7, 'rgba(48,30,12,0.32)');
-          g.addColorStop(1, 'rgba(48,30,12,0)');
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.arc(x, y, r, 0, Math.PI * 2);
-          ctx.fill();
+          const spot = getWetSpot();
+          if (spot) ctx.drawImage(spot, x - r, y - r, r * 2, r * 2);
           if (!animate) continue;
           // spreading wet ring
           const p = ((now / 2600 + phase(t)) % 1 + 1) % 1;

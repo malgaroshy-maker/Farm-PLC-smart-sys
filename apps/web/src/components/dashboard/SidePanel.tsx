@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Alarm, FarmMapState, TelemetrySeries } from '@algaroshy/contracts';
 import { ZONE_SEEDS } from '@algaroshy/contracts';
-import { apiFetch } from '../../lib/api';
+import { usePoll } from '../../lib/poll';
 import { SEVERITY, sortAlarms } from '../../lib/alarms';
 import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
 import { AlarmIcon, PumpIcon, TankIcon } from '../icons/FarmIcons';
@@ -20,20 +20,6 @@ function hhmm(ts: string) {
   return parseUtcDate(ts).toLocaleTimeString('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' });
 }
 
-function usePoll<T>(path: string, ms: number): T | null {
-  const [data, setData] = useState<T | null>(null);
-  useEffect(() => {
-    let live = true;
-    const load = () => apiFetch<T>(path).then((d) => live && setData(d)).catch(() => null);
-    void load();
-    const id = setInterval(load, ms);
-    return () => {
-      live = false;
-      clearInterval(id);
-    };
-  }, [path, ms]);
-  return data;
-}
 
 // ── tank ────────────────────────────────────────────────────────────────
 
