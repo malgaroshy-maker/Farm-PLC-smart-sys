@@ -83,3 +83,10 @@ class ConflictDetail(BaseModel):
     message_en: str
     message_ar: str
     details: dict[str, Any] = {}
+
+
+class ConflictCheckRequest(BaseModel):
+    """Live check while the owner edits a program; nothing is saved."""
+
+    program: ProgramCreate
+    exclude_program_id: str | None = None

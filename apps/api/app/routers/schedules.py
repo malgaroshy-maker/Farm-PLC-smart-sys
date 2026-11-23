@@ -16,6 +16,7 @@ from app.deps import Actor, get_actor, require_admin, require_roles
 from app.models.program import Program, ProgramStep
 from app.models.zone import Zone
 from app.schemas.schedule import (
+    ConflictCheckRequest,
     ProgramCreate,
     ProgramResponse,
     ProgramStepSchema,
@@ -159,6 +160,30 @@ async def get_upcoming_runs(
 
     upcoming.sort(key=lambda u: (u.seconds_until_start, u.step_order))
     return upcoming
+
+
+@router.post("/check-conflicts")
+async def check_conflicts(
+    req: ConflictCheckRequest,
+    actor: Actor = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Live conflict check for the program editor (G6: the editor called this but it was
+    missing). Same rules as create/update; the first conflict is returned for display."""
+    conflicts = check_program_conflicts(
+        candidate_name=req.program.name,
+        candidate_start_time=req.program.start_time_local,
+        candidate_weekday_mask=req.program.weekday_mask,
+        candidate_steps=[s.model_dump() for s in req.program.steps],
+        existing_programs=await _get_all_programs(db),
+        zones_by_id=await _get_zones_map(db),
+        candidate_id=req.exclude_program_id,
+    )
+    return {
+        "ok": not conflicts,
+        "conflict": conflicts[0].to_dict() if conflicts else None,
+        "conflicts": [c.to_dict() for c in conflicts],
+    }
 
 
 @router.post("", response_model=ProgramResponse, status_code=status.HTTP_201_CREATED)
