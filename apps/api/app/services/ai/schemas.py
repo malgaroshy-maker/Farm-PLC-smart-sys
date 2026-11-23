@@ -64,6 +64,8 @@ class ChatResponse(BaseModel):
     reply_ar: str = ""
     message: str | None = None
     references: list[str] = Field(default_factory=list)
+    # Set by the fast (snapshot-only) pass when the question needs history it cannot see.
+    needs_history: bool = False
     provider_used: str = "rule_based"
     model_used: str = ""
 
@@ -104,7 +106,7 @@ class AISettingsResponse(BaseModel):
     fallback_provider: str = "gemini"
     apinex_base_url: str
     apinex_model: str
-    apinex_fallback_model: str = "free/muse-spark-1.3"
+    apinex_fallback_model: str = "free/minimax-m3.1-flash"
     gemini_model: str
     model_alarm: str | None = None
     model_advisor: str | None = None

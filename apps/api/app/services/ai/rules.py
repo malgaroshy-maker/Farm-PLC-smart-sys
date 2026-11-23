@@ -300,9 +300,63 @@ class RuleBasedService:
             model_used="rule_based",
         )
 
-    def chat(self, message: str, lang: str = "ar") -> ChatResponse:
-        """Deterministic assistant replies for farm queries."""
+    @staticmethod
+    def _live_answer(msg: str, f: dict) -> tuple[str, str] | None:
+        """Answer tank / next-irrigation / dryness / alarm questions from live facts."""
+        if not f:
+            return None
+        from app.seed import ZONES
+
+        names = {z["id"]: (z["name"], z["name_ar"]) for z in ZONES}
+        stale_en = "" if f.get("fresh", True) else " (live data may be old)"
+        stale_ar = "" if f.get("fresh", True) else " (قد تكون البيانات الحية قديمة)"
+        if any(w in msg for w in ("tank", "خزان", "الخزان")) and f.get("tank_pct") is not None:
+            t = f["tank_pct"]
+            return (
+                f"The water tank is at {t:.0f} %{stale_en}.",
+                f"مستوى الخزان الآن {t:.0f} %{stale_ar}.",
+            )
+        if any(w in msg for w in ("next", "schedule", "موعد", "القادم", "الجدول", "متى")):
+            r = f.get("next_run")
+            if r:
+                return (
+                    f"Next irrigation: {r['zone_en']} at {r['time']} for {r['minutes']} min.",
+                    f"الري القادم: {r['zone_ar']} الساعة {r['time']} لمدة {r['minutes']} دقيقة.",
+                )
+            return (
+                "No irrigation is scheduled in the next 24 hours.",
+                "لا يوجد ري مجدول خلال 24 ساعة القادمة.",
+            )
+        if any(w in msg for w in ("dry", "moisture", "جفاف", "جافة", "رطوبة")) and f.get("driest"):
+            zid, m = f["driest"][0]
+            en_n, ar_n = names.get(zid, (zid, zid))
+            return (
+                f"The driest zone now is {en_n} at {m:.0f} % soil moisture (farm average {f.get('moisture_avg', m):.0f} %){stale_en}.",
+                f"أكثر منطقة جفافاً الآن {ar_n} برطوبة تربة {m:.0f} % (متوسط المزرعة {f.get('moisture_avg', m):.0f} %){stale_ar}.",
+            )
+        if any(w in msg for w in ("alarm", "إنذار", "انذار")) and "alarm_count" in f:
+            n = f["alarm_count"]
+            if n == 0:
+                return ("There are no active alarms.", "لا توجد إنذارات نشطة.")
+            return (
+                f"There are {n} active alarm(s); open the Alarm Center for details.",
+                f"يوجد {n} إنذار نشط؛ افتح مركز الإنذارات للتفاصيل.",
+            )
+        return None
+
+    def chat(self, message: str, lang: str = "ar", facts: dict | None = None) -> ChatResponse:
+        """Deterministic assistant replies for farm queries.
+
+        With `facts` (the latest live snapshot) it answers common questions with real
+        numbers even when every AI model is down (Milestone G2).
+        """
         msg_lower = message.lower()
+        live = self._live_answer(msg_lower, facts or {})
+        if live:
+            en, ar = live
+            return ChatResponse(
+                reply=en, reply_ar=ar, provider_used="rule_based", model_used="rule_based"
+            )
 
         if any(w in msg_lower for w in ("alarm", "fault", "إنذار", "عطل", "تنبيه")):
             en = "I can inspect current active alarms, provide root-cause diagnostics, and recommend PLC acknowledgment steps."
@@ -311,8 +365,8 @@ class RuleBasedService:
             en = "Live forecast is retrieved from Open-Meteo for Algaroshy Farm (32.516250, 14.070361). I automatically advise skipping or extending cycles."
             ar = "يتم جلب الطقس المباشر لمزرعة الجروشي من Open-Meteo، وأقدم توصيات بتخطي الري عند المطر أو تمديده أثناء موجات الحر."
         elif any(w in msg_lower for w in ("zone", "crop", "منطقة", "محصول", "رمان", "زيتون")):
-            en = "Algaroshy Farm has 12 irrigation zones covering olives, palms, figs, citrus, and pomegranates. You can query live flow and pressure per zone."
-            ar = "تضم مزرعة الجروشي 12 منطقة ري تغطي الزيتون، النخيل، التين، الحمضيات والرمان. يمكنك الاستعلام عن الضغط والتدفق لكل منطقة."
+            en = "Algaroshy Farm has 12 irrigation zones: pomegranates (including the mother trees), olives, grapes, and a mixed block of peach, apricot and plum. You can ask about the live flow and pressure of any zone."
+            ar = "تضم مزرعة الجروشي 12 منطقة ري: الرمان (ومنها رمان الأمهات)، والزيتون، والعنب، ومنطقة فواكه مختلطة من الخوخ والمشمش والعوينة. يمكنك السؤال عن التدفق والضغط الحالي لأي منطقة."
         else:
             en = "I am the Algaroshy Farm AI Assistant. I can assist with alarms, weather-aware scheduling, irrigation summaries, and system diagnostics."
             ar = "مرحباً بك، أنا المساعد الذكي لمزرعة الجروشي. يمكنني مساعدتك في تشخيص الإنذارات، والتوصيات المرتبطة بالطقس، وتقارير الري المجدول."

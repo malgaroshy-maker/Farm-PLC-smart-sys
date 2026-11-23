@@ -34,6 +34,8 @@ from app.core.timeutil import utcnow
 from app.database import async_session_factory
 from app.models.ai import AISettings
 from app.models.zone import Zone
+from app.services.ai.arabic import normalize_output
+from app.services.ai.live_context import ARABIC_STYLE, SNAPSHOT_RULE, build_live_snapshot_block
 from app.services.ai.providers import (
     build_fallback_chain,
     get_apinex_fallback_model,
@@ -87,6 +89,9 @@ def record_ai_call(
     model: str,
     latency_ms: float,
     fallback_reason: str | None = None,
+    requests: int = 0,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
 ) -> None:
     """Record an AI invocation for visibility and health reporting."""
     global _LAST_PRIMARY_FAILED
@@ -107,8 +112,47 @@ def record_ai_call(
             "model": model,
             "latency_ms": round(latency_ms, 1),
             "fallback_reason": fallback_reason,
+            "requests": requests,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
         }
     )
+
+
+async def log_ai_call(
+    session_factory: async_sessionmaker[AsyncSession] | None,
+    feature: str,
+    provider: str,
+    model: str,
+    latency_ms: float,
+    fallback_reason: str | None = None,
+    usage: Any = None,
+) -> None:
+    """Record in memory (health) and persist a row for the usage view; never raises."""
+    req = int(getattr(usage, "requests", 0) or 0)
+    tin = int(getattr(usage, "input_tokens", 0) or 0)
+    tout = int(getattr(usage, "output_tokens", 0) or 0)
+    record_ai_call(feature, provider, model, latency_ms, fallback_reason, req, tin, tout)
+    try:
+        from app.models.ai import AICallLog
+
+        async with (session_factory or async_session_factory)() as db:
+            db.add(
+                AICallLog(
+                    ts=utcnow(),
+                    feature=feature,
+                    provider=provider,
+                    model=model[:120],
+                    latency_ms=round(latency_ms, 1),
+                    fallback_reason=(fallback_reason or None) and fallback_reason[:200],
+                    requests=req,
+                    input_tokens=tin,
+                    output_tokens=tout,
+                )
+            )
+            await db.commit()
+    except Exception as exc:  # pragma: no cover - logging must never break an answer
+        log.debug("could not persist AI call: %s", exc)
 
 
 def get_recent_ai_calls() -> list[dict[str, Any]]:
@@ -160,6 +204,33 @@ def _make_cache_key(prefix: str, payload: Any) -> str:
     serialized = json.dumps(payload, sort_keys=True, default=str)
     h = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
     return f"{prefix}:{h}"
+
+
+# ── Real farm names (allowed inside Arabic answers) ─────────
+_NAMES_CACHE: tuple[float, set[str]] | None = None
+
+
+async def farm_proper_nouns(
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> set[str]:
+    """Upper-cased Latin words from program and zone names (cached 60 s)."""
+    global _NAMES_CACHE
+    if _NAMES_CACHE and time.monotonic() - _NAMES_CACHE[0] < 60:
+        return _NAMES_CACHE[1]
+    from app.models.program import Program
+    from app.services.ai.purity import RE_LATIN_WORD
+
+    words: set[str] = set()
+    try:
+        async with (session_factory or async_session_factory)() as db:
+            names = [n for (n,) in (await db.execute(select(Program.name))).all()]
+            names += [n for (n,) in (await db.execute(select(Zone.name))).all()]
+        for n in names:
+            words.update(w.upper() for w in RE_LATIN_WORD.findall(n or ""))
+    except Exception as exc:  # pragma: no cover
+        log.debug("farm_proper_nouns failed: %s", exc)
+    _NAMES_CACHE = (time.monotonic(), words)
+    return words
 
 
 # ── Dynamic Farm Context ─────────────────────────────────────
@@ -253,34 +324,50 @@ async def get_db_settings_and_model(
 
 # ── System Prompts ───────────────────────────────────────────
 
-ALARM_SYSTEM_PROMPT = """
+ALARM_SYSTEM_PROMPT = (
+    """
 You are the AI Alarm Assistant for Algaroshy Farm (مزرعة الجروشي) Smart Irrigation System in Libya.
 Your mission is to provide accurate, safe, bilingual (Arabic & English) root-cause diagnoses and step-by-step fix recommendations for farm alarms.
 You have access to live read-only tools to inspect active alarms, zone states, and hydraulic telemetry.
 Always maintain safety authority with the PLC: you only suggest, operators and PLC decide.
 Respond strictly matching the structured AlarmExplanation schema.
 """
+    + SNAPSHOT_RULE
+    + ARABIC_STYLE
+)
 
-ADVISOR_SYSTEM_PROMPT = """
+ADVISOR_SYSTEM_PROMPT = (
+    """
 You are the Weather-Aware Irrigation Advisor for Algaroshy Farm (مزرعة الجروشي).
 Evaluate deterministic thresholds and weather conditions (precipitation, heatwaves, FAO ET0 evapotranspiration) to propose schedule adjustments (skip, extend +20%, reduce, or maintain).
 You have read-only tools to inspect weather forecast, schedules, and past cycles.
 Never directly execute commands; propose a one-day override that operators can approve.
 Respond strictly matching the structured AdvisorSuggestion schema.
 """
+    + SNAPSHOT_RULE
+    + ARABIC_STYLE
+)
 
-BRIEFING_SYSTEM_PROMPT = """
+BRIEFING_SYSTEM_PROMPT = (
+    """
 You are the Farm Operations AI Synthesizer for Algaroshy Farm (مزرعة الجروشي).
 Compile concise, professional bilingual morning briefings summarizing water volume delivered, cycle completions/faults, active alarms, and daily weather outlook.
 Respond strictly matching the structured DailyBriefing schema.
 """
+    + ARABIC_STYLE
+)
 
-CHAT_SYSTEM_PROMPT = """
+CHAT_SYSTEM_PROMPT = (
+    """
 You are the intelligent bilingual farm assistant for Algaroshy Farm (مزرعة الجروشي).
 Answer operator queries about pumps, zones, crops, alarms, and weather using the provided live farm context.
-Use read-only tools to retrieve real-time farm state.
+Be concise: 2-5 sentences unless the operator asks for detail. Give real numbers from the snapshot.
+If a value is not in the snapshot or tools, say you do not have it; never invent readings.
 Respond strictly matching the structured ChatResponse schema.
 """
+    + SNAPSHOT_RULE
+    + ARABIC_STYLE
+)
 
 
 # ── Pydantic AI Agents ───────────────────────────────────────
@@ -312,6 +399,25 @@ briefing_agent = Agent(
     retries=2,
 )
 
+CHAT_FAST_PROMPT = (
+    """
+You are the intelligent bilingual farm assistant for Algaroshy Farm (مزرعة الجروشي).
+You have ONLY the live farm snapshot below (no tools). Answer in 2-5 sentences with real numbers from it.
+If the question needs history you cannot see (past irrigation cycles, trends over hours/days, details of
+past alarms), set needs_history=true and leave reply/reply_ar empty. Never invent readings.
+Respond strictly matching the structured ChatResponse schema.
+"""
+    + ARABIC_STYLE
+)
+
+# Fast path (Milestone G2): no tools -> one model request (~5 s instead of 20-45 s).
+chat_fast_agent = Agent(
+    model=build_fallback_chain(),
+    output_type=ChatResponse,
+    system_prompt=CHAT_FAST_PROMPT,
+    retries=1,
+)
+
 chat_agent = Agent(
     model=build_fallback_chain(),
     output_type=ChatResponse,
@@ -341,7 +447,8 @@ async def _run_with_retry_and_fallback(
         fallback_data = fallback_fn()
         if hasattr(fallback_data, "provider_used"):
             fallback_data.provider_used = "rule_based"
-        record_ai_call(
+        await log_ai_call(
+            deps.session_factory if deps else None,
             feature=feature_name,
             provider="rule_based",
             model="offline_rules",
@@ -357,6 +464,7 @@ async def _run_with_retry_and_fallback(
 
     # Strict Redaction before external dispatch
     safe_prompt = redact_text(prompt)
+    allowed_names = await farm_proper_nouns(deps.session_factory if deps else None)
 
     retries = 0
     max_retries = max(0, settings.ai_max_retries)
@@ -382,7 +490,7 @@ async def _run_with_retry_and_fallback(
             data = result.output
 
             # Arabic purity guard: audit Arabic text for Hangul, CJK, Kana, Cyrillic, and English words
-            purity = check_response_purity(data)
+            purity = check_response_purity(data, allowed_names)
             fallback_reason: str | None = None
 
             if not purity.is_pure:
@@ -404,7 +512,7 @@ async def _run_with_retry_and_fallback(
                         timeout=eff_timeout,
                     )
                     clean_data = clean_result.output
-                    clean_purity = check_response_purity(clean_data)
+                    clean_purity = check_response_purity(clean_data, allowed_names)
                     fallback_reason = "language_purity"
                     if clean_purity.is_pure:
                         data = clean_data
@@ -449,13 +557,16 @@ async def _run_with_retry_and_fallback(
             if hasattr(data, "fallback_reason"):
                 # Set by us, never by the model (it may fill the field with e.g. "none").
                 data.fallback_reason = fallback_reason
+            normalize_output(data)
 
-            record_ai_call(
+            await log_ai_call(
+                deps.session_factory if deps else None,
                 feature=feature_name,
                 provider=provider_label,
                 model=str(model_name),
                 latency_ms=latency_ms,
                 fallback_reason=fallback_reason,
+                usage=result.usage,
             )
 
             if cache_key:
@@ -512,7 +623,8 @@ async def _run_with_retry_and_fallback(
     if hasattr(fallback_data, "fallback_reason"):
         fallback_data.fallback_reason = reason
 
-    record_ai_call(
+    await log_ai_call(
+        deps.session_factory if deps else None,
         feature=feature_name,
         provider="rule_based",
         model="offline_rules",
@@ -551,6 +663,7 @@ async def explain_alarm(
     )
 
     farm_context = await build_farm_context_block(factory)
+    farm_context += "\n" + await build_live_snapshot_block(factory)
     prompt = (
         f"Diagnose the following farm alarm and provide guidance in preferred language: {lang}.\n"
         f"Alarm Data: {json.dumps(clean_alarm, default=str)}\n"
@@ -581,6 +694,7 @@ async def run_weather_advisor(
     db: AsyncSession | None = None,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     lang: str = "ar",
+    decision: Any = None,
 ) -> AdvisorSuggestion:
     """Evaluate weather thresholds and generate irrigation recommendation."""
     factory = session_factory or async_session_factory
@@ -598,10 +712,12 @@ async def run_weather_advisor(
             "precip": today_d.precipitation_total_mm if today_d else 0.0,
             "prob": today_d.precipitation_probability_pct if today_d else 0.0,
             "et0": today_d.et0_mm if today_d else 0.0,
+            "rule": getattr(decision, "rule", None),
         },
     )
 
     farm_context = await build_farm_context_block(factory)
+    farm_context += "\n" + await build_live_snapshot_block(factory)
     prompt = (
         f"Evaluate weather conditions for Algaroshy Farm on {target_date} and recommend irrigation adjustments in {lang}.\n"
         f"Target Date: {target_date}\n"
@@ -609,7 +725,15 @@ async def run_weather_advisor(
         f"Program ID: {program_id}\n"
         f"Weather Summary: TempMax={today_d.temp_max_c if today_d else 'N/A'}°C, Precip={today_d.precipitation_total_mm if today_d else 'N/A'}mm, ET0={today_d.et0_mm if today_d else 'N/A'}mm\n"
         f"{farm_context}\n"
-        f"Follow deterministic rules strictly. Output bilingual justification."
+        + (
+            f"DECISION (fixed by the farm's rules, do not change it): action={decision.action}, "
+            f"duration_factor={decision.duration_factor}, rule={decision.rule}.\n"
+            f"Inputs used: {json.dumps(decision.inputs, ensure_ascii=False)}\n"
+            "Explain this decision for the operator in 2-3 sentences, quoting the key numbers. "
+            "Write a short bilingual title and reasoning."
+            if decision is not None
+            else "Follow deterministic rules strictly. Output bilingual justification."
+        )
     )
 
     timeout = (
@@ -731,24 +855,44 @@ async def chat(
 
     clean_message = redact_text(message)
     farm_context = await build_farm_context_block(factory)
+    farm_context += "\n" + await build_live_snapshot_block(factory)
     prompt = (
         f"User Message: {clean_message}\n"
         f"Preferred Language: {lang}\n"
         f"Context Zone: {context_zone_id or 'all'}\n"
         f"Recent History: {json.dumps(history or [], default=str)}\n"
         f"{farm_context}\n"
-        f"Inspect live farm context using tools if necessary and answer concisely and safely."
+        f"Answer from the live snapshot; use tools only for missing details. Be concise and safe."
     )
 
     timeout = ai_settings_rec.timeout_sec if ai_settings_rec else settings.ai_timeout_sec
+    deps = AIDeps(session_factory=factory)
 
+    # 1) fast pass: snapshot only, one model request
+    from app.services.ai.live_context import LAST_FACTS
+
+    fast = await _run_with_retry_and_fallback(
+        agent_instance=chat_fast_agent,
+        prompt=prompt,
+        deps=deps,
+        fallback_fn=lambda: rule_service.chat(clean_message, lang=lang, facts=dict(LAST_FACTS)),
+        timeout_sec=min(timeout or 45.0, 30.0),
+        feature_name="chat",
+        override_model=dynamic_model,
+        global_enabled=global_enabled,
+    )
+    if not getattr(fast, "needs_history", False) or fast.provider_used == "rule_based":
+        fast.needs_history = False
+        return fast
+
+    # 2) the question needs history: tool-using pass (slower)
     return await _run_with_retry_and_fallback(
         agent_instance=chat_agent,
         prompt=prompt,
-        deps=AIDeps(session_factory=factory),
+        deps=deps,
         fallback_fn=lambda: rule_service.chat(clean_message, lang=lang),
         timeout_sec=timeout or 45.0,
-        feature_name="chat",
+        feature_name="chat_history",
         override_model=dynamic_model,
         global_enabled=global_enabled,
     )

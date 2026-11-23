@@ -4,6 +4,7 @@ SQLAlchemy models — re-export all for Alembic and app use.
 
 from .ai import (
     AIBriefing,
+    AICallLog,
     AIInsight,
     AISettings,
     AISuggestion,
@@ -31,6 +32,7 @@ from .water_source import WaterSource
 from .zone import Zone, ZoneCombination
 
 __all__ = [
+    "AICallLog",
     "Base",
     "Farm",
     "FarmClockModel",

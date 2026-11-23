@@ -670,3 +670,75 @@ async def api_get_models(actor: Actor = Depends(get_actor)):
         "selected": selected,
         "fallback": settings.gemini_model,
     }
+
+
+# ── Usage view (Milestone G2) ────────────────────────────────
+
+
+@router.get("/usage")
+async def api_ai_usage(
+    days: int = Query(7, ge=1, le=90),
+    _: Actor = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI calls over the last `days` (real time): speed, fallbacks and tokens per feature and model."""
+    from datetime import timedelta
+
+    from app.core.timeutil import utcnow
+    from app.models.ai import AICallLog
+
+    since = utcnow() - timedelta(days=days)
+    rows = (
+        (await db.execute(select(AICallLog).where(AICallLog.ts >= since).order_by(AICallLog.ts)))
+        .scalars()
+        .all()
+    )
+
+    def summarize(items: list) -> dict[str, Any]:
+        lat = sorted(r.latency_ms for r in items)
+        fb = [r for r in items if r.fallback_reason]
+        return {
+            "calls": len(items),
+            "fallbacks": len(fb),
+            "rule_based": sum(1 for r in items if r.provider == "rule_based"),
+            "avg_ms": round(sum(lat) / len(lat)) if lat else 0,
+            "p95_ms": round(lat[min(len(lat) - 1, int(0.95 * len(lat)))]) if lat else 0,
+            "requests": sum(r.requests or 0 for r in items),
+            "input_tokens": sum(r.input_tokens or 0 for r in items),
+            "output_tokens": sum(r.output_tokens or 0 for r in items),
+        }
+
+    def group(key) -> list[dict[str, Any]]:
+        out: dict[str, list] = {}
+        for r in rows:
+            out.setdefault(key(r), []).append(r)
+        return sorted(
+            ({"name": k, **summarize(v)} for k, v in out.items()), key=lambda x: -x["calls"]
+        )
+
+    reasons: dict[str, int] = {}
+    for r in rows:
+        if r.fallback_reason:
+            k = r.fallback_reason.split(":", 1)[0]
+            reasons[k] = reasons.get(k, 0) + 1
+
+    return {
+        "days": days,
+        "total": summarize(list(rows)),
+        "by_feature": group(lambda r: r.feature),
+        "by_model": group(lambda r: r.model if r.provider != "rule_based" else "rule_based"),
+        "fallback_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1])),
+        "recent": [
+            {
+                "ts": r.ts.isoformat(),
+                "feature": r.feature,
+                "provider": r.provider,
+                "model": r.model,
+                "latency_ms": r.latency_ms,
+                "fallback_reason": r.fallback_reason,
+                "requests": r.requests,
+                "tokens": (r.input_tokens or 0) + (r.output_tokens or 0),
+            }
+            for r in list(rows)[-20:][::-1]
+        ],
+    }
