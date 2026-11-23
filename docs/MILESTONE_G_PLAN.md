@@ -33,7 +33,7 @@ Context: the owner is the only user for now; users and roles UI is deferred. Hos
 - **Cleaner Arabic.** A farm glossary, the purity guard on every output, and consistent units and Western digits.
 - **Reliability.** Model health status, a usage/cost view, and a clear fallback notice when APInex is slow or down.
 
-## G3: Ready for future features ("scalability")
+## G3: Ready for future features ("scalability") ✅ done 2026-11-23 (details in CHANGELOG)
 - **Config-driven.** Zones, valves and equipment come from config and geometry, not hard-coded lists.
 - **Extension points.**
   - The PLC adapter interface (`read_tags`, `write_command`, `health`), with the simulator as the first implementation.

@@ -8,6 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone G3 — Ready for future features (2026-11-23)
+- **Settings page** (owner: one page with tabs): Features · Notifications · Zones & equipment · AI. The old AI settings URL redirects to the AI tab.
+- **Feature switches** (`feature_flags`, migration `b1c2d3e4f5a6`):
+  - AI chat, alarm explain, advisor, briefing
+  - map weather overlay, farm life, irrigation animation
+  - automatic schedules, daily weather check, anomaly detection
+  - in-app, Telegram and phone-push alerts
+  - The API refuses switched-off AI features (`feature_disabled:<key>`). The UI hides them, and switch changes reach the UI live over WebSocket.
+- **New automation:** a daily 18:00 weather check for tomorrow (automatic advisor).
+- **Fixed:** the 06:00 morning briefing compared against UTC and actually ran at 08:00 Tripoli time.
+- **Notifications** (migration `c2d3e4f5a6b7`):
+  - New S3 critical and S2 major alarms, and the daily briefing, go to **Telegram** (token in `.env`; chat detected after /start) and to **phone push** (VAPID keys generated once; service worker shows the alert and opens the right page).
+  - In-app chime and fly-to now follow their own switch.
+  - Settings has a "Send a test message" button.
+  - Phone push needs HTTPS; it works on localhost now, and on phones once hosting is decided.
+- **The database is the single source of zones:**
+  - The web no longer uses copied zone lists. Names, crops and limits come from the API and update everywhere when edited.
+  - The zone admin can edit (validated), add a zone with its valve and moisture sensor, or disable a zone and its valve (no deletes).
+- **Controller adapter.** The gateway now drives a `ControllerAdapter`:
+  - The simulator is adapter #1.
+  - An **OPC UA adapter** for the S7 PLC (#2) has a tag-map file and a command handshake. It is tested against a real in-process OPC UA server (accept, PLC-interlock reject, no-ack).
+  - It is selected with `CONTROLLER_ADAPTER=opcua`. See `docs/CONTROLLER_ADAPTER.md`.
+
 ### Milestone G2 — AI: faster, smarter, cleaner Arabic (2026-11-23)
 - **Live snapshot in every prompt:** tank, pumps, flow and pressure, zones irrigating, soil moisture (average and driest), active alarms, next irrigation, and today's and tomorrow's weather with ET₀. Before this, the model had no tank data and answered "I wasn't given the tank level".
 - **Two-step chat** (owner choice):
