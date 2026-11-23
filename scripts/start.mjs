@@ -183,13 +183,7 @@ function start(tag, cmd, cmdArgs, opts) {
       buf = lines.pop();
       for (const l of lines) {
         if (!l.trim()) continue;
-        // Suppress Vite's Network log lines for virtual/link-local adapters
-        if (tag === 'web') {
-          const m = l.match(/Network:\s+https?:\/\/([^:/]+)(?::\d+)?/i);
-          if (m && isVirtualOrLinkLocal(m[1].trim())) {
-            continue;
-          }
-        }
+        if (tag === 'web' && !keepViteLine(l)) continue;
         log(tag, l);
       }
     });
@@ -268,6 +262,28 @@ function isVirtualOrLinkLocal(addr, ifaceName = '') {
     }
   }
   return false;
+}
+
+const ANSI = /\x1b\[[0-9;]*m/g;
+
+/** IPv4 addresses of real LAN adapters (same rule as the phone list). */
+function lanAddresses(interfaces = os.networkInterfaces()) {
+  const out = new Set();
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    for (const info of addrs ?? []) {
+      if (info.family === 'IPv4' && !info.internal && !isVirtualOrLinkLocal(info.address, name)) out.add(info.address);
+    }
+  }
+  return out;
+}
+
+/**
+ * Vite prints its own "Network:" list, coloured with ANSI codes, and knows nothing about
+ * adapter names. Keep a Network line only if its address is a real LAN adapter.
+ */
+function keepViteLine(line, allowed = lanAddresses()) {
+  const m = line.replace(ANSI, '').match(/Network:\s+https?:\/\/([^:/\s]+)/i);
+  return !m || allowed.has(m[1]);
 }
 
 function lanUrls(port, interfaces = os.networkInterfaces()) {
@@ -388,4 +404,4 @@ if (isEntrypoint()) {
   main().catch((e) => die(e?.stack || String(e)));
 }
 
-export { isVirtualOrLinkLocal, lanUrls };
+export { isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls };

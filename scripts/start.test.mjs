@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isVirtualOrLinkLocal, lanUrls } from './start.mjs';
+import { isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls } from './start.mjs';
 
 test('isVirtualOrLinkLocal filters link-local addresses (169.254.x.x)', () => {
   assert.equal(isVirtualOrLinkLocal('169.254.0.1'), true);
@@ -69,4 +69,25 @@ test('lanUrls with mocked os.networkInterfaces() filters VirtualBox and returns 
     'http://192.168.1.150:4173',
     'http://172.20.10.2:4173',
   ]);
+});
+
+test('Vite "Network:" lines: keeps only real LAN addresses, even with ANSI colours', () => {
+  const allowed = new Set(['192.168.0.100', '192.168.1.8']);
+  const esc = '\x1b';
+  const line = (ip) => `  ${esc}[32m➜${esc}[39m  ${esc}[1mNetwork${esc}[22m: ${esc}[36mhttp://${ip}:${esc}[1m4173${esc}[22m/${esc}[39m`;
+  assert.equal(keepViteLine(line('169.254.83.107'), allowed), false);
+  assert.equal(keepViteLine(line('192.168.56.1'), allowed), false);
+  assert.equal(keepViteLine(line('172.28.80.1'), allowed), false); // WSL / Hyper-V vEthernet
+  assert.equal(keepViteLine(line('192.168.0.100'), allowed), true);
+  assert.equal(keepViteLine(`  ${esc}[32m➜${esc}[39m  ${esc}[1mLocal${esc}[22m:   http://localhost:4173/`, allowed), true);
+});
+
+test('lanAddresses drops VirtualBox, vEthernet and link-local adapters', () => {
+  const got = lanAddresses({
+    'VirtualBox Host-Only Network': [{ address: '192.168.56.1', family: 'IPv4', internal: false }],
+    'vEthernet (WSL)': [{ address: '172.28.80.1', family: 'IPv4', internal: false }],
+    Ethernet: [{ address: '169.254.83.107', family: 'IPv4', internal: false }],
+    'Wi-Fi': [{ address: '192.168.0.100', family: 'IPv4', internal: false }],
+  });
+  assert.deepEqual([...got], ['192.168.0.100']);
 });
