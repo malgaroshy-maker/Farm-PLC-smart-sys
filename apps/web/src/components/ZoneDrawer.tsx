@@ -293,7 +293,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                   <span>
                     {t('drawer.usual')} {usual}
                   </span>
-                  <span>max {maxMin}</span>
+                  <span>{t('common.max')} {maxMin}</span>
                 </div>
                 {confirming ? (
                   <div className="flex gap-2">
@@ -325,7 +325,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
               <span className="flex gap-1">
                 {RANGES.map((r) => (
                   <button key={r.label} onClick={() => setRange(r)} className={`px-2 py-0.5 rounded-md font-mono ${range.label === r.label ? 'bg-white/10 text-[#e5e2e1]' : 'text-[#849396] hover:text-[#e5e2e1]'}`}>
-                    {r.label}
+                    {r.minutes / 60}{t('common.hourShort')}
                   </button>
                 ))}
               </span>
@@ -396,7 +396,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                           <span className="font-mono text-[#bac9cc]">{dateStr}</span>
                         </div>
                         <div className="text-[11px] text-[#849396] mt-1">
-                          {cyc.actual_duration_min ?? cyc.planned_duration_min} min •{' '}
+                          {cyc.actual_duration_min ?? cyc.planned_duration_min} {t('common.min')} •{' '}
                           <bdi className="font-mono">{cyc.water_is_estimate ? '≈ ' : ''}{fmtNum(cyc.water_estimate_m3, 2)} m³</bdi>
                         </div>
                       </div>

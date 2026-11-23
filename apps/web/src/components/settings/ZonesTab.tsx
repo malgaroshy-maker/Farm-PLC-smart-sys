@@ -98,7 +98,7 @@ export default function ZonesTab() {
               <div className="min-w-0 flex-1">
                 <div className={`text-sm font-bold ${z.enabled === false ? 'text-[#849396] line-through' : ''}`}>{pickName(lang, z.name, z.name_ar)}</div>
                 <div className="text-[11px] text-[#849396]">
-                  {t(`crop.${z.crop_type}` as MsgKey)} · <bdi className="font-mono">{z.area_ha} ha · ≤ {z.max_runtime_min} min · {z.flow_min_m3h}–{z.flow_max_m3h} m³/h</bdi>
+                  {t(`crop.${z.crop_type}` as MsgKey)} · <bdi className="font-mono">{z.area_ha} ha · ≤ {z.max_runtime_min} {t('common.min')} · {z.flow_min_m3h}–{z.flow_max_m3h} m³/h</bdi>
                 </div>
               </div>
               <button onClick={() => setEditing(editing === z.id ? null : z.id)} className="px-2.5 py-1 rounded-lg border border-white/10 text-xs">
