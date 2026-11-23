@@ -15,6 +15,7 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
   const { t, lang } = useT();
   const canAct = can('owner_admin', 'operator');
 
+  const [showWhy, setShowWhy] = useState(false);
   const [overrideStatus, setOverrideStatus] = useState<AdvisorSuggestion['status'] | null>(null);
   const status = overrideStatus ?? suggestion.status;
   const [busy, setBusy] = useState(false);
@@ -136,6 +137,42 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
       <p className="text-xs text-[#bac9cc] leading-relaxed">
         {reasonText}
       </p>
+
+      {/* "why?": the rule and the real inputs behind the advice (owner: expandable) */}
+      {(suggestion.inputs?.length || suggestion.rule) && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowWhy((v) => !v)}
+            aria-expanded={showWhy}
+            className="text-[11px] font-bold text-[#00e5ff] hover:underline"
+            data-testid="advisor-why"
+          >
+            {showWhy ? t('advisor.hideWhy') : t('advisor.why')}
+          </button>
+          {showWhy && (
+            <div className="mt-2 rounded-xl border border-white/[0.07] p-2.5 space-y-2" data-testid="advisor-why-details">
+              {suggestion.rule && (
+                <div className="text-[11px] text-[#e5e2e1]">{t(`advisor.rule.${suggestion.rule}` as MsgKey)}</div>
+              )}
+              {suggestion.inputs && suggestion.inputs.length > 0 && (
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  {suggestion.inputs.map((i) => (
+                    <div key={i.key} className="contents">
+                      <dt className="text-[#849396]">{t(`advisor.input.${i.key}` as MsgKey)}</dt>
+                      <dd className="font-mono text-[#e5e2e1] text-end">
+                        <bdi>
+                          {i.value} {i.unit}
+                        </bdi>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Provider badge & Expiration info */}
       <div className="flex items-center justify-between text-[11px] text-[#849396] pt-1 border-t border-white/5 flex-wrap gap-2">

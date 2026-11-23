@@ -158,6 +158,9 @@ export interface AdvisorSuggestion {
   zone_id?: string;
   action: 'skip' | 'shorten' | 'extend' | 'reschedule';
   adjustment_pct?: number;
+  /** "why?" details (Milestone G2): the rule that fired and the inputs it used */
+  rule?: string;
+  inputs?: { key: string; value: number; unit: string }[];
   reason: string;
   reason_ar: string;
   weather_summary?: {
@@ -382,7 +385,11 @@ export async function fetchAiSuggestions(): Promise<AdvisorSuggestion[]> {
       program_name: String(s.title ?? s.program_name ?? 'Irrigation Program'),
       program_name_ar: String(s.title_ar ?? s.program_name_ar ?? s.title ?? 'برنامج الري'),
       zone_id: s.zone_id ? String(s.zone_id) : Array.isArray(payload.affected_zone_ids) ? String(payload.affected_zone_ids[0]) : undefined,
-      action: (s.action ?? payload.action ?? (factor === 0 ? 'skip' : factor < 1 ? 'shorten' : 'extend')) as AdvisorSuggestion['action'],
+      action: ((a) => (a === 'reduce' ? 'shorten' : a))(
+        s.action ?? payload.action ?? (factor === 0 ? 'skip' : factor < 1 ? 'shorten' : 'extend'),
+      ) as AdvisorSuggestion['action'],
+      rule: typeof payload.rule === 'string' ? payload.rule : undefined,
+      inputs: Array.isArray(payload.inputs) ? (payload.inputs as AdvisorSuggestion['inputs']) : undefined,
       adjustment_pct: typeof s.adjustment_pct === 'number' ? s.adjustment_pct : adjustmentPct,
       reason: String(s.reasoning ?? s.description ?? s.reason ?? ''),
       reason_ar: String(s.reasoning_ar ?? s.description_ar ?? s.reason_ar ?? ''),
@@ -803,4 +810,29 @@ export interface SystemHealth {
   uptime_sec: number;
   checked_at: string;
   checks: HealthCheck[];
+}
+
+// ── AI usage (Milestone G2) ──────────────────────────────────────────────
+
+export interface AiUsageRow {
+  name: string;
+  calls: number;
+  fallbacks: number;
+  rule_based: number;
+  avg_ms: number;
+  p95_ms: number;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+export interface AiUsage {
+  days: number;
+  total: AiUsageRow;
+  by_feature: AiUsageRow[];
+  by_model: AiUsageRow[];
+  fallback_reasons: Record<string, number>;
+}
+
+export function fetchAiUsage(days: number): Promise<AiUsage> {
+  return apiFetch<AiUsage>(`/api/v1/ai/usage?days=${days}`);
 }

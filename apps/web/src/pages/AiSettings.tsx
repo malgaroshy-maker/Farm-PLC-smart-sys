@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import AiUsagePanel from '../components/ai/AiUsagePanel';
 import {
   Bot,
   Sliders,
@@ -677,6 +678,8 @@ export default function AiSettingsPage() {
           </table>
         </div>
       </section>
+
+      <AiUsagePanel />
 
       {/* Recent AI Calls (Last 20) Table */}
       <section className="panel p-5 space-y-3">
