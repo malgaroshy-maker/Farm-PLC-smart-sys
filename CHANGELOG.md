@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Hardware research report (2026-11-24)
+- **Interactive bilingual page** (Arabic first, English switch), shared privately, plus `docs/HARDWARE_RESEARCH.md` and `docs/HARDWARE_RESEARCH.ar.md`, all generated from `tools/hardware-report/data.py` (`python tools/hardware-report/build_report.py`).
+- **Five starting points** with installed totals: Lowest cost ≈ $4,564 · Bare minimum ≈ $8,277 · Basic ≈ $12,953 · Recommended ≈ $27,255 · Premium ≈ $71,820 (1 USD = 11 LYD).
+- **Build your own list:** a checkbox and options per item (with cheaper alternatives), live totals by phase, a USD/LYD switch, contractor or own-workers installation, a live "what this list gives you" list and warnings for choices that don't fit together.
+- **Where things go:** a clickable farm map with every valve, sensor station and the cable routes; a per-zone plan with valve size, GPS, cable length, a wireless option and sensor depths per crop; a manual-override plan for every failure.
+- **Key findings:** the S7-1200 G2 needs TIA V21 for OPC UA, so the recommended controller is the ET 200SP CPU 1512SP-1 PN (S7-1500 family, TIA V19, PLCSIM Advanced); both controller families need an OPC UA runtime license; Starlink is not available in Libya. The gaps it uncovered in the app are planned as G7 (before G5).
+
 ### Milestone G6 — Docs refresh and operator guide (2026-11-23)
 - **Operator guide** (owner: three formats, two parts, Arabic screenshots, Arabic + English):
   - Part 1 is daily operation: sign-in, dashboard, map, starting/stopping a zone, alarms, schedules, health, assistant.
