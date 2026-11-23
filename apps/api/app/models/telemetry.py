@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -12,6 +12,9 @@ class TelemetryPoint(Base):
     """Generic append-only telemetry table for all sensor/metric time-series data."""
 
     __tablename__ = "telemetry_points"
+    # Charts ask for one metric (and zone) over a time range: this index answers that
+    # directly, already sorted by time.
+    __table_args__ = (Index("ix_telemetry_metric_zone_ts", "metric_key", "zone_id", "ts"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     metric_key: Mapped[str] = mapped_column(String(60), nullable=False, index=True)

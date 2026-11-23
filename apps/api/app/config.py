@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     repeated_fault_threshold: int = 3  # ALM-036: major faults per zone per 24 h
     telemetry_interval_sec: float = 10.0
     telemetry_retention_days: int = 7
+    # Older samples are thinned to one per bucket so long charts stay fast.
+    telemetry_downsample_after_hours: int = 48
+    telemetry_downsample_bucket_sec: int = 300
+    # Optional rotating log file (empty = console only), e.g. "logs/api.log".
+    log_file: str = ""
+    log_file_max_mb: int = 5
+    log_file_backups: int = 5
     farm_id: str = "farm_algaroshy"
 
     # ── AI Services (Milestone E) ────────────────────────

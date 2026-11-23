@@ -10,7 +10,7 @@ Metric keys
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -85,34 +85,55 @@ class Recorder:
 async def series(
     db: AsyncSession, metric_key: str, zone_id: str | None, minutes: int, points: int
 ) -> list[dict]:
-    """Bucket-averaged series, oldest first: [{ts, value, min, max}]."""
+    """Bucket-averaged series, oldest first: [{ts, value, min, max}].
+
+    The averaging happens in the database (GROUP BY time bucket), so a 60-point chart
+    reads ~60 rows instead of every raw sample (Milestone G1).
+    """
     end = clock.farm_now()
     start = end - timedelta(minutes=minutes)
-    q = select(TelemetryPoint.ts, TelemetryPoint.value_numeric).where(
-        TelemetryPoint.metric_key == metric_key, TelemetryPoint.ts >= start
-    )
-    q = (
-        q.where(TelemetryPoint.zone_id == zone_id)
-        if zone_id
-        else q.where(TelemetryPoint.zone_id.is_(None))
-    )
-    rows = (await db.execute(q.order_by(TelemetryPoint.ts))).all()
-
     bucket_s = max(1.0, minutes * 60 / max(1, points))
-    buckets: dict[int, list[float]] = {}
-    for ts, value in rows:
-        if value is None:
-            continue
-        idx = int((as_utc(ts) - start).total_seconds() // bucket_s)
-        buckets.setdefault(idx, []).append(value)
+    sqlite = db.bind.dialect.name == "sqlite"
+    if sqlite:
+        bucket = "CAST((julianday(ts) - julianday(:start)) * 86400.0 / :bucket AS INTEGER)"
+        start_param = as_utc(start).replace(tzinfo=None).isoformat(sep=" ")
+        end_param = as_utc(end).replace(tzinfo=None).isoformat(sep=" ")
+    else:  # PostgreSQL
+        bucket = "CAST(FLOOR(EXTRACT(EPOCH FROM (ts - :start)) / :bucket) AS INTEGER)"
+        start_param = start
+        end_param = end
+    zone_sql = "zone_id = :zone_id" if zone_id else "zone_id IS NULL"
+    rows = (
+        await db.execute(
+            text(
+                f"""
+                SELECT {bucket} AS b, AVG(value_numeric), MIN(value_numeric), MAX(value_numeric)
+                FROM telemetry_points
+                WHERE metric_key = :metric AND {zone_sql} AND ts >= :start_cmp
+                  AND ts <= :end_cmp AND value_numeric IS NOT NULL
+                GROUP BY b
+                ORDER BY b
+                """
+            ),
+            {
+                "start": start_param,
+                "start_cmp": start_param,
+                "end_cmp": end_param,
+                "bucket": bucket_s,
+                "metric": metric_key,
+                "zone_id": zone_id,
+            },
+        )
+    ).all()
     return [
         {
-            "ts": (start + timedelta(seconds=(i + 0.5) * bucket_s)).isoformat(),
-            "value": round(sum(v) / len(v), 3),
-            "min": round(min(v), 3),
-            "max": round(max(v), 3),
+            "ts": (start + timedelta(seconds=(int(b) + 0.5) * bucket_s)).isoformat(),
+            "value": round(avg, 3),
+            "min": round(lo, 3),
+            "max": round(hi, 3),
         }
-        for i, v in sorted(buckets.items())
+        for b, avg, lo, hi in rows
+        if b is not None and 0 <= b < points + 1
     ]
 
 
@@ -240,7 +261,39 @@ async def water_today(db: AsyncSession) -> list[dict]:
 async def prune_old(db: AsyncSession) -> None:
     cutoff = clock.farm_now() - timedelta(days=settings.telemetry_retention_days)
     await db.execute(delete(TelemetryPoint).where(TelemetryPoint.ts < cutoff))
+    await downsample_old(db)
     await db.commit()
+
+
+async def downsample_old(db: AsyncSession) -> int:
+    """Keep one sample per metric/zone/bucket for data older than the downsample age.
+
+    Recent data stays at full resolution; older data (for 24 h / 7 d charts) is thinned
+    so the table does not grow without bound between prunes.
+    """
+    before = clock.farm_now() - timedelta(hours=settings.telemetry_downsample_after_hours)
+    bucket = max(1, settings.telemetry_downsample_bucket_sec)
+    if db.bind.dialect.name == "sqlite":
+        epoch = "CAST(strftime('%s', ts) AS INTEGER)"
+    else:  # PostgreSQL
+        epoch = "CAST(EXTRACT(EPOCH FROM ts) AS BIGINT)"
+    res = await db.execute(
+        text(
+            f"""
+            DELETE FROM telemetry_points
+            WHERE ts < :before AND id NOT IN (
+                SELECT MIN(id) FROM telemetry_points
+                WHERE ts < :before
+                GROUP BY metric_key, COALESCE(zone_id, ''), {epoch} / :bucket
+            )
+            """
+        ),
+        {
+            "before": before.replace(tzinfo=None) if db.bind.dialect.name == "sqlite" else before,
+            "bucket": bucket,
+        },
+    )
+    return res.rowcount or 0
 
 
 recorder = Recorder()
