@@ -13,6 +13,7 @@ const SchedulesPage = lazy(() => import('./pages/Schedules'));
 const ReportsPage = lazy(() => import('./pages/Reports'));
 const SimulatorPanel = lazy(() => import('./pages/SimulatorPanel'));
 const SettingsPage = lazy(() => import('./pages/Settings'));
+const HelpPage = lazy(() => import('./pages/Help'));
 
 function PageLoader() {
   return (
@@ -43,6 +44,7 @@ function App() {
               <Route path="reports" element={<ReportsPage />} />
               <Route path="simulator" element={<SimulatorPanel />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="help" element={<HelpPage />} />
               <Route path="settings/ai" element={<Navigate to="/settings?tab=ai" replace />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

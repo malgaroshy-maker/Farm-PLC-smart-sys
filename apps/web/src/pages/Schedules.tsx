@@ -78,11 +78,11 @@ export default function SchedulesPage() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setLoadError(false);
     apiFetch<Program[]>('/api/v1/schedules')
       .then((data) => {
-        if (active) setPrograms(data);
+        if (!active) return;
+        setPrograms(data);
+        setLoadError(false);
       })
       .catch(() => active && setLoadError(true))
       .finally(() => {
@@ -246,7 +246,7 @@ export default function SchedulesPage() {
                         key={p.id}
                         onClick={() => openEditDrawer(p)}
                         style={blockStyle}
-                        title={`${p.name} (${p.start_time_local}, ${totalDur} min)`}
+                        title={`${p.name} (${p.start_time_local}, ${totalDur} ${t('common.min')})`}
                         className={`absolute h-6 rounded px-1.5 flex items-center text-[10px] font-bold truncate cursor-pointer transition-all border ${
                           p.enabled
                             ? 'bg-[#00e5ff]/20 border-[#00e5ff] text-[#00e5ff] hover:bg-[#00e5ff]/35'
@@ -274,7 +274,12 @@ export default function SchedulesPage() {
         {loading ? (
           <LoadingState />
         ) : loadError ? (
-          <ErrorState onRetry={() => setLoadTick((n) => n + 1)} />
+          <ErrorState
+            onRetry={() => {
+              setLoading(true);
+              setLoadTick((n) => n + 1);
+            }}
+          />
         ) : programs.length === 0 ? (
           <EmptyState art="schedules" text={t('schedules.noPrograms')}>
             <p className="text-xs text-[#849396] max-w-sm mx-auto">{t('schedules.noProgramsHint')}</p>
@@ -368,7 +373,7 @@ export default function SchedulesPage() {
                         >
                           {Crop && <Crop size={13} />}
                           <span className="text-[#bac9cc] truncate max-w-[120px]">{zName}</span>
-                          <span className="text-[10px] text-[#00e5ff] font-mono">{st.duration_min}m</span>
+                          <span className="text-[10px] text-[#00e5ff] font-mono">{st.duration_min} {t('common.min')}</span>
                         </div>
                       );
                     })}
@@ -610,7 +615,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#bac9cc]">{t('schedules.totalDuration')}</label>
               <div className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/5 text-sm font-mono text-[#00e5ff]">
-                {totalDuration} min
+                {totalDuration} {t('common.min')}
               </div>
             </div>
           </div>
@@ -714,7 +719,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
                         >
                           {zoneList({ enabledOnly: true }).map((z) => (
                             <option key={z.id} value={z.id}>
-                              {pickName(lang, z.name, z.name_ar)} ({t(('crop.' + z.crop_type) as MsgKey)}, max {z.max_runtime_min}m)
+                              {pickName(lang, z.name, z.name_ar)} ({t(('crop.' + z.crop_type) as MsgKey)} — {t('common.max')} {z.max_runtime_min} {t('common.min')})
                             </option>
                           ))}
                         </select>
@@ -738,7 +743,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-[#849396]">{t('schedules.duration')}</span>
                         <span className="font-mono font-bold text-[#00e5ff]">
-                          {step.duration_min} min (max {maxDur}m)
+                          {step.duration_min} {t('common.min')} ({t('common.max')} {maxDur})
                         </span>
                       </div>
 
@@ -754,7 +759,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
                                 : 'bg-white/5 text-[#bac9cc] hover:bg-white/10'
                             }`}
                           >
-                            {p}m
+                            {p} {t('common.min')}
                           </button>
                         ))}
                       </div>

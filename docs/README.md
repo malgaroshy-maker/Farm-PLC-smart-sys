@@ -6,6 +6,7 @@
 
 ## Pack Contents
 
+0. `OPERATOR_GUIDE.md` — how to use the app, Arabic + English (generated; also in the app's Help page and as A4 PDFs)
 1. `PRD.md` — master product requirements document
 2. `ARCHITECTURE.md` — system architecture, layers, services, deployment modes
 3. `DOMAIN_MODEL.md` — business objects and state model

@@ -74,7 +74,7 @@ export default function HealthPanel({ initial, onClose }: { initial: SystemHealt
           <button onClick={refresh} disabled={busy} className="ms-auto p-1.5 rounded-lg text-[#849396] hover:text-[#e5e2e1]" aria-label={t('health.refresh')} title={t('health.refresh')}>
             <RefreshCw size={16} className={busy ? 'animate-spin' : undefined} />
           </button>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-[#849396] hover:text-[#e5e2e1]" aria-label="close">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[#849396] hover:text-[#e5e2e1]" aria-label={t('drawer.close')}>
             <X size={16} />
           </button>
         </div>

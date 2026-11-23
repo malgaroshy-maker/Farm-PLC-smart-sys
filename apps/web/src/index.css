@@ -67,6 +67,8 @@ body {
 }
 
 html, body {
+  /* dark native scrollbars and form controls (G6: inner lists showed light scrollbars) */
+  color-scheme: dark;
   overflow-x: hidden;
   max-width: 100vw;
 }

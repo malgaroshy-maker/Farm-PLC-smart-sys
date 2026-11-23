@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone G6 — Docs refresh and operator guide (2026-11-23)
+- **Operator guide** (owner: three formats, two parts, Arabic screenshots, Arabic + English):
+  - Part 1 is daily operation: sign-in, dashboard, map, starting/stopping a zone, alarms, schedules, health, assistant.
+  - Part 2 is administration: programs, weather advisor, reports, settings, event log, simulator.
+  - One source (`apps/web/src/content/guide.json`) feeds the in-app **Help** page (the new **?** button in the top bar), `docs/OPERATOR_GUIDE.md` and A4 PDFs in both languages (`pnpm --filter @algaroshy/web guide`).
+- **README** brought up to date (it still described Milestone C), with an Arabic summary; **PROJECT_STATUS** refreshed (satellite map, AI chain, notifications, settings, adapter, test counts, milestones).
+- **Fixed while taking the guide screenshots:**
+  - A slow or briefly unreachable server signed the owner out. Only a real 401 ends the session now; other failures retry (with tests).
+  - The program editor's live conflict check called an endpoint that did not exist (405). `POST /schedules/check-conflicts` now exists (with tests).
+  - Leftover English: minutes and "max" in the program editor and zone panel, chart ranges (1h/6h/24h), menu and health-panel button labels.
+  - Native scrollbars and form controls are dark.
+  - Two G4 loaders set state inside an effect (lint errors); rewritten so `pnpm lint` is clean again.
+
 ### Milestone G4 — UI polish (2026-11-23)
 - **Bugs fixed:**
   - "Zones running x / 12" now counts the live zone list.

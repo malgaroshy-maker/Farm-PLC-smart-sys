@@ -141,3 +141,41 @@ def test_upcoming_runs(client):
     assert resp.status_code == 200
     items = resp.json()
     assert isinstance(items, list)
+
+
+def test_live_conflict_check(client):
+    """The program editor checks conflicts while typing; nothing is saved (G6)."""
+    admin = login(client, "admin")
+    a = {
+        "name": "Program A",
+        "start_time_local": "10:00",
+        "weekday_mask": "1",
+        "steps": [{"zone_id": "zone_enab", "step_order": 1, "duration_min": 40}],
+    }
+    created = client.post("/api/v1/schedules", headers=admin, json=a)
+    assert created.status_code == 201, created.text
+    before = len(client.get("/api/v1/schedules", headers=admin).json())
+
+    clash = {**a, "name": "Program B", "start_time_local": "10:20",
+             "steps": [{"zone_id": "zone_fruit_mix", "step_order": 1, "duration_min": 30}]}
+    res = client.post("/api/v1/schedules/check-conflicts", headers=admin, json={"program": clash})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["ok"] is False
+    assert body["conflict"]["code"] == "SCHEDULE_OVERLAP"
+    assert body["conflict"]["message_ar"]
+
+    # editing A itself must not clash with A
+    own = client.post(
+        "/api/v1/schedules/check-conflicts",
+        headers=admin,
+        json={"program": a, "exclude_program_id": created.json()["id"]},
+    )
+    assert own.json() == {"ok": True, "conflict": None, "conflicts": []}
+    assert len(client.get("/api/v1/schedules", headers=admin).json()) == before
+
+    viewer = login(client, "viewer")
+    assert client.post("/api/v1/schedules/check-conflicts", headers=viewer, json={"program": a}).status_code == 403
+
+    # leave no enabled program behind for the scheduler tests
+    assert client.delete(f"/api/v1/schedules/{created.json()['id']}", headers=admin).status_code == 204

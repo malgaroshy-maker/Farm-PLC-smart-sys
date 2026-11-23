@@ -1,0 +1,428 @@
+{
+  "version": "2026-11-23",
+  "title": {
+    "ar": "دليل المشغّل — نظام الري الذكي لمزرعة الجروشي",
+    "en": "Operator guide — Algaroshy Farm smart irrigation"
+  },
+  "intro": {
+    "ar": "هذا الدليل في جزأين: الجزء الأول للتشغيل اليومي (لكل من يستخدم النظام)، والجزء الثاني للإدارة (لمالك المزرعة). الأرقام في النظام تُكتب دائماً بالأرقام الإنجليزية (1، 2، 3)، والأوقات بتوقيت المزرعة (طرابلس).",
+    "en": "This guide has two parts: Part 1 is daily operation (for everyone who uses the system), Part 2 is administration (for the farm owner). Numbers are always written with Western digits (1, 2, 3), and times are farm time (Tripoli)."
+  },
+  "parts": [
+    {
+      "id": "daily",
+      "title": {
+        "ar": "الجزء الأول: التشغيل اليومي",
+        "en": "Part 1: Daily operation"
+      },
+      "sections": [
+        {
+          "id": "login",
+          "title": {
+            "ar": "الدخول وتثبيت التطبيق على الهاتف",
+            "en": "Signing in and installing on a phone"
+          },
+          "body": [
+            {
+              "type": "steps",
+              "ar": [
+                "افتح عنوان النظام في المتصفح (يظهر في نافذة التشغيل على الحاسوب).",
+                "أدخل اسم المستخدم وكلمة المرور التي أعطاك إياها المالك.",
+                "على الهاتف: من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية» ليعمل كتطبيق."
+              ],
+              "en": [
+                "Open the system address in a browser (it is shown in the launcher window on the computer).",
+                "Enter the username and password the owner gave you.",
+                "On a phone: choose \"Add to Home screen\" from the browser menu so it opens like an app."
+              ]
+            },
+            {
+              "type": "list",
+              "ar": [
+                "المالك / المدير: كل شيء، بما فيه الإعدادات وإعادة ضبط الإنذارات.",
+                "المشغّل: تشغيل وإيقاف المناطق، تأكيد الاطلاع على الإنذارات، تفعيل أو تعطيل البرامج.",
+                "المشاهد: عرض فقط."
+              ],
+              "en": [
+                "Owner / admin: everything, including Settings and resetting alarms.",
+                "Operator: start and stop zones, acknowledge alarms, switch programs on or off.",
+                "Viewer: view only."
+              ]
+            },
+            {
+              "type": "note",
+              "ar": "اللغة: زر «English» في القائمة يبدّل بين العربية والإنجليزية.",
+              "en": "Language: the «العربية» button in the menu switches between Arabic and English."
+            }
+          ]
+        },
+        {
+          "id": "dashboard",
+          "title": {
+            "ar": "لوحة التحكم",
+            "en": "The dashboard"
+          },
+          "image": "guide/dashboard.jpg",
+          "body": [
+            {
+              "type": "p",
+              "ar": "أول صفحة تراها. في الأعلى الموجز الصباحي (ملخص الأمس وجدول اليوم والطقس). تحته أربعة أرقام: المناطق التي تُروى الآن، المضخات العاملة، التدفق، والضغط الرئيسي. على الهاتف تظهر بطاقة الحالة أولاً: خضراء «كل شيء سليم»، أو بلون أخطر إنذار مفتوح.",
+              "en": "The first page you see. At the top is the morning briefing (yesterday's summary, today's plan and the weather). Below are four numbers: zones irrigating now, pumps running, flow, and main pressure. On a phone the status card comes first: green \"All OK\", or the colour of the most serious open alarm."
+            },
+            {
+              "type": "list",
+              "ar": [
+                "الري القادم: البرنامج التالي والعدّ التنازلي حتى موعده.",
+                "مستوى الخزان: النسبة، وهل البئر يعيد ملأه.",
+                "المضخات: مضخة البئر ومضخة التعزيز وحالتهما.",
+                "الإنذارات والاتجاهات: آخر الإنذارات ورسوم الخزان والتدفق ومياه اليوم."
+              ],
+              "en": [
+                "Next irrigation: the next program and a countdown to it.",
+                "Tank level: the percentage, and whether the well is refilling it.",
+                "Pumps: the well pump and the booster pump and their state.",
+                "Alarms and trends: recent alarms and charts of tank, flow and today's water."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "map",
+          "title": {
+            "ar": "خريطة المزرعة",
+            "en": "The farm map"
+          },
+          "image": "guide/map.jpg",
+          "body": [
+            {
+              "type": "p",
+              "ar": "الخريطة مرسومة من صور الأقمار الصناعية للمزرعة. كل منطقة ري لها حدودها وأشجارها. لون المنطقة يدل على حالتها:",
+              "en": "The map is traced from satellite images of the farm. Each irrigation zone has its own outline and trees. A zone's colour shows its state:"
+            },
+            {
+              "type": "list",
+              "ar": [
+                "أزرق مضيء: تُروى الآن (والماء يتحرك في الأنابيب).",
+                "أصفر: بدء أو إيقاف قيد التنفيذ.",
+                "أحمر: عطل أو إنذار على المنطقة.",
+                "بدون لون: متوقفة."
+              ],
+              "en": [
+                "Glowing blue: irrigating now (water moves in the pipes).",
+                "Yellow: starting or stopping.",
+                "Red: a fault or an alarm on the zone.",
+                "No colour: off."
+              ]
+            },
+            {
+              "type": "note",
+              "ar": "اضغط على أي منطقة لفتح لوحتها. زر الدليل على الخريطة يشرح الألوان، وأزرار الإضاءة تبدّل بين النهار والليل.",
+              "en": "Tap any zone to open its panel. The legend button on the map explains the colours; the light buttons switch between day and night."
+            }
+          ]
+        },
+        {
+          "id": "zone",
+          "title": {
+            "ar": "تشغيل منطقة وإيقافها",
+            "en": "Starting and stopping a zone"
+          },
+          "image": "guide/zone_drawer.jpg",
+          "body": [
+            {
+              "type": "steps",
+              "ar": [
+                "اضغط على المنطقة في الخريطة أو في صفحة «المناطق».",
+                "اختر مدة الري (أزرار جاهزة أو الشريط). «المعتاد» هو مدتها الافتراضية، و«الحد الأقصى» لا يمكن تجاوزه.",
+                "اضغط «بدء الري» ثم «تأكيد البدء». يظهر «تم قبول أمر البدء» ثم تتحول المنطقة إلى «تروى».",
+                "للإيقاف: افتح المنطقة واضغط «إيقاف المنطقة»."
+              ],
+              "en": [
+                "Tap the zone on the map or on the Zones page.",
+                "Choose the run time (preset buttons or the slider). \"Usual\" is its default run time; \"max\" cannot be exceeded.",
+                "Press \"Start cycle\", then \"Confirm start\". You see \"Start command accepted\", then the zone turns to \"Irrigating\".",
+                "To stop: open the zone and press \"Stop zone\"."
+              ]
+            },
+            {
+              "type": "warn",
+              "ar": "إذا رُفض الأمر يظهر السبب (مثلاً: الخزان منخفض، مضخة معطلة، إنذار حرج مفتوح، أو عدد المناطق العاملة وصل الحد). هذه حمايات مقصودة؛ عالج السبب ثم أعد المحاولة.",
+              "en": "If a command is refused, the reason is shown (for example: tank low, pump faulted, a critical alarm open, or too many zones running). These are deliberate protections; fix the cause, then try again."
+            },
+            {
+              "type": "warn",
+              "ar": "زر «إيقاف الكل» في أعلى الشاشة يوقف كل المناطق العاملة فوراً بعد التأكيد. استخدمه عند أي خطر.",
+              "en": "The \"STOP ALL\" button at the top of the screen stops every running zone at once, after a confirmation. Use it whenever something is unsafe."
+            },
+            {
+              "type": "p",
+              "ar": "في لوحة المنطقة أيضاً: الرطوبة والتدفق والضغط الحالية، النطاق الطبيعي للتدفق والضغط، سجل آخر دورات الري، وحالة الصمام.",
+              "en": "The zone panel also shows current moisture, flow and pressure, the normal flow and pressure range, recent irrigation runs, and the valve state."
+            }
+          ]
+        },
+        {
+          "id": "alarms",
+          "title": {
+            "ar": "الإنذارات: ماذا أفعل؟",
+            "en": "Alarms: what do I do?"
+          },
+          "image": "guide/alarms.jpg",
+          "body": [
+            {
+              "type": "p",
+              "ar": "عند إنذار جديد يُسمع صوت تنبيه وتتحرك الخريطة إلى مكانه. للإنذارات أربع درجات:",
+              "en": "When a new alarm arrives you hear a chime and the map flies to it. Alarms have four levels:"
+            },
+            {
+              "type": "list",
+              "ar": [
+                "حرج (أحمر، S3): خطر على المعدات أو المياه — تصرّف فوراً.",
+                "كبير (برتقالي، S2): مشكلة توقف الري أو تهدر الماء — تصرّف اليوم.",
+                "تحذير (أصفر، S1): شيء يحتاج متابعة.",
+                "معلومة (أزرق، S0): للعلم فقط."
+              ],
+              "en": [
+                "Critical (red, S3): danger to equipment or water — act now.",
+                "Major (orange, S2): a problem that stops irrigation or wastes water — act today.",
+                "Warning (yellow, S1): something to watch.",
+                "Info (blue, S0): for information only."
+              ]
+            },
+            {
+              "type": "steps",
+              "ar": [
+                "افتح «الإنذارات» واضغط على الإنذار لقراءة «الإجراء» المقترح.",
+                "اضغط «تأكيد الاطلاع» ليعرف الجميع أن أحداً يتابعه.",
+                "عالج السبب في الموقع (صمام، مضخة، تسريب…).",
+                "عندما يزول السبب: بعض الإنذارات تختفي وحدها، وبعضها يبقى «بانتظار إعادة الضبط» حتى يضغط المالك «إعادة ضبط»."
+              ],
+              "en": [
+                "Open Alarms and tap the alarm to read the suggested action.",
+                "Press \"Acknowledge\" so everyone knows someone is on it.",
+                "Fix the cause on site (valve, pump, leak…).",
+                "When the cause is gone: some alarms clear by themselves; others stay \"Waiting for reset\" until the owner presses \"Reset\"."
+              ]
+            },
+            {
+              "type": "note",
+              "ar": "زر «اشرح» يطلب من المساعد الذكي شرحاً بالعربية: الأسباب المرجحة وخطوات الفحص. هي اقتراحات فقط؛ تحقق في الموقع ولا تتجاوز حمايات النظام. زر السماعة في الأعلى يكتم صوت الإنذار.",
+              "en": "The \"Explain\" button asks the AI assistant for an explanation: likely causes and checks. These are suggestions only; check on site and never bypass the system's protections. The speaker button at the top mutes the alarm sound."
+            }
+          ]
+        },
+        {
+          "id": "schedules",
+          "title": {
+            "ar": "جداول الري",
+            "en": "Irrigation schedules"
+          },
+          "image": "guide/schedules.jpg",
+          "body": [
+            {
+              "type": "p",
+              "ar": "البرنامج يروي مجموعة مناطق بالترتيب، في وقت محدد وأيام محددة. الجدول الأسبوعي يبيّن متى يعمل كل برنامج، والخط الأحمر هو الوقت الحالي.",
+              "en": "A program waters a list of zones one after another, at a set time on set days. The weekly timeline shows when each program runs; the red line is now."
+            },
+            {
+              "type": "note",
+              "ar": "المشغّل يستطيع تفعيل البرنامج أو تعطيله بالمفتاح بجانبه. إنشاء البرامج وتعديلها للمالك (الجزء الثاني).",
+              "en": "An operator can switch a program on or off with the switch next to it. Creating and editing programs is for the owner (Part 2)."
+            }
+          ]
+        },
+        {
+          "id": "health",
+          "title": {
+            "ar": "حالة النظام والاتصال",
+            "en": "System health and connection"
+          },
+          "image": "guide/health.jpg",
+          "body": [
+            {
+              "type": "list",
+              "ar": [
+                "«مباشر» أخضر: البيانات تصل لحظياً.",
+                "«تحديث دوري» أو «بيانات قديمة»: الاتصال ضعيف؛ الأرقام قد تكون متأخرة.",
+                "شارة حالة النظام في القائمة: خضراء تعمل، صفراء تحذير، حمراء عطل. اضغط عليها لترى أي جزء به مشكلة وماذا تفعل."
+              ],
+              "en": [
+                "Green \"Live\": data arrives in real time.",
+                "\"Polling\" or \"Stale data\": the connection is weak; numbers may be late.",
+                "The system health badge in the menu: green working, amber warning, red fault. Tap it to see which part has a problem and what to do."
+              ]
+            },
+            {
+              "type": "warn",
+              "ar": "إذا ظهر «تعذّر تحميل البيانات» في صفحة، اضغط «إعادة المحاولة». إذا استمر، تأكد أن الحاسوب الذي يشغّل النظام يعمل ومتصل بالشبكة.",
+              "en": "If a page shows \"Couldn't load the data\", press \"Try again\". If it keeps happening, check that the computer running the system is on and connected."
+            }
+          ]
+        },
+        {
+          "id": "assistant",
+          "title": {
+            "ar": "المساعد الذكي",
+            "en": "The AI assistant"
+          },
+          "body": [
+            {
+              "type": "p",
+              "ar": "الزر العائم الأزرق يفتح المساعد. اسأله بالعربية عن حالة المزرعة، المضخات، الإنذارات أو الجداول؛ يجيب من البيانات الحية. إذا لم يتصل بالإنترنت يجيب بقواعد ثابتة ويظهر ذلك بوضوح.",
+              "en": "The blue floating button opens the assistant. Ask it in Arabic or English about the farm, pumps, alarms or schedules; it answers from live data. Without internet it answers with fixed rules and says so clearly."
+            },
+            {
+              "type": "warn",
+              "ar": "المساعد لا يشغّل ولا يوقف أي معدة. القرار دائماً للمشغّل، والحماية لوحدة التحكم.",
+              "en": "The assistant never starts or stops equipment. Decisions stay with the operator, and protection stays with the controller."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "title": {
+        "ar": "الجزء الثاني: الإدارة (للمالك)",
+        "en": "Part 2: Administration (owner)"
+      },
+      "sections": [
+        {
+          "id": "programs",
+          "title": {
+            "ar": "إنشاء برنامج ري وتعديله",
+            "en": "Creating and editing a program"
+          },
+          "image": "guide/program_drawer.jpg",
+          "body": [
+            {
+              "type": "steps",
+              "ar": [
+                "في «الجداول» اضغط «برنامج جديد» (أو «تعديل» على برنامج موجود).",
+                "اكتب الاسم واختر وقت البدء وأيام التشغيل.",
+                "أضف المناطق بالترتيب واختر مدة كل منطقة؛ الأسهم تغيّر الترتيب.",
+                "اضغط «حفظ البرنامج» ثم «تأكيد الحفظ»."
+              ],
+              "en": [
+                "On Schedules press \"New program\" (or \"Edit\" on an existing one).",
+                "Enter a name, the start time and the days.",
+                "Add zones in order and set each zone's run time; the arrows change the order.",
+                "Press \"Save program\", then \"Confirm save\"."
+              ]
+            },
+            {
+              "type": "note",
+              "ar": "النظام يرفض البرنامج إذا تعارض مع برنامج آخر، أو تجاوز أقصى مدة لمنطقة، أو استخدم المضخة أكثر من المسموح، ويشرح السبب.",
+              "en": "The system refuses a program that clashes with another one, exceeds a zone's maximum run time, or overloads the pump, and explains why."
+            }
+          ]
+        },
+        {
+          "id": "advisor",
+          "title": {
+            "ar": "توصيات مستشار الطقس",
+            "en": "Weather advisor suggestions"
+          },
+          "body": [
+            {
+              "type": "p",
+              "ar": "كل يوم الساعة 18:00 يفحص النظام طقس الغد. إذا توقع مطراً أو حراً شديداً تظهر بطاقة توصية: تخطي الري، تقليل المدة، أو تمديدها. القرار من قواعد ثابتة، والذكاء الاصطناعي يشرحه فقط.",
+              "en": "Every day at 18:00 the system checks tomorrow's weather. If it expects rain or strong heat, a suggestion card appears: skip, shorten or extend irrigation. The decision comes from fixed rules; the AI only explains it."
+            },
+            {
+              "type": "steps",
+              "ar": [
+                "اضغط «لماذا؟» لترى البيانات المستخدمة (المطر، الحرارة، رطوبة التربة…) والقاعدة.",
+                "«تطبيق لليوم فقط» يعدّل برنامج الغد فقط، ويمكن التراجع خلال ثوانٍ.",
+                "«تجاهل» يترك الجدول كما هو."
+              ],
+              "en": [
+                "Press \"Why?\" to see the inputs (rain, heat, soil moisture…) and the rule.",
+                "\"Apply for today\" changes only that day's program, with a few seconds to undo.",
+                "\"Dismiss\" leaves the schedule unchanged."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "reports",
+          "title": {
+            "ar": "التقارير",
+            "en": "Reports"
+          },
+          "image": "guide/reports.jpg",
+          "body": [
+            {
+              "type": "p",
+              "ar": "أربعة تقارير: الري اليومي، المياه حسب المنطقة، ساعات عمل المضخات، وسجل الإنذارات. اختر الفترة (اليوم، 7 أيام، 30 يوماً)، واضغط «تصدير CSV» لفتح البيانات في Excel بالعربية.",
+              "en": "Four reports: daily irrigation, water per zone, pump running hours, and alarm history. Pick a period (today, 7 days, 30 days) and press \"Export CSV\" to open the data in Excel."
+            }
+          ]
+        },
+        {
+          "id": "settings",
+          "title": {
+            "ar": "الإعدادات",
+            "en": "Settings"
+          },
+          "image": "guide/settings.jpg",
+          "body": [
+            {
+              "type": "list",
+              "ar": [
+                "الميزات: مفاتيح تشغيل وإيقاف لكل ميزة ذكية، ومؤثرات الخريطة، والأتمتة (الجداول التلقائية، فحص الطقس اليومي، كشف الشذوذ)، وقنوات التنبيه. التغيير يصل لكل الشاشات فوراً.",
+                "التنبيهات: الإنذارات الحرجة والكبيرة والموجز الصباحي تُرسل إلى تيليجرام وإشعارات الهاتف. اتبع الخطوات المكتوبة في الصفحة، ثم «إرسال رسالة تجريبية».",
+                "المناطق والمعدات: عدّل اسم المنطقة ومحصولها وحدودها، أو أضف منطقة جديدة (يُنشأ معها صمامها وحساس رطوبتها)، أو أوقف منطقة بدل حذفها حتى يبقى سجلها.",
+                "الذكاء الاصطناعي: النماذج المستخدمة، اختبار الاتصال، وسجل الاستخدام."
+              ],
+              "en": [
+                "Features: on/off switches for each AI feature, map effects, automation (automatic schedules, the daily weather check, anomaly detection) and alert channels. Changes reach every screen at once.",
+                "Notifications: critical and major alarms and the morning briefing go to Telegram and phone notifications. Follow the steps on the page, then \"Send a test message\".",
+                "Zones & equipment: edit a zone's name, crop and limits, add a new zone (its valve and moisture sensor are created with it), or disable a zone instead of deleting it so its history stays.",
+                "AI: the models in use, a connection test, and the usage log."
+              ]
+            },
+            {
+              "type": "note",
+              "ar": "إشعارات الهاتف تحتاج اتصالاً آمناً (HTTPS)؛ تعمل الآن على الحاسوب الذي يشغّل النظام، وعلى الهاتف بعد اختيار الاستضافة. المنطقة الجديدة تظهر على الخريطة بعد رسم حدودها.",
+              "en": "Phone notifications need a secure connection (HTTPS); they work now on the computer running the system, and on phones once hosting is chosen. A new zone appears on the map once its outline is drawn."
+            }
+          ]
+        },
+        {
+          "id": "events",
+          "title": {
+            "ar": "سجل الأحداث",
+            "en": "The event log"
+          },
+          "body": [
+            {
+              "type": "p",
+              "ar": "كل أمر وكل إنذار وكل تغيير في الإعدادات يُسجّل مع الوقت ومن قام به، ولا يمكن تعديل السجل. استخدم الفلاتر (الأوامر، الإنذارات، الدخول) للبحث.",
+              "en": "Every command, alarm and settings change is recorded with the time and who did it, and the log cannot be edited. Use the filters (commands, alarms, sign-ins) to search."
+            }
+          ]
+        },
+        {
+          "id": "simulator",
+          "title": {
+            "ar": "المحاكي وساعة المزرعة (للعرض فقط)",
+            "en": "The simulator and farm clock (demo only)"
+          },
+          "body": [
+            {
+              "type": "p",
+              "ar": "اليوم يعمل النظام مع محاكٍ يمثّل المزرعة ووحدة التحكم. شغّل «وضع العرض الفني» في القائمة لإظهار صفحة المحاكي: سيناريوهات جاهزة (تسريب، توقف مضخة…) وساعة افتراضية تسرّع الوقت حتى 360 مرة. «العودة إلى الوقت الحقيقي» تمسح سجل المحاكاة.",
+              "en": "Today the system runs with a simulator that plays the farm and the controller. Turn on \"Presenter mode\" in the menu to show the Simulator page: ready scenarios (leak, pump trip…) and a virtual clock that runs up to 360× faster. \"Back to real time\" clears the simulation history."
+            },
+            {
+              "type": "warn",
+              "ar": "عند ربط وحدة التحكم الحقيقية (PLC) يُقفل المحاكي والساعة الافتراضية تلقائياً.",
+              "en": "When the real controller (PLC) is connected, the simulator and virtual clock are locked automatically."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
