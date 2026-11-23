@@ -264,7 +264,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
               <>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-[#bac9cc]">{t('drawer.duration')}</span>
-                  <bdi className="font-mono font-bold text-lg">{duration} min</bdi>
+                  <bdi className="font-mono font-bold text-lg">{duration} {t('common.min')}</bdi>
                 </div>
                 <div className="flex gap-2">
                   {PRESETS.filter((p) => p <= maxMin).map((p) => (
@@ -298,7 +298,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                 {confirming ? (
                   <div className="flex gap-2">
                     <button disabled={busy} onClick={() => run('start')} className="flex-1 py-3 rounded-xl bg-[#00e5ff] text-[#0e0e0e] font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-                      <Play size={18} /> {t('drawer.confirm')} <bdi>{duration} min</bdi>
+                      <Play size={18} /> {t('drawer.confirm')} <bdi>{duration} {t('common.min')}</bdi>
                     </button>
                     <button onClick={() => setConfirming(false)} className="px-4 py-3 rounded-xl border border-white/10 text-[#bac9cc] hover:bg-white/5">
                       {t('drawer.cancel')}

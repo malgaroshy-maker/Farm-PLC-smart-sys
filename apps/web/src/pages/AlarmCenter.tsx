@@ -59,7 +59,11 @@ export default function AlarmCenter() {
     if (view !== 'history') return;
     let live = true;
     apiFetch<Alarm[]>('/api/v1/alarms?view=history&limit=200')
-      .then((rows) => live && setHistory(rows))
+      .then((rows) => {
+        if (!live) return;
+        setHistory(rows);
+        setError(null);
+      })
       .catch(() => live && setError(t('al.loadError')));
     return () => {
       live = false;

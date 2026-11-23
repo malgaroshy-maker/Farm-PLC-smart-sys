@@ -180,3 +180,18 @@ html[data-reduce-motion="1"] .map-eq-alarm { animation: none !important; }
 @keyframes spin-slow { to { transform: rotate(360deg); } }
 .spin-slow { display: inline-flex; animation: spin-slow 2.4s linear infinite; }
 html[data-reduce-motion="1"] .tank-wave, html[data-reduce-motion="1"] .spin-slow { animation: none !important; }
+
+/* ─── Accessibility (G4) ───────────────────────────── */
+/* keyboard focus is always visible; mouse clicks don't show the ring */
+:where(a, button, input, select, textarea, summary, [role="tab"], [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid #00e5ff;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* phones and tablets: finger-sized tap targets (44px, WCAG 2.5.5) */
+@media (pointer: coarse) {
+  /* switches keep their pill shape: their row is the tap target */
+  :where(button:not([role="switch"]), [role="tab"], select) {
+    min-height: 44px;
+  }
+}

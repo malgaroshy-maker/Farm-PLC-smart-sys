@@ -17,6 +17,7 @@ import type {
   PumpRuntimeReportRow,
   AlarmHistoryReportRow,
 } from '@algaroshy/contracts';
+import { ErrorState } from '../components/EmptyState';
 import { apiFetch, apiUrl, session } from '../lib/api';
 import { useFarmClock } from '../lib/clock';
 import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
@@ -44,6 +45,8 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>('daily');
   const [rangePreset, setRangePreset] = useState<RangePreset>('week');
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadTick, setLoadTick] = useState(0);
   const [downloading, setDownloading] = useState(false);
 
   // Compute dates in farm timezone (Africa/Tripoli) — defaults to last 7 days
@@ -61,6 +64,7 @@ export default function ReportsPage() {
     let active = true;
     const fetchReport = async () => {
       setLoading(true);
+      setLoadError(false);
       try {
         const query = `from_date=${fromDate}&to_date=${toDate}`;
         if (tab === 'daily') {
@@ -77,7 +81,7 @@ export default function ReportsPage() {
           if (active) setAlarmData(res);
         }
       } catch {
-        // network / API error
+        if (active) setLoadError(true);
       } finally {
         if (active) setLoading(false);
       }
@@ -87,7 +91,7 @@ export default function ReportsPage() {
     return () => {
       active = false;
     };
-  }, [tab, fromDate, toDate]);
+  }, [tab, fromDate, toDate, loadTick]);
 
   // CSV Export Download Handler
   const handleExportCsv = async () => {
@@ -145,7 +149,7 @@ export default function ReportsPage() {
   }, [tab, dailyData, waterData]);
 
   return (
-    <div className="h-full flex flex-col gap-4 overflow-y-auto pb-8">
+    <div className="flex flex-col gap-4 pb-8">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -186,7 +190,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-white/10 pb-2 overflow-x-auto">
+      <div className="flex shrink-0 gap-2 border-b border-white/10 pb-2 overflow-x-auto">
         {(['daily', 'water', 'pumps', 'alarms'] as ReportTab[]).map((k) => (
           <button
             key={k}
@@ -240,14 +244,16 @@ export default function ReportsPage() {
 
         <div className="h-64 sm:h-72 w-full pt-2" dir="ltr">
           {loading ? (
-            <div className="h-full flex items-center justify-center text-xs text-[#849396]">
+            <div role="status" aria-live="polite" className="h-full flex items-center justify-center text-xs text-[#849396]">
               {t('common.loading')}
+            </div>
+          ) : loadError ? (
+            <div className="h-full overflow-hidden flex items-center justify-center" dir="auto">
+              <ErrorState onRetry={() => setLoadTick((n) => n + 1)} />
             </div>
           ) : tab === 'daily' ? (
             dailyData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-[#849396]">
-                {t('reports.empty')}
-              </div>
+              <ChartEmpty text={t('reports.empty')} />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dailyData}>
@@ -270,9 +276,7 @@ export default function ReportsPage() {
             )
           ) : tab === 'water' ? (
             waterData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-[#849396]">
-                {t('reports.empty')}
-              </div>
+              <ChartEmpty text={t('reports.empty')} />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -311,9 +315,7 @@ export default function ReportsPage() {
             )
           ) : tab === 'pumps' ? (
             pumpData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-[#849396]">
-                {t('reports.empty')}
-              </div>
+              <ChartEmpty text={t('reports.empty')} />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -344,9 +346,7 @@ export default function ReportsPage() {
             )
           ) : (
             alarmData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-[#849396]">
-                {t('reports.empty')}
-              </div>
+              <ChartEmpty text={t('reports.empty')} />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={alarmData}>
@@ -444,7 +444,7 @@ export default function ReportsPage() {
                         </td>
                         <td className="p-3 text-end font-mono text-[#00e5ff]">{fmtNum(row.total_water_m3, 2)}</td>
                         <td className="p-3 text-end font-mono">{row.cycle_count}</td>
-                        <td className="p-3 text-end font-mono">{row.total_duration_min} min</td>
+                        <td className="p-3 text-end font-mono">{row.total_duration_min} {t('common.min')}</td>
                       </tr>
                     );
                   })
@@ -517,6 +517,16 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Empty chart area (G4): calm art instead of a bare line of text. */
+function ChartEmpty({ text }: { text: string }) {
+  return (
+    <div role="status" className="h-full flex flex-col items-center justify-center gap-3" dir="auto">
+      <img src="/art/empty_reports.webp" alt="" className="h-36 max-w-full rounded-xl opacity-90 shadow-lg object-cover" loading="lazy" />
+      <p className="text-xs text-[#bac9cc]">{text}</p>
     </div>
   );
 }

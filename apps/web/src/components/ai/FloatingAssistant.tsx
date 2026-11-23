@@ -317,7 +317,7 @@ export default function FloatingAssistant() {
             }}
             className="p-3 border-t border-white/10 bg-[#161618] flex items-center gap-2"
           >
-            <input
+            <input aria-label={t('chat.inputPlaceholder')}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}

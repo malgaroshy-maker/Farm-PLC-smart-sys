@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import EmptyState, { ErrorState, LoadingState } from '../components/EmptyState';
+import { useLoad } from '../lib/useLoad';
 import { ZonesIcon } from '../components/icons/FarmIcons';
 import { CROP_ICON } from '../components/icons/cropIcon';
 import type { Zone, ZoneLiveState } from '@algaroshy/contracts';
@@ -30,13 +32,10 @@ function hhmm(sec?: number) {
 export default function ZonesPage() {
   const { t, lang } = useT();
   const { state, sendCommand } = useFarmConnector();
-  const [config, setConfig] = useState<Zone[]>([]);
+  const { data, status, reload } = useLoad(() => apiFetch<Zone[]>('/api/v1/zones'));
+  const config = data ?? [];
   const [filter, setFilter] = useState<Filter>('all');
   const [selected, setSelected] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiFetch<Zone[]>('/api/v1/zones').then(setConfig).catch(() => setConfig([]));
-  }, []);
 
   const live = useMemo(
     () => Object.fromEntries((state?.zones ?? []).map((z) => [z.zone_id, z])) as Record<string, ZoneLiveState>,
@@ -76,6 +75,10 @@ export default function ZonesPage() {
           ))}
         </div>
       </div>
+
+      {status === 'loading' && <LoadingState />}
+      {status === 'error' && <ErrorState onRetry={reload} />}
+      {status === 'ok' && rows.length === 0 && <EmptyState art="zones" text={t('empty.zones')} />}
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {rows.map((z) => {

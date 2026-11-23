@@ -3,6 +3,7 @@ import { ZONE_BY_ID, zoneList } from '../lib/zones';
 import { useFeature } from '../lib/features';
 import { Plus, Trash2, Edit2, AlertTriangle, Check, Clock, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
 import type { ConflictError, Program, ProgramCreate } from '@algaroshy/contracts';
+import EmptyState, { ErrorState, LoadingState } from '../components/EmptyState';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFarmClock, farmHourAndMonth } from '../lib/clock';
@@ -58,6 +59,8 @@ export default function SchedulesPage() {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [suggestions, setSuggestions] = useState<AdvisorSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadTick, setLoadTick] = useState(0);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -75,18 +78,20 @@ export default function SchedulesPage() {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setLoadError(false);
     apiFetch<Program[]>('/api/v1/schedules')
       .then((data) => {
         if (active) setPrograms(data);
       })
-      .catch(() => undefined)
+      .catch(() => active && setLoadError(true))
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [loadTick]);
 
   const refreshPrograms = async () => {
     try {
@@ -122,7 +127,7 @@ export default function SchedulesPage() {
   };
 
   return (
-    <div className="h-full flex flex-col gap-4 overflow-y-auto pb-8">
+    <div className="flex flex-col gap-4 pb-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -263,16 +268,17 @@ export default function SchedulesPage() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-[#bac9cc]">{t('schedules.list')}</h2>
-          <span className="text-xs text-[#849396] font-mono">{programs.length} programs</span>
+          <span className="text-xs text-[#849396] font-mono">{t('schedules.programs')}: <bdi>{programs.length}</bdi></span>
         </div>
 
         {loading ? (
-          <div className="panel p-8 text-center text-sm text-[#849396]">{t('common.loading')}</div>
+          <LoadingState />
+        ) : loadError ? (
+          <ErrorState onRetry={() => setLoadTick((n) => n + 1)} />
         ) : programs.length === 0 ? (
-          <div className="panel p-8 text-center space-y-2">
-            <div className="text-sm font-bold text-[#bac9cc]">{t('schedules.noPrograms')}</div>
+          <EmptyState art="schedules" text={t('schedules.noPrograms')}>
             <p className="text-xs text-[#849396] max-w-sm mx-auto">{t('schedules.noProgramsHint')}</p>
-          </div>
+          </EmptyState>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {programs.map((p) => {
@@ -293,9 +299,13 @@ export default function SchedulesPage() {
                         <Clock size={13} className="text-[#00e5ff]" />
                         <span>{p.start_time_local}</span>
                         <span>•</span>
-                        <span>{totalDur} min</span>
+                        <span>
+                          {totalDur} {t('common.min')}
+                        </span>
                         <span>•</span>
-                        <span>{p.steps.length} zones</span>
+                        <span>
+                          {t('nav.zones')}: {p.steps.length}
+                        </span>
                       </div>
                     </div>
 
@@ -304,6 +314,9 @@ export default function SchedulesPage() {
                       <button
                         onClick={() => handleToggle(p)}
                         disabled={!canToggle}
+                        role="switch"
+                        aria-checked={p.enabled}
+                        aria-label={`${p.name}: ${p.enabled ? t('schedules.enabled') : t('schedules.disabled')}`}
                         title={p.enabled ? t('schedules.enabled') : t('schedules.disabled')}
                         className={`w-11 h-6 rounded-full transition-colors relative p-0.5 ${
                           p.enabled ? 'bg-[#00e5ff]' : 'bg-white/20'
@@ -369,7 +382,7 @@ export default function SchedulesPage() {
                         className="p-1.5 rounded-lg text-[#bac9cc] hover:text-[#00e5ff] hover:bg-white/5 text-xs flex items-center gap-1"
                       >
                         <Edit2 size={13} />
-                        <span>Edit</span>
+                        <span>{t('common.edit')}</span>
                       </button>
                     </div>
                   )}
@@ -564,8 +577,8 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
           <h2 className="text-base font-bold text-[#e5e2e1]">
             {program ? t('schedules.drawerEdit') : t('schedules.drawerCreate')}
           </h2>
-          <button onClick={onClose} className="p-1 text-[#849396] hover:text-[#e5e2e1]">
-            ✕
+          <button onClick={onClose} aria-label={t('drawer.close')} className="p-2 min-w-11 min-h-11 text-[#849396] hover:text-[#e5e2e1]">
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
 
@@ -574,7 +587,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
           {/* Program Name */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-[#bac9cc]">{t('schedules.name')}</label>
-            <input
+            <input aria-label={t('schedules.name')}
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -587,7 +600,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#bac9cc]">{t('schedules.startTime')}</label>
-              <input
+              <input aria-label={t('schedules.startTime')}
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
@@ -694,7 +707,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
                       {/* Zone Selector */}
                       <div className="flex-1 min-w-0 flex items-center gap-2">
                         {Crop && <Crop size={16} />}
-                        <select
+                        <select aria-label={t('schedules.selectZone')}
                           value={step.zone_id}
                           onChange={(e) => updateStepZone(idx, e.target.value)}
                           className="w-full px-2.5 py-1.5 rounded-lg bg-[#1e1e20] border border-white/10 text-xs text-[#e5e2e1] focus:border-[#00e5ff] focus:outline-none"
@@ -746,7 +759,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
                         ))}
                       </div>
 
-                      <input
+                      <input aria-label={t('schedules.duration')}
                         type="range"
                         min={5}
                         max={maxDur}

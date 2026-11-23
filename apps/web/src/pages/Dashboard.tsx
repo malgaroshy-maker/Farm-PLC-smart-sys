@@ -13,6 +13,8 @@ import { DropIcon, PumpIcon, ZonesIcon } from '../components/icons/FarmIcons';
 import { useFarmConnector } from '../hooks/useFarmConnector';
 import { fmtNum, useT } from '../lib/i18n';
 import { fetchAiSuggestions, type AdvisorSuggestion } from '../lib/api';
+import { useIsDesktop } from '../lib/media';
+import { useZoneCatalog, zoneList } from '../lib/zones';
 
 const CYAN = '#00e5ff';
 const GREY = '#849396';
@@ -25,6 +27,9 @@ export default function Dashboard() {
   const { t } = useT();
   const briefingOn = useFeature('ai.briefing');
   const advisorOn = useFeature('ai.advisor');
+  const isDesktop = useIsDesktop();
+  useZoneCatalog((c) => c.version);
+  const zoneTotal = zoneList({ enabledOnly: true }).length;
 
   const handleSelectZone = (id: string | null) => {
     setSearchParams(
@@ -72,21 +77,23 @@ export default function Dashboard() {
       {briefingOn && <DailyBriefingCard />}
 
       {/* phones: status first */}
-      <div className="lg:hidden space-y-3">
-        <StatusCard state={state} />
-        {activeSuggestions.length > 0 && (
-          <div className="space-y-2">
-            {activeSuggestions.map((sug) => (
-              <SuggestionCard key={sug.id} suggestion={sug} onStatusChange={handleSuggestionUpdate} />
-            ))}
-          </div>
-        )}
-        <NextIrrigationCard />
-      </div>
+      {!isDesktop && (
+        <div className="space-y-3">
+          <StatusCard state={state} />
+          {activeSuggestions.length > 0 && (
+            <div className="space-y-2">
+              {activeSuggestions.map((sug) => (
+                <SuggestionCard key={sug.id} suggestion={sug} onStatusChange={handleSuggestionUpdate} />
+              ))}
+            </div>
+          )}
+          <NextIrrigationCard />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KPICard title={t('kpi.zonesRunning')} value={state ? irrigating : '--'} unit="/ 12" icon={<ZonesIcon size={18} />} color={irrigating ? CYAN : GREY} />
-        <KPICard title={t('kpi.pumps')} value={state ? activePumps : '--'} unit={`/ ${pumps.length || 2}`} icon={<PumpIcon size={18} />} color={activePumps ? CYAN : GREY} />
+        <KPICard title={t('kpi.zonesRunning')} value={state ? irrigating : '--'} unit={`/ ${zoneTotal}`} icon={<ZonesIcon size={18} />} color={irrigating ? CYAN : GREY} />
+        <KPICard title={t('kpi.pumps')} value={state ? activePumps : '--'} unit={`/ ${pumps.length || '--'}`} icon={<PumpIcon size={18} />} color={activePumps ? CYAN : GREY} />
         <KPICard title={t('kpi.flow')} value={state ? fmtNum(flowLmin) : '--'} unit="L/min" icon={<DropIcon size={18} />} color={flowLmin > 0 ? CYAN : GREY} />
         <KPICard title={t('kpi.pressure')} value={state ? fmtNum(pressure, 2) : '--'} unit="bar" icon={<Gauge size={18} />} color={pressure > 0.2 ? CYAN : GREY} />
       </div>
@@ -97,7 +104,7 @@ export default function Dashboard() {
           <FarmMap state={state} selectedZone={selectedZone} onZoneSelect={handleSelectZone} />
         </div>
         <aside className="space-y-3 lg:overflow-y-auto lg:pe-1">
-          {activeSuggestions.length > 0 && (
+          {isDesktop && activeSuggestions.length > 0 && (
             <div className="space-y-2">
               <div className="text-xs font-bold text-[#bac9cc] px-1">{t('advisor.title')}</div>
               {activeSuggestions.map((sug) => (
@@ -105,7 +112,7 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-          <NextIrrigationCard />
+          {isDesktop && <NextIrrigationCard />}
           <TankCard state={state} />
           <PumpsCard state={state} />
           <AlarmsCard alarms={state?.active_alarms ?? []} />
