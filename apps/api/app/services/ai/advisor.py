@@ -12,14 +12,18 @@ import logging
 from datetime import timedelta
 from uuid import uuid4
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.clock import clock
 from app.models.ai import AISuggestion, ProgramOverride
+from app.models.irrigation_cycle import IrrigationCycle
 from app.models.program import Program
+from app.services.ai.advisor_rules import AdviceInputs, decide
 from app.services.ai.agent import run_weather_advisor
 from app.services.events import log_event
+from app.services.live_state import current_map_state
 from app.services.realtime import manager
 from app.services.weather import weather_service
 
@@ -52,20 +56,53 @@ async def evaluate_weather_advisor(
         day_summary = forecast.daily[0]
         date_str = day_summary.date
 
-    precip_mm = day_summary.precipitation_total_mm
-    precip_prob = day_summary.precipitation_probability_pct
-    temp_max = day_summary.temp_max_c
-    et0 = day_summary.et0_mm
+    # Programs that run on the target day -> the zones the advice affects
+    from datetime import date as _date
 
-    # Deterministic threshold evaluation:
-    # 1. Rain > 50% or precip > 2.0 mm -> Skip
-    # 2. Heat (> 38°C) or High ET0 (> 6.0 mm) -> Extend
-    # If neither triggered -> No suggestion generated
-    is_rain_threshold = precip_prob > 50.0 or precip_mm > 2.0
-    is_heat_threshold = temp_max >= 38.0 or et0 >= 6.0
+    from app.services.conflicts import parse_weekday_mask
 
-    if not is_rain_threshold and not is_heat_threshold:
-        log.info("Weather conditions normal on %s; no advisor suggestion needed", date_str)
+    weekday = _date.fromisoformat(date_str).isoweekday()
+    prog_res = await db.execute(
+        select(Program).where(Program.enabled.is_(True)).options(selectinload(Program.steps))
+    )
+    programs = [
+        p for p in prog_res.scalars().all() if weekday in parse_weekday_mask(p.weekday_mask)
+    ]
+    affected_zones = sorted({s.zone_id for p in programs for s in (p.steps or [])})
+    first_prog_id = programs[0].id if programs else None
+
+    # Live soil moisture of those zones (all zones when none are scheduled)
+    state = await current_map_state(db)
+    zm = [
+        z.moisture_pct
+        for z in state.zones
+        if z.moisture_pct is not None and (not affected_zones or z.zone_id in affected_zones)
+    ]
+    # Water delivered in the last 48 h of farm time
+    water_48h = (
+        await db.execute(
+            select(func.coalesce(func.sum(IrrigationCycle.water_estimate_m3), 0.0)).where(
+                IrrigationCycle.actual_end_at >= now_farm - timedelta(hours=48)
+            )
+        )
+    ).scalar()
+
+    decision = decide(
+        AdviceInputs(
+            rain_mm=day_summary.precipitation_total_mm,
+            rain_pct=day_summary.precipitation_probability_pct,
+            temp_max_c=day_summary.temp_max_c,
+            et0_mm=day_summary.et0_mm,
+            moisture_avg_pct=(sum(zm) / len(zm)) if zm else None,
+            moisture_min_pct=min(zm) if zm else None,
+            water_48h_m3=float(water_48h or 0.0),
+            zones_count=len(affected_zones),
+        )
+    )
+    if decision.action == "none":
+        log.info(
+            "Conditions normal on %s (%s); no advisor suggestion needed", date_str, decision.rule
+        )
         return None
 
     # Check if pending suggestion already exists for this date to avoid duplicates
@@ -89,12 +126,6 @@ async def evaluate_weather_advisor(
                 except Exception:
                     pass
 
-    # Find active programs to identify affected zones
-    prog_res = await db.execute(select(Program).where(Program.enabled.is_(True)))
-    programs = list(prog_res.scalars().all())
-    affected_zones = []
-    first_prog_id = programs[0].id if programs else None
-
     # Generate bilingual explanation via LLM agent (or rule-based fallback)
     suggestion_model = await run_weather_advisor(
         forecast=forecast,
@@ -103,7 +134,21 @@ async def evaluate_weather_advisor(
         program_id=first_prog_id,
         db=db,
         lang=lang,
+        decision=decision,
     )
+    # Safety: the action is the server's decision, never the model's
+    suggestion_model.action = decision.action
+    suggestion_model.duration_factor = decision.duration_factor
+    suggestion_model.affected_zone_ids = affected_zones
+    if suggestion_model.provider_used == "rule_based":
+        from app.services.ai.advisor_rules import explain
+
+        (
+            suggestion_model.title,
+            suggestion_model.title_ar,
+            suggestion_model.reasoning,
+            suggestion_model.reasoning_ar,
+        ) = explain(decision)
 
     action_payload = {
         "action": suggestion_model.action,
@@ -111,6 +156,16 @@ async def evaluate_weather_advisor(
         "duration_factor": suggestion_model.duration_factor,
         "affected_zone_ids": suggestion_model.affected_zone_ids,
         "program_id": suggestion_model.program_id,
+        # "why?" details (Milestone G2)
+        "rule": decision.rule,
+        "inputs": decision.inputs,
+        "weather_summary": {
+            "condition": day_summary.condition,
+            "temperature_c": day_summary.temp_max_c,
+            "rain_probability_pct": day_summary.precipitation_probability_pct,
+            "precipitation_mm": day_summary.precipitation_total_mm,
+            "et0_mm": day_summary.et0_mm,
+        },
     }
 
     suggestion = AISuggestion(
