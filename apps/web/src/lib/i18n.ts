@@ -565,9 +565,14 @@ export function translate(lang: Lang, key: MsgKey): string {
 }
 
 /** Hook: `const { t, lang } = useT(); t('nav.alarms')` */
+const tCache: Partial<Record<Lang, (key: MsgKey) => string>> = {};
+
 export function useT() {
   const lang = useI18nStore((s) => s.lang);
-  return { lang, t: (key: MsgKey) => dict[key]?.[lang] ?? (key as string), isRtl: lang === 'ar' };
+  // one stable `t` per language: effects that list `t` as a dependency must not
+  // re-run on every render (that made the zone drawer refetch its baseline each tick)
+  const t = (tCache[lang] ??= (key: MsgKey) => dict[key]?.[lang] ?? (key as string));
+  return { lang, t, isRtl: lang === 'ar' };
 }
 
 /** Pick the right field from bilingual records (`name` / `name_ar`). */
