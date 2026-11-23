@@ -196,15 +196,18 @@ async def check_scheduled_briefing(
     now_farm: datetime | None = None,
 ) -> AIBriefing | None:
     """Invoked on farm monitor ticks to trigger morning briefing at 06:00 farm time."""
-    current_farm = now_farm or clock.farm_now()
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(settings.farm_timezone)
+    current_farm = (now_farm or clock.farm_now()).astimezone(tz)  # farm-local, not UTC
     farm_time_hm = current_farm.strftime("%H:%M")
     target_time_hm = settings.ai_daily_briefing_time  # "06:00"
 
     # If called from scheduler tick with prev_farm and now_farm, check if target time crossed
     if prev_farm is not None and now_farm is not None:
         target_h, target_m = (int(x) for x in target_time_hm.split(":"))
-        target_dt = now_farm.replace(hour=target_h, minute=target_m, second=0, microsecond=0)
-        if not (prev_farm < target_dt <= now_farm):
+        target_dt = current_farm.replace(hour=target_h, minute=target_m, second=0, microsecond=0)
+        if not (prev_farm.astimezone(tz) < target_dt <= current_farm):
             return None
     else:
         # Only run once the farm clock reaches or passes target time
@@ -220,4 +223,21 @@ async def check_scheduled_briefing(
         return None
 
     log.info("Generating daily farm briefing for %s at farm time %s", today_date, farm_time_hm)
-    return await get_or_generate_daily_briefing(db, target_date=today_date)
+    briefing = await get_or_generate_daily_briefing(db, target_date=today_date)
+    try:
+        from app.services.notify import Notification, notify_in_background
+
+        b = briefing if isinstance(briefing, dict) else getattr(briefing, "__dict__", {})
+        title_ar = b.get("title_ar") or "الموجز الصباحي للمزرعة"
+        notify_in_background(
+            Notification(
+                kind="briefing",
+                title_ar=str(title_ar),
+                title_en=str(b.get("title") or "Morning farm briefing"),
+                body_ar=str(b.get("summary_ar") or "")[:600],
+                body_en=str(b.get("summary") or "")[:300],
+            )
+        )
+    except Exception:  # pragma: no cover - notifying must never break the briefing
+        log.exception("could not send the briefing notification")
+    return briefing

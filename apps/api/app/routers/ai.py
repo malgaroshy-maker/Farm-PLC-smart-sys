@@ -60,6 +60,20 @@ from app.services.weather import WeatherForecast, weather_service
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 require_operator = require_roles("owner_admin", "operator")
+
+
+def feature_on(key: str):
+    """Dependency: 403 `feature_disabled:<key>` when the owner switched the feature off."""
+
+    async def _check(db: AsyncSession = Depends(get_db)) -> None:
+        from app.services.features import is_enabled
+
+        if not await is_enabled(db, key):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"feature_disabled:{key}")
+
+    return Depends(_check)
+
+
 require_admin = require_roles("owner_admin")
 
 # ── Per-User Rate Limiting (30 requests/minute) ─────────────
@@ -98,8 +112,14 @@ def reset_ai_rate_limits() -> None:
 # ── Feature 1: Alarm Explanation ────────────────────────────
 
 
-@router.post("/explain-alarm", response_model=AlarmExplanation)
-@router.post("/alarm-assistant", response_model=AlarmExplanation)
+@router.post(
+    "/explain-alarm", response_model=AlarmExplanation, dependencies=[feature_on("ai.alarm_explain")]
+)
+@router.post(
+    "/alarm-assistant",
+    response_model=AlarmExplanation,
+    dependencies=[feature_on("ai.alarm_explain")],
+)
 async def api_explain_alarm(
     body: AlarmExplainRequest,
     db: AsyncSession = Depends(get_db),
@@ -144,7 +164,7 @@ async def api_explain_alarm(
 # ── Chat Assistant ───────────────────────────────────────────
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse, dependencies=[feature_on("ai.chat")])
 async def api_chat(
     body: ChatRequest,
     db: AsyncSession = Depends(get_db),
@@ -205,7 +225,7 @@ async def api_list_suggestions(
     ]
 
 
-@router.post("/suggestions/evaluate")
+@router.post("/suggestions/evaluate", dependencies=[feature_on("ai.advisor")])
 async def api_evaluate_advisor(
     target_date: str | None = Query(None),
     program_id: str | None = Query(None),
@@ -284,8 +304,8 @@ async def api_reject_suggestion(
 # ── Feature 7: Daily Briefing & Insights ─────────────────────
 
 
-@router.get("/briefing")
-@router.get("/insights/daily")
+@router.get("/briefing", dependencies=[feature_on("ai.briefing")])
+@router.get("/insights/daily", dependencies=[feature_on("ai.briefing")])
 async def api_get_daily_briefing(
     target_date: str | None = Query(None, alias="date"),
     force_refresh: bool = Query(False),

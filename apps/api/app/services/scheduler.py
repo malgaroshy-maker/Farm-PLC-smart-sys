@@ -166,20 +166,45 @@ class SchedulerService:
             await db.commit()
             return
 
-        # 4. Find programs due between prev_farm and now_farm
-        await self._check_due_programs(db, prev_farm, now_farm, farm_tz)
+        from app.services.features import is_enabled
+
+        # 4. Find programs due between prev_farm and now_farm (owner can pause automation)
+        if await is_enabled(db, "automation.scheduler"):
+            await self._check_due_programs(db, prev_farm, now_farm, farm_tz)
 
         # 5. Check daily morning briefing at 06:00 farm time
         try:
             from app.services.ai.briefing import check_scheduled_briefing
 
-            await check_scheduled_briefing(db, prev_farm=prev_farm, now_farm=now_farm)
+            if await is_enabled(db, "ai.briefing"):
+                await check_scheduled_briefing(db, prev_farm=prev_farm, now_farm=now_farm)
         except Exception:
             log.exception("Error checking scheduled morning briefing")
+
+        # 6. Evening weather check for tomorrow (18:00 farm time) -> advisor suggestion
+        try:
+            if await is_enabled(db, "automation.advisor_auto") and await is_enabled(
+                db, "ai.advisor"
+            ):
+                await self._maybe_auto_advise(db, prev_farm, now_farm, farm_tz)
+        except Exception:
+            log.exception("Error running the automatic weather advisor")
 
         self._last_farm_time = now_farm
         await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
         await db.commit()
+
+    async def _maybe_auto_advise(self, db, prev_farm, now_farm, farm_tz) -> None:
+        """Once a day at 18:00 farm-local time, evaluate tomorrow's weather (Milestone G3)."""
+        local_now = now_farm.astimezone(farm_tz)
+        target = local_now.replace(hour=18, minute=0, second=0, microsecond=0)
+        if not (prev_farm.astimezone(farm_tz) < target <= local_now):
+            return
+        from app.services.ai.advisor import evaluate_weather_advisor
+
+        tomorrow = (local_now + timedelta(days=1)).strftime("%Y-%m-%d")
+        log.info("Automatic weather advisor for %s", tomorrow)
+        await evaluate_weather_advisor(db, target_date=tomorrow)
 
     async def _handle_missed_runs(
         self,
