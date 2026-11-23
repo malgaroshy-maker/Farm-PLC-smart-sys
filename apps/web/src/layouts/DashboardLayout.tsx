@@ -28,6 +28,9 @@ import { useFarmClock } from '../lib/clock';
 import SimTimeBadge from '../components/clock/SimTimeBadge';
 import ClockHeaderChip from '../components/clock/ClockHeaderChip';
 import { getBottomNavItems } from '../lib/nav';
+import { usePoll } from '../lib/poll';
+import { HEALTH_COLOR, SYSTEM_HEALTH_PATH, type SystemHealth } from '../lib/api';
+import HealthPanel from '../components/HealthPanel';
 
 const LINK: Record<LinkStatus, { key: MsgKey; color: string }> = {
   idle: { key: 'link.connecting', color: '#849396' },
@@ -50,6 +53,8 @@ export default function DashboardLayout() {
   const sendCommand = useFarmStore((s) => s.sendCommand);
   const [stopMsg, setStopMsg] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const health = usePoll<SystemHealth>(user ? SYSTEM_HEALTH_PATH : null, 15000);
   const { formatted: clock } = useFarmClock(lang);
   const prefs = usePrefs();
 
@@ -67,8 +72,11 @@ export default function DashboardLayout() {
   const worst = alarms ? topSeverity(alarms) : null;
   const isAdmin = can('owner_admin');
   const showTech = isAdmin && presenter.on;
-  const status =
+  const linkStatus =
     (link === 'live' || link === 'polling') && !fresh ? { key: 'link.stale' as MsgKey, color: '#ffb4ab' } : LINK[link];
+  // any failed / degraded health check turns the badge red / amber (owner 2026-11-23)
+  const status =
+    health && health.status !== 'ok' ? { key: linkStatus.key, color: HEALTH_COLOR[health.status] } : linkStatus;
 
   const handleStopAll = async () => {
     if (!window.confirm(t('header.stopAllConfirm'))) return;
@@ -103,12 +111,24 @@ export default function DashboardLayout() {
           <X size={20} />
         </button>
       </div>
-      <div className="px-5 py-2 flex items-center gap-2 border-b border-[#353534]" title={link}>
+      <button
+        type="button"
+        onClick={() => setHealthOpen(true)}
+        className="w-full px-5 py-2 flex items-center gap-2 border-b border-[#353534] hover:bg-white/5 cursor-pointer text-start"
+        title={t('health.open')}
+        aria-label={t('health.open')}
+        data-testid="health-badge"
+      >
         <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: status.color }} />
         <span className="text-xs font-bold" style={{ color: status.color }}>
           {t(status.key)}
         </span>
-      </div>
+        {health && health.status !== 'ok' && (
+          <span className="ms-auto text-[11px] font-bold" style={{ color: status.color }}>
+            {t(`health.status.${health.status}` as MsgKey)}
+          </span>
+        )}
+      </button>
 
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {nav.map(({ key, path, icon: Icon, badge }) => (
@@ -238,6 +258,7 @@ export default function DashboardLayout() {
           <Outlet />
         </main>
         <FloatingAssistant />
+        {healthOpen && <HealthPanel initial={health} onClose={() => setHealthOpen(false)} />}
 
         {/* mobile bottom navigation */}
         <nav

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 
 from app.config import settings
 from app.database import async_session_factory
@@ -13,6 +14,9 @@ from app.services.telemetry import prune_old
 
 log = logging.getLogger(__name__)
 PRUNE_EVERY_TICKS = 3600
+
+# Heartbeat for /system/health: when the loop last finished a tick, and recent failures.
+MONITOR_STATUS: dict = {"last_ok": None, "failures": 0}
 
 
 class Monitor:
@@ -41,6 +45,9 @@ class Monitor:
         while True:
             try:
                 await self.tick()
+                MONITOR_STATUS["last_ok"] = time.time()
+                MONITOR_STATUS["failures"] = 0
             except Exception:  # keep monitoring even if one tick fails
+                MONITOR_STATUS["failures"] += 1
                 log.exception("monitor tick failed")
             await asyncio.sleep(settings.monitor_interval_sec)

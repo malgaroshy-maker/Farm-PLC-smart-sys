@@ -785,3 +785,22 @@ export async function fetchWeatherForecast(forceRefresh = false): Promise<Weathe
   const query = forceRefresh ? '?force_refresh=true' : '';
   return apiFetch<WeatherForecast>(`/api/v1/ai/weather/forecast${query}`);
 }
+
+// ── system health (Milestone G1) ─────────────────────────────────────────
+
+export const SYSTEM_HEALTH_PATH = '/api/v1/system/health';
+export type HealthStatus = 'ok' | 'warn' | 'fail';
+export const HEALTH_COLOR: Record<HealthStatus, string> = { ok: '#00e5ff', warn: '#ffb300', fail: '#ff5449' };
+export interface HealthCheck {
+  key: 'database' | 'controller' | 'scheduler' | 'ai' | 'weather' | 'disk';
+  status: HealthStatus;
+  code: string;
+  detail: Record<string, string | number | null>;
+}
+export interface SystemHealth {
+  status: HealthStatus;
+  version: string;
+  uptime_sec: number;
+  checked_at: string;
+  checks: HealthCheck[];
+}

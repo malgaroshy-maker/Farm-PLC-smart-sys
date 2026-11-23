@@ -31,6 +31,7 @@ from app.routers import (
     schedules,
     sim,
     state,
+    system,
     telemetry,
     websocket,
     zones,
@@ -86,9 +87,35 @@ def install_token_redacting_filter() -> None:
 install_token_redacting_filter()
 
 
+def install_file_logging() -> None:
+    """Optional rotating log file (LOG_FILE), so a long-running farm PC never fills its disk."""
+    if not settings.log_file:
+        return
+    from logging.handlers import RotatingFileHandler
+    from pathlib import Path
+
+    path = Path(settings.log_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    if any(isinstance(h, RotatingFileHandler) for h in root.handlers):
+        return
+    handler = RotatingFileHandler(
+        path,
+        maxBytes=settings.log_file_max_mb * 1024 * 1024,
+        backupCount=settings.log_file_backups,
+        encoding="utf-8",
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler.addFilter(TokenRedactingFilter())
+    root.addHandler(handler)
+    if root.level > logging.INFO or root.level == logging.NOTSET:
+        root.setLevel(logging.INFO)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     install_token_redacting_filter()
+    install_file_logging()
     settings.check_production_safety()
     if settings.secret_key == DEFAULT_SECRET:
         log.warning("SECRET_KEY is the development default — set a real one before deploying.")
@@ -143,6 +170,7 @@ for r in (
     cycles,
     reports,
     ai,
+    system,
 ):
     app.include_router(r.router, prefix=API_V1)
 
