@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     apinex_base_url: str = "https://api.apinex.bond/v1"
     apinex_api_key: str = ""
     apinex_model: str = "free/deepseek-v4-pro-0813"
-    apinex_fallback_model: str = "free/muse-spark-1.3"
+    apinex_fallback_model: str = "free/minimax-m3.1-flash"
 
     # Fallback: Google Gemini
     gemini_api_key: str = ""

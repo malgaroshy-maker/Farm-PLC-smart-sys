@@ -91,8 +91,8 @@ def get_apinex_fallback_model(
     base_url: str | None = None,
     api_key: str | None = None,
 ) -> OpenAIChatModel:
-    """Build secondary APInex fallback model (e.g. free/muse-spark-1.3)."""
-    name = model_name or settings.apinex_fallback_model or "free/muse-spark-1.3"
+    """Build secondary APInex fallback model (e.g. free/minimax-m3.1-flash)."""
+    name = model_name or settings.apinex_fallback_model or "free/minimax-m3.1-flash"
     provider = OpenAIProvider(
         base_url=base_url or settings.apinex_base_url,
         api_key=api_key or settings.apinex_api_key or "no-key",

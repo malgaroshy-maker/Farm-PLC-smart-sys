@@ -30,11 +30,13 @@ def test_catalog_contains_all_23_models():
     assert ds.quota_multiplier == 3
     assert ds.available is True
 
+    # muse-spark-1.3 became subscription-only (re-tested 2026-11-23); minimax is the backup
     muse = get_model_metadata("free/muse-spark-1.3")
-    assert muse.verdict == "recommended"
-    assert muse.verdict_badge == "✓"
-    assert muse.supports_vision is True
-    assert muse.available is True
+    assert muse.available is False
+    assert muse.verdict == "unavailable"
+    backup = get_model_metadata("free/minimax-m3.1-flash")
+    assert backup.verdict == "recommended"
+    assert backup.available is True
 
     # Quota multiplier checks
     hy4 = get_model_metadata("free/hy4")
@@ -56,7 +58,7 @@ def test_catalog_contains_all_23_models():
 def test_runtime_unavailable_cache_tracking():
     """Verify runtime marking of 400/402 models dynamically updates availability and metadata."""
     reset_unavailable_cache()
-    model = "free/gemini-3.8-flash"
+    model = "free/glm-5.3-flash"
     assert is_model_available(model) is True
 
     # Mark unavailable after 402 error

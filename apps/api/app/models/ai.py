@@ -191,7 +191,7 @@ class AISettings(Base):
         String(100), default="free/deepseek-v4-pro-0813", nullable=False
     )
     apinex_fallback_model: Mapped[str] = mapped_column(
-        String(100), default="free/muse-spark-1.3", nullable=False
+        String(100), default="free/minimax-m3.1-flash", nullable=False
     )
     gemini_model: Mapped[str] = mapped_column(
         String(100), default="gemini-2.5-flash", nullable=False
@@ -221,3 +221,20 @@ class AISettings(Base):
     token_budget: Mapped[int] = mapped_column(Integer, default=2048, nullable=False)
     daily_briefing_time: Mapped[str] = mapped_column(String(10), default="06:00", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AICallLog(Base):
+    """One row per AI answer (Milestone G2): speed, model, tokens and fallbacks for the usage view."""
+
+    __tablename__ = "ai_call_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    feature: Mapped[str] = mapped_column(String(30), nullable=False)
+    provider: Mapped[str] = mapped_column(String(30), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    fallback_reason: Mapped[str | None] = mapped_column(String(200))
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
