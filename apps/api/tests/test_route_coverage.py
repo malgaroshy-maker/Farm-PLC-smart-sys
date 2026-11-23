@@ -33,10 +33,9 @@ def test_api_ts_route_coverage():
     assert len(raw_urls) > 0, "No /api/v1/ endpoints found in api.ts"
 
     # Get all registered paths from FastAPI app
-    app_registered_paths = set()
-    for route in app.routes:
-        if hasattr(route, "path"):
-            app_registered_paths.add(_normalize_path(route.path))
+    # Use the OpenAPI schema: newer FastAPI versions keep included routers as
+    # nested objects in `app.routes`, so walking it misses their paths.
+    app_registered_paths = {_normalize_path(p) for p in app.openapi()["paths"]}
 
     unmatched_endpoints: list[str] = []
 

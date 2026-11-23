@@ -660,19 +660,23 @@ async def run_daily_briefing(
     w_text = "No forecast data"
     if forecast:
         today_fc = forecast.daily[0] if forecast.daily else None
-        t_max = (
-            today_fc.temp_max_c
-            if today_fc
-            else (forecast.current.temperature_c if forecast.current else 22.0)
-        )
-        p_prob = today_fc.precipitation_probability_pct if today_fc else 0.0
-        et0_val = (
-            today_fc.et0_mm
-            if today_fc
-            else (forecast.current.et0_mm if forecast and forecast.current else None)
-        )
-        et0_ar = f"التبخر-نتح المرجعي ET₀ = {et0_val:.2f} مم" if et0_val is not None else ""
-        w_text = f"MaxTemp={t_max}°C, PrecipChance={p_prob}%, ET0={et0_val}mm ({et0_ar})"
+        cur = forecast.current
+        t_max = today_fc.temp_max_c if today_fc else None
+        t_now = cur.temperature_c if cur else None
+        p_prob = today_fc.precipitation_probability_pct if today_fc else None
+        et0_val = today_fc.et0_mm if today_fc else (cur.et0_mm if cur else None)
+        # Only pass values we actually have — never invent defaults.
+        w_parts = []
+        if t_now is not None:
+            w_parts.append(f"CurrentTemp={t_now}°C")
+        if t_max is not None:
+            w_parts.append(f"MaxTemp={t_max}°C")
+        if p_prob is not None:
+            w_parts.append(f"PrecipChance={p_prob}%")
+        if et0_val is not None:
+            w_parts.append(f"ET0={et0_val:.2f}mm (التبخر-نتح المرجعي ET₀ = {et0_val:.2f} مم)")
+        if w_parts:
+            w_text = ", ".join(w_parts)
 
     prompt = (
         f"Synthesize the daily farm operations briefing for {date_str} in {lang}.\n"
@@ -681,7 +685,7 @@ async def run_daily_briefing(
         f"Weather Context: {w_text}\n"
         f"{farm_context}\n"
         f"CRITICAL FACT & LANGUAGE RULES:\n"
-        f"- The farm has exactly 12 irrigation zones in total. Never report 13 or any other count.\n"
+        f"- Use only the zone count and zone names given in Farm Facts above. Never state any other count.\n"
         f"- Format ET0 in Arabic strictly as 'التبخر-نتح المرجعي ET₀ = X.XX مم'. Never use garbled phrases like 'pent reference'.\n"
         f"- All Arabic text must be 100% pure standard Arabic without mixed English words or foreign characters.\n"
         f"Produce bilingual executive summary, water delivered, active warnings, and operations plan."

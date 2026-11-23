@@ -215,3 +215,24 @@ async def test_briefing_arabic_et0_and_clean_purity(client):
     assert "التبخر-نتح المرجعي ET₀ = 3.28 مم" in briefing.weather_summary_ar
     assert "pent reference" not in briefing.weather_summary_ar
     assert "13" not in briefing.summary_ar
+
+
+def test_rule_briefing_without_forecast_invents_no_weather():
+    """No forecast -> say so; never a made-up temperature."""
+    from app.services.ai.rules import rule_service
+
+    b = rule_service.daily_briefing(
+        "2026-11-23", cycles_summary=[{"water_volume_m3": 2.0, "outcome": "completed"}]
+    )
+    assert "22.0" not in b.weather_summary
+    assert "No weather forecast" in b.weather_summary
+    assert "لا تتوفر توقعات" in b.weather_summary_ar
+
+
+def test_briefing_prompt_has_no_hard_coded_zone_count():
+    import inspect
+
+    from app.services.ai import agent
+
+    src = inspect.getsource(agent.run_daily_briefing)
+    assert "exactly 12" not in src
