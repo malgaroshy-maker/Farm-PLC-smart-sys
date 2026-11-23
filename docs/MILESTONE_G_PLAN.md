@@ -6,7 +6,7 @@
 
 Context: the owner is the only user for now; users and roles UI is deferred. Hosting is still to be decided. The owner has **TIA Portal and PLCSIM Advanced**, but no real PLC yet.
 
-## G1: Performance and reliability
+## G1: Performance and reliability ✅ done 2026-11-23 (details in CHANGELOG)
 - **Measure first.** Fps on a phone-sized viewport, bundle size, and API latency (p50/p95) for the dashboard calls. Record the baseline numbers in the report.
 - **Fewer requests.**
   - Shared polling store, so cards that appear twice (e.g. the next-irrigation card on phone and desktop) don't fetch twice.

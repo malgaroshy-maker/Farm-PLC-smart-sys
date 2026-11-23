@@ -8,6 +8,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone G1 — Performance & reliability (2026-11-23)
+- **Telemetry charts are faster.** A composite index `(metric_key, zone_id, ts)` (migration `8d5e6f7a8b9c`) took one chart query from 78 ms to 11 ms. Bucket averaging now runs in SQL, so a 60-point chart reads about 60 rows instead of up to 5,000. `series()` went from 82–90 ms to 2–12 ms on the real 318k-row database.
+- **Fixed:** charts included samples later than the current farm time, left over from a simulated "future". The 60-point flow chart returned 5,084 points.
+- **SQLite runs in WAL mode** (with `synchronous=NORMAL` and `busy_timeout`). Readers no longer block the writer, and the API test suite went from 184 s to about 110 s.
+- **Old telemetry is downsampled.** After 48 h it is thinned to one sample per 5 minutes, on top of the 7-day retention.
+- **Optional rotating log file** (`LOG_FILE`, 5 × 5 MB by default), with tokens redacted.
+- **System health.**
+  - `GET /api/v1/system/health` checks the database, the controller link (simulator/PLC), the monitor/scheduler heartbeat, AI, weather and disk.
+  - Every check returns a code that the UI explains in Arabic and English.
+  - The sidebar Live badge turns amber or red on problems and opens a health panel. Paths and DB size are shown to the admin only.
+- **Shared polling** (`lib/poll.ts`).
+  - Cards that poll the same path share one request; the next-irrigation card used to fetch twice.
+  - Polling pauses while the tab is hidden and refreshes when it is visible again. Hidden tab: 5 requests in 37 s, was 13 in 48 s. The zone panel's chart does the same.
+- **Map.**
+  - The irrigation animation stamps one pre-rendered wet spot instead of building a radial gradient per tree per frame.
+  - It does no work while nothing irrigates.
+  - Phones under 700 px use a 1800 px canvas.
+
 ### Milestone F — Satellite map trace (2026-11-23)
 - Block 8, third review:
   - trellis rows for enab

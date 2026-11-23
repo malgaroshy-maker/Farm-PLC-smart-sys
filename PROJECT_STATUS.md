@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-20
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → next is **Milestone G**: hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → **Milestone G** in progress (G1 performance & reliability ✅): hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
