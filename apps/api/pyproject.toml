@@ -15,6 +15,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     "websockets>=15.0",
     "httpx>=0.28.0",
+    "pywebpush>=2.0.0",
     "python-multipart>=0.0.20",
     # AI / ML dependencies
     "pydantic-ai-slim[openai,google]>=2.71.0",

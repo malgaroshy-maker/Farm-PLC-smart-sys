@@ -249,8 +249,10 @@ class AlarmEngine:
 
         # ALM-046 / ALM-047: statistical hydraulic anomaly detection per zone
         from app.services.anomaly import anomaly_detector
+        from app.services.features import is_enabled
 
-        out.extend(await anomaly_detector.evaluate_snapshots(db, snapshots, now, r_now))
+        if await is_enabled(db, "automation.anomaly"):
+            out.extend(await anomaly_detector.evaluate_snapshots(db, snapshots, now, r_now))
         return out
 
     @staticmethod
@@ -416,8 +418,14 @@ class AlarmEngine:
         if not events:
             return
         await db.commit()
+        from app.services.notify import alarm_notification, notify_in_background
+
         for event_type, alarm in events:
             await manager.broadcast(event_type, to_response(alarm))
+            if event_type == "alarm.active":
+                note = alarm_notification(alarm)  # S2/S3 only (owner, G3)
+                if note:
+                    notify_in_background(note)
 
     # ── Operator actions ─────────────────────────────────
 

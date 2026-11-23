@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     apinex_model: str = "free/deepseek-v4-pro-0813"
     apinex_fallback_model: str = "free/minimax-m3.1-flash"
 
+    # ── Notifications (Milestone G3) ──
+    telegram_bot_token: str = ""  # from @BotFather; secret, keep in .env only
+    vapid_public_key: str = ""  # optional: otherwise generated once and stored in the DB
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:farm-admin@localhost"
+
     # Fallback: Google Gemini
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
