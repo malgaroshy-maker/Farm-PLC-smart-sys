@@ -9,7 +9,7 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
 import type { ZoneLiveState } from '@algaroshy/contracts';
 import { FARM } from '@algaroshy/map-model';
-import { ZONES } from './farmLayout';
+import { OTHER_TREES, ZONES } from './farmLayout';
 import { spriteFor, treesFor, type Tree } from './trees';
 
 const [, , VW, VH] = FARM.viewBox;
@@ -84,10 +84,17 @@ export const TreeCanvas = memo(function TreeCanvas({
     const ctx = ref.current?.getContext('2d');
     if (!ctx) return;
     const srcs = new Set<string>();
-    for (const z of ZONES) for (const t of treesFor(z)) srcs.add(spriteFor(t.species, month));
+    for (const z of [...ZONES, ...OTHER_TREES]) for (const t of treesFor(z)) srcs.add(spriteFor(t.species, month));
     Promise.all([...srcs].map(loadImage)).then(() => {
       if (cancelled) return;
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      // trees outside any zone (not irrigated by this system): no dryness tint
+      for (const z of OTHER_TREES) {
+        for (const t of treesFor(z)) {
+          const img = imageCache.get(spriteFor(t.species, month));
+          img?.then((im) => !cancelled && drawTree(ctx, t, im));
+        }
+      }
       for (const z of ZONES) {
         const d = dryness(zones[z.id]?.moisture_pct);
         // drought stress: canopy loses saturation and shifts toward yellow

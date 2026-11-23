@@ -2,20 +2,23 @@
  * Life on the farm (SVG overlay, driven by requestAnimationFrame — no React
  * re-render per frame):
  *  - tractor: works back and forth along a field-edge track
- *  - worker: idles near the control room; walks to the valve of a zone with an
+ *  - worker: idles at the workers' rooms; walks to the valve of a zone with an
  *            active zone/valve alarm and stays until it's acked/cleared
  *  - birds:  a small flock crosses the farm every 25–50 s, wings flapping
  * Hidden entirely when reduce-motion is on.
  */
 import { useEffect, useRef } from 'react';
 import type { Alarm } from '@algaroshy/contracts';
-import { FARM, type Point } from '@algaroshy/map-model';
+import { FARM, polygonCentroid, type Point } from '@algaroshy/map-model';
 import { along, pathLength, route } from './life';
 
 const [, , VW, VH] = FARM.viewBox;
 const WORKER_SPEED = 2.7; // map units / s ≈ 1.4 m/s walking
 const TRACTOR_SPEED = 3.5;
-const HOME: Point = [FARM.equipment.well_room.at[0] + 9, FARM.equipment.well_room.at[1] + 7];
+// the worker lives in the workers' rooms (section C of the main building) and waits at the door
+const rooms = Object.values(FARM.buildings ?? {}).find((b) => b.kind === 'workers');
+const ROOMS = rooms ? polygonCentroid(rooms.points) : FARM.equipment.well_room.at;
+const HOME: Point = [ROOMS[0] - 4, ROOMS[1] + 14];
 
 function setT(el: SVGGElement | null, p: Point, heading: number, scale = 1) {
   el?.setAttribute('transform', `translate(${p[0].toFixed(2)} ${p[1].toFixed(2)}) rotate(${heading.toFixed(1)}) scale(${scale})`);

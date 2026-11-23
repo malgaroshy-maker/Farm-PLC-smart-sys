@@ -89,7 +89,8 @@ export default function Dashboard() {
       </div>
 
       <div className="flex-1 min-h-0 grid gap-3 lg:gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="aspect-[1000/887] lg:aspect-auto lg:min-h-[560px]">
+        {/* the real farm is taller than wide (viewBox 900×980): give the map most of the screen height */}
+        <div className="aspect-[900/980] lg:aspect-auto lg:min-h-[max(600px,calc(100dvh-7rem))]">
           <FarmMap state={state} selectedZone={selectedZone} onZoneSelect={handleSelectZone} />
         </div>
         <aside className="space-y-3 lg:overflow-y-auto lg:pe-1">

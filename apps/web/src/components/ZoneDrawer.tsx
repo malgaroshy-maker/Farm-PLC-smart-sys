@@ -35,6 +35,11 @@ const DETAIL_ART: Record<string, string> = {
   grapes: '/art/detail_grape.webp',
   mixed_fruit: '/art/detail_stonefruit.webp',
 };
+/** Zones whose crop looks different from the rest of its kind (owner, block 8). */
+const ZONE_ART: Record<string, string> = {
+  zone_rumman_ummahat: '/art/detail_ummahat.webp', // dense hedge rows of mother plants
+  zone_zaytoun_2: '/art/detail_olive_old.webp', // three rows of big old olives
+};
 const RANGES = [
   { label: '1H', minutes: 60 },
   { label: '6H', minutes: 360 },
@@ -400,7 +405,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
 
           {/* 4 — crop & hardware */}
           <section className="panel overflow-hidden">
-            <img src={DETAIL_ART[crop] ?? DETAIL_ART.pomegranate} alt="" className="w-full h-36 object-cover" loading="lazy" />
+            <img src={ZONE_ART[zoneId] ?? DETAIL_ART[crop] ?? DETAIL_ART.pomegranate} alt="" className="w-full h-36 object-cover" loading="lazy" />
             <div className="p-4 space-y-2 text-sm">
               <Row label={t('drawer.valveId')} value={<bdi className="font-mono">{valve?.valve_id ?? '—'}</bdi>} />
               <Row

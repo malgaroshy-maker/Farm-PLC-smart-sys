@@ -66,3 +66,25 @@ The building cluster is **not** all control/well. Only S6 is the control room an
 1. Georeference the image into the map's coordinate space. The current geometry is squashed north–south and probably rotated: the real footprint is about 510 × 600 m, the old map 515 × 457 m.
 2. Trace the blocks, tracks, building footprints, the wadi edge and the farm boundary (around blocks 6–15 and the building cluster).
 3. Show the owner an **overlay** (satellite + old + new) and an **area table** (legend vs old vs new) **before** replacing `farm-geometry.json`.
+
+## Trace result (owner-approved 2026-11-23)
+The trace is in `tools/map-geometry/satellite_trace.json`, and the method and per-zone area/row table are in `tools/map-geometry/README.md`. The owner's answers during review:
+- **fruit_mix = block 10 + block 17** (the rows south of block 10), as in the old sketch. It measures 10,871 m², and the legend is 10,863 m².
+- **Block 8 strips.** The enab | zaytoun_2 line sits where the olive rows start (three rows, about 7.5 m apart). Final: the order is right and **ummahat is bigger than enab**, so the ummahat | enab line follows the sketch legend (ummahat 1,614 m², enab 734 m²).
+- **Strip between rumman_jadeed and rumman_3.** Mixed trees (almond, lemon, orange, apricot, plum). They are **not irrigated by this system**: drawn as trees, not clickable, no valve.
+- **West edge of the olive block.** There is no pond, only long old trees on the boundary with the neighbours.
+- **The rumman_6 / rumman_5 split is kept** where the building cluster meets the main track.
+
+### Second review (2026-11-23)
+- **The middle building is one connected building with sections:** A = chicken barn (عنبر), B = brooder (حضانة), C = workers' rooms (سكن العمال). This replaces the separate S1, S2, S3 and S5 footprints.
+- **The well is underground, just north of the control room.** It is drawn as a flush well cap, not a wellhead.
+- **House C is the farm rest house (استراحة المزرعة).** Its spot is right, and it is now inside the farm boundary, joined along the entrance track.
+- New art (generated with Codex, in the map's photoreal style): roofs for the barn, brooder, workers' rooms and rest house, the well cap, almond / lemon / orange trees for the mixed-fruit strip, and a new sand texture. The tracks now show tyre ruts.
+
+### Block 8 detail (2026-11-23)
+- **enab:** grapes on **trellis rows** about 2.8 m apart, drawn as continuous trellis lines.
+- **rumman_ummahat:** **big mother pomegranate trees**, larger than the other pomegranates (canopy about 5.4 m against 3.6 m), in rows 5 m apart.
+- **zaytoun_2:** **three rows of big old olive trees** (~7.5 m apart).
+- All block 8 rows run **parallel to the strip edges** (bearing 155°) and are centred across each strip.
+- Narrow **footpaths** run between the strips. Each strip's **name is written inside it**, along the rows.
+- The zone drawer shows close-up art for ummahat (big mother trees) and zaytoun_2 (old olives).

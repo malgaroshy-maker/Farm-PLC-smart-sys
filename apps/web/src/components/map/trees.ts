@@ -3,7 +3,8 @@
  * agronomic spacing, kept inside the polygon, with seeded jitter so every
  * render (and every viewer) sees the same orchard.
  *
- * Map units: 1 unit ≈ 0.515 m (sqrt of FARM.m2_per_unit2).
+ * Map units: 1 unit ≈ 0.5 m (sqrt of FARM.m2_per_unit2). Row direction and row spacing
+ * come from the satellite where measured (farmLayout); the rest uses crop defaults.
  */
 import { FARM, type Point } from '@algaroshy/map-model';
 import type { Crop, ZoneLayout } from './farmLayout';
@@ -18,7 +19,7 @@ const SPACING: Record<Crop, { row: number; tree: number; canopy: number; elongat
   mixed: { row: 5.5, tree: 5, canopy: 4.2 },
 };
 
-export type Species = 'pomegranate' | 'olive' | 'grape' | 'peach' | 'apricot' | 'plum';
+export type Species = 'pomegranate' | 'olive' | 'grape' | 'peach' | 'apricot' | 'plum' | 'almond' | 'lemon' | 'orange';
 
 export interface Tree {
   x: number;
@@ -38,6 +39,9 @@ export const FRUIT_SEASON: Record<Species, number[]> = {
   apricot: [5, 6],
   peach: [6, 7, 8],
   plum: [6, 7, 8],
+  almond: [8, 9],
+  lemon: [11, 12, 1, 2, 3],
+  orange: [12, 1, 2, 3],
 };
 
 export function spriteFor(species: Species, month: number): string {
@@ -55,6 +59,12 @@ export function spriteFor(species: Species, month: number): string {
       return fruit ? '/map/tree_apricot_fruit.webp' : '/map/tree_stonefruit_green.webp';
     case 'plum':
       return fruit ? '/map/tree_plum_fruit.webp' : '/map/tree_stonefruit_green.webp';
+    case 'almond':
+      return fruit ? '/map/tree_almond_fruit.webp' : '/map/tree_almond_green.webp';
+    case 'lemon':
+      return fruit ? '/map/tree_lemon_fruit.webp' : '/map/tree_citrus_green.webp';
+    case 'orange':
+      return fruit ? '/map/tree_orange_fruit.webp' : '/map/tree_citrus_green.webp';
   }
 }
 
@@ -103,10 +113,12 @@ const MIXED: Species[] = ['peach', 'apricot', 'plum'];
 
 export function placeTrees(zone: ZoneLayout): Tree[] {
   const sp = SPACING[zone.crop];
-  const rowStep = sp.row * M;
-  const treeStep = sp.tree * M;
-  const canopy = sp.canopy * M;
-  const margin = canopy * 0.55;
+  const rowStep = (zone.rowSpacing ?? sp.row) * M;
+  const treeStep = (zone.treeSpacing ?? sp.tree) * M;
+  const canopy = (zone.canopy ?? sp.canopy) * M;
+  const fitted = zone.rowCount != null || zone.small;
+  // fitted strips keep their outer rows: only a small edge margin
+  const margin = canopy * (fitted ? 0.2 : 0.55);
   const rand = rng(hash(zone.id));
 
   // rotate the polygon into row-aligned space (rows parallel to the x' axis)
@@ -120,16 +132,29 @@ export function placeTrees(zone: ZoneLayout): Tree[] {
   const ys = local.map((p) => p[1]);
   const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
 
+  // rows run parallel to the field and are centred across it, so they line up with the edges
+  const width = maxY - minY;
+  const nRows = zone.rowCount ?? Math.max(1, Math.floor(width / rowStep));
+  const y0 = minY + (width - (nRows - 1) * rowStep) / 2;
+
   const trees: Tree[] = [];
-  let row = 0;
-  for (let y = minY + rowStep / 2; y < maxY; y += rowStep, row++) {
+  for (let row = 0; row < nRows; row++) {
+    const y = y0 + row * rowStep;
     const offset = zone.crop === 'olive' && row % 2 ? treeStep / 2 : 0; // staggered olive grid
     for (let x = minX + treeStep / 2 + offset; x < maxX; x += treeStep) {
-      const jitter = zone.crop === 'grape' ? 0 : treeStep * 0.08;
+      const jitter = sp.elongated ? 0 : treeStep * 0.08;
       const p = toWorld([x + (rand() - 0.5) * jitter, y + (rand() - 0.5) * jitter]);
       if (!pointInPolygon(p, zone.points) || distToEdge(p, zone.points) < margin) continue;
       const species: Species =
-        zone.crop === 'pomegranate' ? 'pomegranate' : zone.crop === 'olive' ? 'olive' : zone.crop === 'grape' ? 'grape' : MIXED[row % 3];
+        zone.crop === 'pomegranate'
+          ? 'pomegranate'
+          : zone.crop === 'olive'
+            ? 'olive'
+            : zone.crop === 'grape'
+              ? 'grape'
+              : zone.species?.length
+                ? zone.species[Math.floor(rand() * zone.species.length)]
+                : MIXED[row % 3];
       trees.push({
         x: p[0],
         y: p[1],

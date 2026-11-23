@@ -9,8 +9,8 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch';
 import { ChevronDown, ChevronUp, Maximize, Moon, Sun, SunMoon, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Alarm, AlarmSeverity, FarmMapState, PumpLiveState, ValveLiveState, ZoneLiveState } from '@algaroshy/contracts';
-import { FARM, polygonPath, polylinePath, type Point } from '@algaroshy/map-model';
-import { EQUIPMENT_SIZE, SPRITES, TEXTURES, TRUNK_LENGTH, TRUNK_PARENT, ZONES, type ZoneLayout } from './farmLayout';
+import { FARM, polygonCentroid, polygonPath, polylinePath, type Point } from '@algaroshy/map-model';
+import { EQUIPMENT_SIZE, STRIP_LABEL_H, STRIP_LABELS, SPRITES, TEXTURES, TRUNK_LENGTH, TRUNK_PARENT, ZONES, type ZoneLayout } from './farmLayout';
 import { TreeCanvas, WetCanvas } from './MapCanvases';
 import { WeatherOverlay } from './WeatherOverlay';
 import WeatherWidget from './WeatherWidget';
@@ -89,16 +89,28 @@ function zoneOfAlarm(a: Pick<Alarm, 'zone_id' | 'device_id'>): string | null {
 
 const Ground = memo(function Ground() {
   const boundary = polygonPath(FARM.features.boundary.points);
+  const wadi = FARM.surroundings?.wadi;
   return (
     <svg viewBox={`${VX} ${VY} ${VW} ${VH}`} className="absolute inset-0 w-full h-full" aria-hidden="true">
       <defs>
-        {(['sand', 'track'] as const).map((k) => (
+        {(['sand', 'track', 'olive'] as const).map((k) => (
           <pattern key={k} id={`tex-${k}`} patternUnits="userSpaceOnUse" width={TEXTURES[k].w} height={TEXTURES[k].h}>
             <image href={TEXTURES[k].href} width={TEXTURES[k].w} height={TEXTURES[k].h} preserveAspectRatio="none" />
           </pattern>
         ))}
       </defs>
       <rect x={VX} y={VY} width={VW} height={VH} fill="url(#tex-sand)" />
+      {/* not ours: neighbours' orchards (faded) and the dry wadi on the east */}
+      {FARM.surroundings?.orchards.map((o, i) => (
+        <path key={i} d={polygonPath(o)} fill="url(#tex-olive)" opacity={0.28} style={{ filter: 'saturate(0.4)' }} />
+      ))}
+      {wadi && (
+        <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d={polylinePath(wadi.points)} stroke="#3a2a18" strokeOpacity={0.4} strokeWidth={wadi.width * 1.6} />
+          <path d={polylinePath(wadi.points)} stroke="#cdb48c" strokeOpacity={0.55} strokeWidth={wadi.width} />
+          <path d={polylinePath(wadi.points)} stroke="#e8dcc6" strokeOpacity={0.45} strokeWidth={wadi.width * 0.25} strokeDasharray="14 9" />
+        </g>
+      )}
       {/* tilled field soil: slightly darker and warmer than bare sand */}
       {ZONES.map((z) => (
         <path key={z.id} d={polygonPath(z.points)} fill="#5a3a1c" fillOpacity={0.2} />
@@ -107,10 +119,20 @@ const Ground = memo(function Ground() {
         <g key={i} fill="none" strokeLinecap="round" strokeLinejoin="round">
           <path d={polylinePath(t)} stroke="#3e2c1a" strokeOpacity={0.35} strokeWidth={12} />
           <path d={polylinePath(t)} stroke="url(#tex-track)" strokeWidth={9.5} />
+          {/* two tyre ruts: a darker band with a lighter crown left in the middle */}
+          <path d={polylinePath(t)} stroke="#5b3f22" strokeOpacity={0.32} strokeWidth={6.2} />
+          <path d={polylinePath(t)} stroke="url(#tex-track)" strokeWidth={2.6} />
         </g>
       ))}
-      {/* outside the farm: darker desert */}
-      <path d={`M${VX},${VY}H${VW}V${VH}H${VX}Z ${boundary}`} fillRule="evenodd" fill="#0e0e0e" fillOpacity={0.5} />
+      {/* narrow footpaths between the block 8 strips: plain trodden earth, ~1.5 m wide */}
+      {FARM.paths?.map((p, i) => (
+        <g key={`path-${i}`} fill="none" strokeLinecap="round">
+          <path d={polylinePath(p)} stroke="#3e2c1a" strokeOpacity={0.22} strokeWidth={3.6} />
+          <path d={polylinePath(p)} stroke="url(#tex-track)" strokeWidth={2.6} />
+        </g>
+      ))}
+      {/* outside the farm: darker desert (neighbours stay visible, faded) */}
+      <path d={`M${VX},${VY}H${VW}V${VH}H${VX}Z ${boundary}`} fillRule="evenodd" fill="#0e0e0e" fillOpacity={0.32} />
       <path d={boundary} fill="none" stroke="#e5e2e1" strokeOpacity={0.45} strokeWidth={1.4} strokeDasharray="6 4" />
     </svg>
   );
@@ -288,8 +310,9 @@ function Equipment({
   const levelColor = tankPct < 10 ? '#ff5449' : tankPct < 25 ? '#ffeb3b' : CYAN;
   return (
     <g pointerEvents="none">
-      {sprite('wellhead', e.wellhead.at, t('map.well'), 'wellhead')}
       {sprite('control_room', e.well_room.at, t('map.well'))}
+      {/* the well is underground, just north of the control room: a flush cap on top */}
+      {sprite('wellhead', e.wellhead.at, t('map.well'), 'wellhead')}
       {sprite('tank', tank, t('map.tank'), 'tank')}
       {sprite('booster', e.booster.at, t('map.booster'), 'booster')}
       {rotor(pumps.pump_booster_01, [e.booster.at[0] + 5, e.booster.at[1] + 3], 2.6)}
@@ -304,6 +327,58 @@ function Equipment({
     </g>
   );
 }
+
+const BUILDING_FILL: Record<string, string> = {
+  chicken_house: '#8a8f94',
+  workers: '#a88f6c',
+  control_room: '#6f7c80',
+  tank: '#9aa3a6',
+  house: '#b49a74',
+};
+
+/** Length/width/angle of a (near-)rectangular footprint, long side first, for laying a roof sprite on it. */
+function orientedRect(points: Point[]): { length: number; width: number; angle: number } {
+  const [a, b, c] = points;
+  const e1 = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const e2 = Math.hypot(c[0] - b[0], c[1] - b[1]);
+  const [p, q, length, width] = e1 >= e2 ? [a, b, e1, e2] : [b, c, e2, e1];
+  let angle = (Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  return { length, width, angle };
+}
+
+/** Non-irrigation buildings (owner-confirmed): real footprints, labelled, not interactive. */
+const Buildings = memo(function Buildings({ lang }: { lang: 'ar' | 'en' }) {
+  return (
+    <g pointerEvents="none">
+      {Object.entries(FARM.buildings ?? {}).map(([id, b]) => {
+        if (b.kind === 'tank' || b.kind === 'control_room') return null; // drawn as equipment sprites
+        const [cx, cy] = polygonCentroid(b.points);
+        const r = orientedRect(b.points);
+        return (
+          <g key={id}>
+            <path d={polygonPath(b.points)} fill={BUILDING_FILL[b.kind]} stroke="#1b1b1b" strokeWidth={0.8} filter="url(#soft-shadow)" />
+            {b.sprite && (
+              <image
+                href={`/map/spr_bld_${b.sprite}.webp`}
+                x={-r.length / 2}
+                y={-r.width / 2}
+                width={r.length}
+                height={r.width}
+                preserveAspectRatio="none"
+                transform={`translate(${cx} ${cy}) rotate(${r.angle})`}
+              />
+            )}
+            <text x={cx} y={cy + 2} textAnchor="middle" fontSize={6} fill="#f2efe9" stroke="#000" strokeWidth={1.4} style={{ paintOrder: 'stroke' }}>
+              {pickName(lang, b.name, b.name_ar)}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+});
 
 function Lamps({ night }: { night: number }) {
   if (night < 0.3) return null;
@@ -359,6 +434,30 @@ function Chip({ z, live, alarm, lang }: { z: ZoneLayout; live?: ZoneLiveState; a
         </div>
       </div>
     </foreignObject>
+  );
+}
+
+const STRIP_LABEL_W = 56;
+
+/** Name written inside a small strip, along it (owner 2026-11-23), with a status dot. */
+function StripLabel({ z, live, alarm, lang }: { z: ZoneLayout; live?: ZoneLiveState; alarm: Alarm | null; lang: 'ar' | 'en' }) {
+  const l = STRIP_LABELS[z.id];
+  if (!l) return null;
+  const s = uiState(live);
+  const color = alarm ? SEVERITY[alarm.severity].color : s === 'idle' ? '#bac9cc' : STATE_COLOR[s];
+  const w = Math.min(STRIP_LABEL_W, l.length * 0.8);
+  return (
+    <g pointerEvents="none" transform={`translate(${l.at[0]} ${l.at[1]}) rotate(${l.angle})`}>
+      {/* counter-scaled like the chips, so the label stays small when zooming in */}
+      <g className="map-strip-label">
+        <rect x={-w / 2} y={-STRIP_LABEL_H / 2} width={w} height={STRIP_LABEL_H} rx={STRIP_LABEL_H / 2} fill="rgba(14,14,14,0.72)" stroke={color} strokeOpacity={0.75} strokeWidth={0.6} />
+        <circle cx={-w / 2 + 4.5} cy={0} r={1.8} fill={color} />
+        <text x={2} y={2.1} textAnchor="middle" fontSize={5.8} fontWeight={700} fill="#f2efe9">
+          {alarm ? '⚠ ' : ''}
+          {pickName(lang, z.name, z.nameAr)}
+        </text>
+      </g>
+    </g>
   );
 }
 
@@ -497,7 +596,8 @@ export default function FarmMap({
   }, [alarms]);
 
   const visibleChips = useMemo(() => {
-    const candidates = ZONES.map((z) => {
+    // small zones show their name inside the strip; big chips must not cover those labels
+    const candidates = ZONES.filter((z) => !z.small).map((z) => {
       const live = zones[z.id];
       const alarm = (alarmsByZone[z.id] ?? []).find((a) => a.condition_active) ?? null;
       const isSelected = selectedZone === z.id;
@@ -514,7 +614,12 @@ export default function FarmMap({
       return { z, priority, box };
     }).sort((a, b) => b.priority - a.priority);
 
-    const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
+    const placed: Array<{ x: number; y: number; w: number; h: number }> = Object.values(STRIP_LABELS).map(({ at, angle }) => {
+      const rad = (angle * Math.PI) / 180;
+      const hw = (Math.abs(Math.cos(rad)) * STRIP_LABEL_W + Math.abs(Math.sin(rad)) * STRIP_LABEL_H) / 2;
+      const hh = (Math.abs(Math.sin(rad)) * STRIP_LABEL_W + Math.abs(Math.cos(rad)) * STRIP_LABEL_H) / 2;
+      return { x: at[0] - hw, y: at[1] - hh, w: hw * 2, h: hh * 2 };
+    });
     const visible: Record<string, boolean> = {};
 
     for (const c of candidates) {
@@ -681,6 +786,7 @@ export default function FarmMap({
                 <TreeCanvas zones={zones} month={clock.month} />
                 <svg viewBox={`${VX} ${VY} ${VW} ${VH}`} className="absolute inset-0 w-full h-full" role="img" aria-label={t('map.title')}>
                   <OverlayDefs />
+                  <Buildings lang={lang} />
                   {ZONES.map((z) => (
                     <ZoneShape
                       key={z.id}
@@ -713,6 +819,9 @@ export default function FarmMap({
                   {dusk > 0 && <rect x={VX} y={VY} width={VW} height={VH} fill="#ff8a3d" opacity={dusk * 0.18} style={{ mixBlendMode: 'soft-light' }} pointerEvents="none" />}
                   {night > 0 && <rect x={VX} y={VY} width={VW} height={VH} fill="#0a1430" opacity={night * 0.6} style={{ mixBlendMode: 'multiply' }} pointerEvents="none" />}
                   <Lamps night={night} />
+                  {ZONES.filter((z) => z.small).map((z) => (
+                    <StripLabel key={`strip-${z.id}`} z={z} live={zones[z.id]} alarm={(alarmsByZone[z.id] ?? []).find((a) => a.condition_active) ?? null} lang={lang} />
+                  ))}
                   {ZONES.map((z) => (
                     visibleChips[z.id] ? (
                       <Chip key={z.id} z={z} live={zones[z.id]} alarm={(alarmsByZone[z.id] ?? []).find((a) => a.condition_active) ?? null} lang={lang} />

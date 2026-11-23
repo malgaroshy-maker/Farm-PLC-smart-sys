@@ -1,0 +1,119 @@
+{
+ "about": "Farm outlines traced by eye on design/satellite/farm_esri_z17.jpg (Esri World Imagery z17, ~1.007 m/px; Source: Esri, Maxar, Earthstar Geographics). Coordinates are z17 image pixels (x right, y down) of that image; satellite_retrace.py converts them to lat/lon and map units. Block outlines follow the centre line of the dirt track around each block, so neighbouring blocks share edges; the processor insets each block by half a track width. Block numbers and the block->zone mapping are from docs/MAP_SURVEY.md (owner-confirmed 2026-11-20).",
+ "image": {"file": "design/satellite/farm_esri_z17.jpg", "z": 17, "bbox": [14.0661, 32.51265, 14.07462, 32.51985]},
+ "track_half_width_px": 2.0,
+ "blocks": {
+  "6+9": [[343,331],[348,360],[351,390],[354,420],[357,448],[362,458],[330,478],[305,492],[287,508],[271,516],[247,532],[234,542],[224,547],[207,531],[191,507],[182,492],[190,480],[215,458],[228,440],[238,410],[248,385],[262,363],[285,350],[315,339]],
+  "7": [[362,326],[397,311],[431,302],[458,302],[464,351],[471,397],[491,414],[511,434],[526,452],[527,467],[490,483],[458,500],[452,490],[440,464],[428,437],[420,416],[411,397],[394,370],[374,347]],
+  "8": [[373,453],[388,447],[420,436],[425.5,438],[437.5,465],[449.5,491],[455,501.5],[437,510],[414,518],[404.5,520.6]],
+  "10": [[287,508],[271,516],[247,532],[234,542],[250,575],[261,602],[300,604],[340,606],[331,587],[317,563],[301,537]],
+  "17": [[261,602],[300,604],[340,606],[327,621],[304,650],[282,680],[264,712],[255,714],[249,700],[255,683],[262,665],[256,648],[250,630],[252,615]],
+  "11": [[287,508],[305,492],[330,478],[362,458],[373,453],[404.5,520.6],[400,563],[370,585],[340,606],[331,587],[317,563],[301,537]],
+  "12": [[414,518],[437,510],[458,500],[464,514],[477,547],[491,577],[500,596],[470,604],[441,611],[437,583],[427,555]],
+  "13": [[458,500],[490,483],[527,467],[530,471],[544,499],[557,541],[558,549],[553,563],[531,577],[500,596],[491,577],[477,547],[464,514]],
+  "14": [[444,621],[470,604],[500,596],[514,621],[527,647],[541,674],[550,692],[545,700],[522,710],[500,712],[478,711],[471,697],[457,657]],
+  "15": [[500,596],[531,577],[562,558],[566,579],[570,635],[576,670],[572,683],[550,687],[541,674],[527,647],[514,621]]
+ },
+ "splits": {
+  "7": {"why": "Owner: split block 7 at the cross-track level with the building cluster. The line runs through the point where the building cluster meets the main diagonal track, parallel to the 7/13 cross-track.",
+        "line": [[420,416],[489,383]], "north": "zone_rumman_6", "south": "zone_rumman_5"},
+  "8": {"why": "Owner: block 8 strips east->west are zaytoun_2, enab, rumman_ummahat. A brightness/texture profile across the strips (parallel to the main track) shows dense dark canopy for 15 m, a uniform lighter band for 14 m, then three olive rows ~7.5 m apart up to the track. The enab|zaytoun_2 line sits at the olive rows. Owner 2026-11-23 (final): ummahat should be bigger on the map, so the ummahat|enab line goes back to the sketch/legend position (ummahat > enab).",
+        "lines": [[[392.3,444.4],[426.0,517.0]], [[400.9,440.4],[434.7,513.0]]],
+        "west_to_east": ["zone_rumman_ummahat", "zone_enab", "zone_zaytoun_2"]}
+ },
+ "zones": {
+  "zone_zaytoun": {"block": "6+9", "legend_m2": 22882.01},
+  "zone_rumman_6": {"block": "7", "part": "north", "legend_m2": 8139.91},
+  "zone_rumman_5": {"block": "7", "part": "south", "legend_m2": 6399.4},
+  "zone_rumman_ummahat": {"block": "8", "part": 0, "legend_m2": 1428.21},
+  "zone_enab": {"block": "8", "part": 1, "legend_m2": 701.73},
+  "zone_zaytoun_2": {"block": "8", "part": 2, "legend_m2": 1537.99},
+  "zone_fruit_mix": {"block": "10+17", "blocks": ["10", "17"], "legend_m2": 10863.43, "note": "Owner 2026-11-23: fruit_mix is block 10 plus block 17 (the rows south of it), as in the sketch."},
+  "zone_rumman_jadeed": {"block": "11", "legend_m2": 9298.68},
+  "zone_rumman_3": {"block": "12", "legend_m2": 5447.01},
+  "zone_rumman_4": {"block": "13", "legend_m2": 7080.64},
+  "zone_rumman_2": {"block": "14", "legend_m2": 7085.35},
+  "zone_rumman_1": {"block": "15", "legend_m2": 4980.46}
+ },
+ "tracks": {
+  "entrance_north": [[337,272],[346,290],[350,310],[343,331]],
+  "north_of_6": [[343,331],[315,339],[285,350],[262,363],[248,385],[238,410],[228,440],[215,458],[190,480],[182,492]],
+  "west_of_buildings": [[343,331],[348,360],[351,390],[354,420],[357,448],[362,458]],
+  "c_to_block7": [[343,331],[362,326],[374,347],[394,370]],
+  "between_6_and_11": [[362,458],[330,478],[305,492],[287,508]],
+  "between_9_and_10": [[287,508],[271,516],[247,532],[234,542],[224,547]],
+  "between_10_and_11": [[287,508],[301,537],[317,563],[331,587],[340,606]],
+  "main_diagonal": [[394,370],[411,397],[420,416],[428,437],[440,464],[452,490],[458,500],[464,514],[477,547],[491,577],[500,596],[514,621],[527,647],[541,674],[554,697],[562,714]],
+  "cross_7_13": [[394,524],[414,518],[437,510],[458,500],[490,483],[527,467]],
+  "cross_12_14": [[441,611],[470,604],[500,596],[531,577],[562,558]],
+  "west_edge_12_14": [[414,518],[427,555],[437,583],[441,611],[457,657],[471,697],[478,716]]
+ },
+ "row_overrides": {
+  "about": "Owner 2026-11-23: block 8 rows must line up with the strips. Rows run parallel to the strip edges (bearing 155.0 deg).",
+  "zone_zaytoun_2": {"row_spacing_m": 7.5, "row_count": 3, "row_angle_deg": 155.0, "why": "owner: three rows of big old olives; the profile shows rows ~7.5 m apart"},
+  "zone_enab": {"row_spacing_m": 2.8, "row_angle_deg": 155.0, "why": "owner: trellis rows; 2.5-3 m apart (below the image resolution)"},
+  "zone_rumman_ummahat": {"row_spacing_m": 5.0, "row_angle_deg": 155.0, "why": "owner: big mother pomegranate trees, bigger than the other pomegranates"}
+ },
+ "other_areas": {
+  "mixed_fruit_strip": {"what": "Owner 2026-11-23: a strip of mixed trees (almond, lemon, orange, apricot, plum) between rumman_jadeed and rumman_3. Not part of any zone in the legend.",
+                        "points": [[404.5,520.6],[414,518],[427,555],[433,578],[415,582],[400,563]]}
+ },
+ "yard": {"about": "The building cluster between the tracks (part of the farm boundary).",
+          "points": [[343,331],[362,326],[374,347],[394,370],[411,397],[420,416],[425,438],[388,447],[373,453],[362,458],[357,448],[354,420],[351,390],[348,360]]},
+ "network": {
+  "about": "GUESSED: pipes are not visible from the satellite. Owner: the mainline runs along the tracks from the well (S6) and the tank/booster (S7); each block's valve sits at its corner next to the track.",
+  "mainline": {
+   "trunk_se": [[363,437],[373,446],[388,445],[420,436],[428,437],[440,464],[452,490],[458,500],[464,514],[477,547],[491,577],[500,596],[514,621],[527,647],[541,674],[552,694]],
+   "trunk_n": [[428,437],[420,416],[411,397],[394,370]],
+   "trunk_w": [[363,437],[358,448],[362,458],[330,478],[305,492],[287,508],[301,537],[317,563],[331,587]],
+   "branch_x1": [[458,500],[490,483],[522,469]],
+   "branch_x2": [[500,596],[531,577],[556,562]]
+  },
+  "refill": [[366,405],[366,419],[365,428],[364,433]],
+  "valves": {
+   "zone_zaytoun": [349,446],
+   "zone_rumman_jadeed": [333,484],
+   "zone_fruit_mix": [295,541],
+   "zone_rumman_ummahat": [386,453],
+   "zone_enab": [397,448],
+   "zone_zaytoun_2": [410,444],
+   "zone_rumman_6": [399,369],
+   "zone_rumman_5": [430,421],
+   "zone_rumman_3": [455,509],
+   "zone_rumman_4": [473,499],
+   "zone_rumman_2": [494,605],
+   "zone_rumman_1": [518,592]
+  }
+ },
+ "equipment": {
+  "tank": {"at": [363,436], "kind": "tank_building"},
+  "booster": {"at": [371,438], "kind": "booster_pad"},
+  "well_room": {"at": [366,415], "kind": "control_room"},
+  "wellhead": {"at": [366,405], "kind": "wellhead"}
+ },
+ "surroundings": {
+  "about": "Not ours (owner, MAP_SURVEY.md): faded, not clickable, no labels. Rough outlines.",
+  "orchards": {
+   "blocks 2-3 and windbreak (north-west)": [[165,255],[328,255],[336,290],[336,322],[312,334],[283,345],[259,358],[244,382],[233,410],[223,438],[210,455],[186,476],[165,490]],
+   "block 5 (north)": [[356,255],[470,255],[462,296],[431,298],[397,307],[362,320],[356,300]],
+   "block 16 (south, scattered olives)": [[343,612],[402,568],[436,615],[452,660],[466,700],[472,745],[300,745],[270,722],[286,688],[308,654],[330,624]]
+  },
+  "wadi": {"width_m": 10, "points": [[490,255],[492,300],[505,340],[522,375],[545,410],[565,450],[580,500],[590,560],[598,620],[605,690],[612,745]]}
+ },
+ "map_frame_px": [165, 255, 615, 745],
+ "controls": {
+  "about": "Areas that are NOT our orchard, to show the fill/sand metrics can tell orchard from ground.",
+  "block 16 (open ground, scattered trees)": [[345,610],[400,566],[440,615],[470,700],[400,720],[330,700]],
+  "wadi sand (east)": [[520,300],[590,300],[590,420],[540,400]]
+ },
+ "buildings": {
+  "about": "Owner 2026-11-23: the middle building is ONE connected building with sections A barn, B brooder, C workers' rooms (outlines traced on the image). The well is underground, just north of the control room. House C is the farm rest house (استراحة المزرعة).",
+  "barn": {"what": "section A: chicken barn", "kind": "chicken_house", "sprite": "barn", "en": "Barn", "ar": "عنبر", "points": [[352,367],[361,362],[379,393],[370,398]]},
+  "brooder": {"what": "section B: brooder", "kind": "chicken_house", "sprite": "brooder", "en": "Brooder", "ar": "حضانة", "points": [[369,394],[396,380],[407,405],[381,419]]},
+  "rooms": {"what": "section C: workers' rooms", "kind": "workers", "sprite": "rooms", "en": "Workers' rooms", "ar": "سكن العمال", "points": [[381,419],[398,410],[403,424],[387,431]]},
+  "control": {"what": "control room (the well is just north of it, underground)", "kind": "control_room", "en": "Control room", "ar": "غرفة التحكم", "c": [366,416], "len": 7, "wid": 6, "deg": 0},
+  "tank": {"what": "water tank (closed concrete)", "kind": "tank", "en": "Water tank", "ar": "خزان المياه", "c": [363,436], "len": 9, "wid": 8, "deg": 0},
+  "booster": {"what": "booster pump pad, next to the tank", "kind": "booster", "en": "Booster pump", "ar": "مضخة التقوية", "c": [370,437], "len": 4, "wid": 3, "deg": 0},
+  "resthouse": {"what": "farm rest house", "kind": "house", "sprite": "resthouse", "en": "Farm rest house", "ar": "استراحة المزرعة", "points": [[344,292],[362,290],[364,312],[346,314]]}
+ }
+}

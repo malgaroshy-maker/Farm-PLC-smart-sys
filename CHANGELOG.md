@@ -8,6 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone F — Satellite map trace (2026-11-23)
+- Block 8, third review:
+  - trellis rows for enab
+  - big mother pomegranate trees for ummahat, larger than the other pomegranates
+  - exactly three rows of big old olives for zaytoun_2
+  - rows aligned with the strip edges and centred
+  - footpaths between the strips
+  - names inside the strips
+  - close-up drawer art for ummahat and zaytoun_2
+- Second review:
+  - the middle building is one connected building (barn, brooder, workers' rooms) with Codex-generated roof art
+  - the farm rest house (استراحة المزرعة) is inside the boundary
+  - the well is underground, drawn as a flush cap north of the control room
+  - enab is wider toward ummahat
+  - the mixed-fruit strip has almond, lemon and orange trees
+  - new sand texture and tyre ruts on the tracks
+  - the block 8 strips have always-visible pins
+  - the dashboard map is taller (most of the screen on desktop, full width on phones)
+- Fixed: the zone drawer refetched its baseline on every live update (`useT` returned a new `t` each render).
+- Fixed: the launcher no longer shows Vite's virtual-adapter addresses. Vite's coloured output defeated the old filter.
+- The farm map is now traced on Esri World Imagery z17 (owner-approved): north-up, true scale (0.5035 m/unit, viewBox 900×980). The blocks are tilted as on the ground, and every zone is within −8 %..+16 % of its legend. Method and table: `tools/map-geometry/README.md`.
+- fruit_mix = blocks 10 + 17. The block 8 strips follow the satellite texture and the legend.
+- Trees follow the row bearing and row spacing measured per zone.
+- New layers: buildings (chicken house, workers' rooms, house) as labelled footprints, the mixed-fruit strip (trees only), the neighbours' orchards (faded) and the wadi.
+- The worker lives at the workers' rooms (S5). Pipes and valves are re-routed along the real tracks and marked guessed.
+- Briefing: no invented weather defaults, and the zone count comes from the DB. The route-coverage test works with FastAPI 0.165.
+
 ### Milestone F — Map Weather & UI Polish (2026-11-20)
 - **Live Weather on the Photoreal Map:**
   - Integrated `WeatherWidget` glass panel into `FarmMap` at top-right above zoom controls with temperature (`<bdi>{temp}°C</bdi>`), meteorological wind arrow pointing towards wind source, wind speed, precipitation probability badge, and condition icons.
