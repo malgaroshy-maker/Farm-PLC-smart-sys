@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, NavLink, Outlet, Link } from 'react-router-dom';
-import { Languages, LogOut, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { CircleHelp, Languages, LogOut, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import {
   AlarmIcon,
   EquipmentIcon,
@@ -112,7 +112,7 @@ export default function DashboardLayout() {
           <div className="text-lg font-bold text-[#e5e2e1] leading-tight">{t('app.name')}</div>
           <div className="text-xs text-[#849396]">{t('app.tagline')}</div>
         </div>
-        <button className="ms-auto lg:hidden p-1 text-[#849396]" onClick={() => setMenuOpen(false)} aria-label="close menu">
+        <button className="ms-auto lg:hidden p-1 text-[#849396]" onClick={() => setMenuOpen(false)} aria-label={t('nav.closeMenu')}>
           <X size={20} />
         </button>
       </div>
@@ -210,7 +210,7 @@ export default function DashboardLayout() {
             paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
           }}
         >
-          <button className="lg:hidden p-2 text-[#bac9cc] min-h-[44px] min-w-[44px] flex items-center justify-center" onClick={() => setMenuOpen(true)} aria-label="menu">
+          <button className="lg:hidden p-2 text-[#bac9cc] min-h-[44px] min-w-[44px] flex items-center justify-center" onClick={() => setMenuOpen(true)} aria-label={t('nav.openMenu')}>
             <Menu size={22} />
           </button>
           <img src="/map/logo.webp" alt="" className="w-7 h-7 lg:hidden" />
@@ -222,6 +222,14 @@ export default function DashboardLayout() {
             {showTech && <ClockHeaderChip />}
           </div>
           <div className="ms-auto flex items-center gap-3 sm:gap-5">
+            <Link
+              to="/help"
+              title={t('nav.help')}
+              aria-label={t('nav.help')}
+              className="p-1.5 rounded-lg text-[#849396] hover:bg-white/10 hover:text-[#e5e2e1]"
+            >
+              <CircleHelp size={18} />
+            </Link>
             <button
               onClick={prefs.toggleMute}
               title={t(prefs.muted ? 'header.unmute' : 'header.mute')}
