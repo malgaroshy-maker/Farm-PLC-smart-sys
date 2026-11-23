@@ -580,7 +580,7 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
           onSubmit={handleSendFollowUp}
           className="p-3 border-t border-white/10 bg-[#161618] flex items-center gap-2"
         >
-          <input
+          <input aria-label={t('ai.askFollowUp')}
             type="text"
             value={inputQuestion}
             onChange={(e) => setInputQuestion(e.target.value)}

@@ -40,10 +40,11 @@ Context: the owner is the only user for now; users and roles UI is deferred. Hos
   - Notification channels.
   - Feature flags.
 
-## G4: UI polish
+## G4: UI polish ✅ done 2026-11-23 (details in CHANGELOG)
 Accessibility, empty and error states, an Arabic text review across all pages, consistent spacing and typography.
 
 ## G5: PLC preparation (design only)
+Owner decisions (2026-11-23): an S7-1500 for now (the hardware research report picks the final CPU); TIA Portal V19 + PLCSIM Advanced, driven through TiaCommander.
 - **OPC UA tag map.** Zones, valves, pumps, tank, flow, pressure, alarms, heartbeat.
 - **PLC data blocks and command handshake.** The cloud/app can never bypass PLC interlocks.
 - **Test plan with PLCSIM Advanced.** See the `tia-portal-openness` skill.

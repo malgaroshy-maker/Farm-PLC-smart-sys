@@ -8,6 +8,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone G4 — UI polish (2026-11-23)
+- **Bugs fixed:**
+  - "Zones running x / 12" now counts the live zone list.
+  - The next-irrigation card and suggestions mount once (phone or desktop layout), not twice.
+  - Leftover English in Arabic screens is translated (ON/OFF, Edit, min, zones, AI settings labels).
+- **Empty and error states:** five new Codex illustrations (schedules, reports, zones, equipment, offline). Zones, Equipment, Schedules, Reports and Events show loading / "couldn't load" with a Retry button / empty instead of a blank page or an endless spinner (`useLoad`, `ErrorState`, `LoadingState`).
+- **Accessibility:**
+  - Visible keyboard focus rings, a skip-to-content link and named navigation landmarks.
+  - Labels for 15 form fields; schedule toggles are proper switches.
+  - 44px tap targets on touch screens. Contrast checked: secondary text 5.4–5.8:1.
+- **Arabic text review** (owner-approved):
+  - Grammar fixes; «المزوّد» and «تعذّر» spelled consistently; «الاحتياطي» replaces «التراجع».
+  - One name for the advisor, «مستشار الطقس»; latched alarms read «بانتظار إعادة الضبط».
+  - Older stored briefings are shown with Western digits.
+- **Layout fixes from the screenshot review:**
+  - Pump cards no longer squeeze; the Reports tab bar no longer collapses.
+  - Schedules and Reports no longer have a second inner scrollbar; the Events details column no longer clips.
+
 ### Milestone G3 — Ready for future features (2026-11-23)
 - **Settings page** (owner: one page with tabs): Features · Notifications · Zones & equipment · AI. The old AI settings URL redirects to the AI tab.
 - **Feature switches** (`feature_flags`, migration `b1c2d3e4f5a6`):

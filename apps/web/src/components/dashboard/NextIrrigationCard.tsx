@@ -66,7 +66,7 @@ export default function NextIrrigationCard() {
                 {Crop && <Crop size={14} />}
                 <span className="truncate">{zoneName}</span>
                 <span>•</span>
-                <span>{upcoming.duration_min} min</span>
+                <span>{upcoming.duration_min} {t('common.min')}</span>
               </div>
             </div>
             <div className="text-end shrink-0 ps-3">

@@ -216,7 +216,7 @@ export default function VirtualClockPanel() {
 
           {/* Custom Time Form */}
           <form onSubmit={handleCustomJump} className="flex gap-2">
-            <input
+            <input aria-label={t('clock.customTime')}
               type="text"
               placeholder="HH:MM (e.g. 05:30)"
               value={customTime}

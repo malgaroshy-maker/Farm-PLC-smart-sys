@@ -122,7 +122,7 @@ export default function ClockHeaderChip() {
             ))}
           </div>
           <form onSubmit={handleCustomJump} className="flex items-center gap-1.5 pt-1 border-t border-white/10">
-            <input
+            <input aria-label={t('clock.customTime')}
               type="text"
               placeholder="05:30"
               value={customTime}

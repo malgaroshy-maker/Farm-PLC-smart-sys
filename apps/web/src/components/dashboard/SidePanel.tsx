@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ZONE_BY_ID } from '../../lib/zones';
+import { ZONE_BY_ID, useZoneCatalog, zoneList } from '../../lib/zones';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Alarm, FarmMapState, TelemetrySeries } from '@algaroshy/contracts';
@@ -202,6 +202,8 @@ export function StatusCard({ state }: { state: FarmMapState | null }) {
   const alarms = state?.active_alarms ?? [];
   const worst = sortAlarms(alarms)[0];
   const running = (state?.zones ?? []).filter((z) => z.state === 'running').length;
+  useZoneCatalog((c) => c.version);
+  const zoneTotal = zoneList({ enabledOnly: true }).length;
   const color = worst ? SEVERITY[worst.severity].color : running ? CYAN : '#7ee787';
   const title = worst ? `${alarms.length} ${t('header.alarms')}` : running ? t('dash.irrigating') : t('dash.allOk');
   return (
@@ -214,7 +216,7 @@ export function StatusCard({ state }: { state: FarmMapState | null }) {
           {title}
         </div>
         <div className="text-xs text-[#849396]">
-          {t('kpi.zonesRunning')}: <bdi className="font-mono">{running} / 12</bdi> · {t('kpi.tank')}: <bdi className="font-mono">{fmtNum(state?.tank_level_pct, 0)}%</bdi>
+          {t('kpi.zonesRunning')}: <bdi dir="ltr" className="font-mono">{running} / {zoneTotal}</bdi> · {t('kpi.tank')}: <bdi dir="ltr" className="font-mono">{fmtNum(state?.tank_level_pct, 0)}%</bdi>
         </div>
       </div>
       <div className="flex flex-col gap-1.5 text-xs shrink-0">

@@ -135,7 +135,7 @@ export default function DashboardLayout() {
         )}
       </button>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav aria-label={t('nav.mainNav')} className="flex-1 p-3 space-y-1 overflow-y-auto">
         {nav.map(({ key, path, icon: Icon, badge }) => (
           <NavLink
             key={path}
@@ -198,6 +198,9 @@ export default function DashboardLayout() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
+        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:start-2 focus:z-50 focus:px-3 focus:py-2 focus:rounded-lg focus:bg-[#00e5ff] focus:text-[#0e0e0e] focus:font-bold">
+          {t('nav.skipToContent')}
+        </a>
         <InstallPrompt />
         <header
           className="h-14 shrink-0 border-b border-white/10 bg-[#0e0e0e]/80 backdrop-blur-xl flex items-center gap-3 px-3 lg:px-6"
@@ -259,7 +262,7 @@ export default function DashboardLayout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
+        <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
           <Outlet />
         </main>
         {chatOn && <FloatingAssistant />}

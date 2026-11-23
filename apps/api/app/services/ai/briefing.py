@@ -18,6 +18,7 @@ from app.models.ai import AIBriefing, AIInsight
 from app.models.alarm import Alarm
 from app.models.irrigation_cycle import IrrigationCycle
 from app.services.ai.agent import run_daily_briefing
+from app.services.ai.arabic import normalize_text
 from app.services.events import log_event
 from app.services.realtime import manager
 from app.services.weather import weather_service
@@ -46,6 +47,11 @@ async def get_or_generate_daily_briefing(
         res = await db.execute(stmt)
         existing = res.scalar_one_or_none()
         if existing:
+            # briefings stored before the G2 normalizer may hold Arabic-Indic digits
+            for field in ("summary_ar", "weather_summary_ar"):
+                val = getattr(existing, field, None)
+                if isinstance(val, str):
+                    setattr(existing, field, normalize_text(val))
             return existing
 
     # 2. Gather context data from the past 24 hours

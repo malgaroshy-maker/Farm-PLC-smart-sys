@@ -368,10 +368,10 @@ export default function AiSettingsPage() {
                   <span className="text-xs font-bold text-[#e5e2e1]">{t('aiSettings.primaryProvider')}</span>
                 </div>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/20">
-                  Primary
+                  {t('aiSettings.primary')}
                 </span>
               </div>
-              <select
+              <select aria-label={t('aiSettings.primaryProvider')}
                 value={settings.primary_provider}
                 onChange={(e) => handlePrimaryProviderChange(e.target.value)}
                 className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
@@ -391,17 +391,17 @@ export default function AiSettingsPage() {
                   <span className="text-xs font-bold text-[#e5e2e1]">{t('aiSettings.fallbackProvider')}</span>
                 </div>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/5 text-[#849396]">
-                  Fallback
+                  {t('aiSettings.fallback')}
                 </span>
               </div>
-              <select
+              <select aria-label={t('aiSettings.fallbackProvider')}
                 value={settings.fallback_provider}
                 onChange={(e) => handleFallbackProviderChange(e.target.value)}
                 className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
               >
                 <option value="gemini" className="bg-[#141416]">Google Gemini API (Direct)</option>
                 <option value="apinex" className="bg-[#141416]">APInex Gateway (https://api.apinex.bond/v1)</option>
-                <option value="rule_based" className="bg-[#141416]">Rule-Based Offline Fallback</option>
+                <option value="rule_based" className="bg-[#141416]">{t('aiSettings.ruleBasedOption')}</option>
               </select>
             </div>
 
@@ -417,7 +417,7 @@ export default function AiSettingsPage() {
                 <div className="text-[11px] text-[#849396] ms-7">Offline · Safe Defaults</div>
               </div>
               <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#7ee787]/10 text-[#7ee787]">
-                Always On
+                {t('aiSettings.alwaysOn')}
               </span>
             </div>
           </div>
@@ -480,7 +480,7 @@ export default function AiSettingsPage() {
               <label className="text-[#bac9cc] font-medium block">
                 {t('aiSettings.modelUsed')} (Primary Gateway)
               </label>
-              <select
+              <select aria-label={t('aiSettings.modelUsed')}
                 value={settings.primary_model}
                 onChange={(e) =>
                   setSettings({
@@ -499,7 +499,7 @@ export default function AiSettingsPage() {
               <label className="text-[#bac9cc] font-medium block">
                 {t('aiSettings.featureAlarmAssistant')}
               </label>
-              <select
+              <select aria-label={t('aiSettings.featureAlarmAssistant')}
                 value={settings.feature_models.alarm_assistant}
                 onChange={(e) =>
                   setSettings({
@@ -518,7 +518,7 @@ export default function AiSettingsPage() {
               <label className="text-[#bac9cc] font-medium block">
                 {t('aiSettings.featureAdvisor')}
               </label>
-              <select
+              <select aria-label={t('aiSettings.featureAdvisor')}
                 value={settings.feature_models.weather_advisor}
                 onChange={(e) =>
                   setSettings({
@@ -537,7 +537,7 @@ export default function AiSettingsPage() {
               <label className="text-[#bac9cc] font-medium block">
                 {t('aiSettings.featureBriefing')}
               </label>
-              <select
+              <select aria-label={t('aiSettings.featureBriefing')}
                 value={settings.feature_models.daily_briefing}
                 onChange={(e) =>
                   setSettings({
@@ -563,7 +563,7 @@ export default function AiSettingsPage() {
           <div className="space-y-3 text-xs">
             <div className="p-3 rounded-xl bg-black/20 border border-white/5 flex items-center justify-between">
               <div>
-                <div className="font-bold text-[#e5e2e1]">APInex API Key</div>
+                <div className="font-bold text-[#e5e2e1]">APInex — {t('aiSettings.apiKey')}</div>
                 <div className="text-[11px] text-[#849396]">APINEX_API_KEY (.env)</div>
               </div>
               <span
@@ -579,7 +579,7 @@ export default function AiSettingsPage() {
 
             <div className="p-3 rounded-xl bg-black/20 border border-white/5 flex items-center justify-between">
               <div>
-                <div className="font-bold text-[#e5e2e1]">Google Gemini API Key</div>
+                <div className="font-bold text-[#e5e2e1]">Google Gemini — {t('aiSettings.apiKey')}</div>
                 <div className="text-[11px] text-[#849396]">GEMINI_API_KEY (.env)</div>
               </div>
               <span
@@ -602,15 +602,15 @@ export default function AiSettingsPage() {
             </div>
             <div className="p-3 rounded-xl bg-black/30 border border-white/5 text-xs space-y-1 font-mono text-[#849396]">
               <div className="flex justify-between">
-                <span>Latitude:</span>
+                <span>{t('aiSettings.latitude')}:</span>
                 <span className="text-[#e5e2e1]">{settings.farm_location.latitude}</span>
               </div>
               <div className="flex justify-between">
-                <span>Longitude:</span>
+                <span>{t('aiSettings.longitude')}:</span>
                 <span className="text-[#e5e2e1]">{settings.farm_location.longitude}</span>
               </div>
               <div className="flex justify-between">
-                <span>Timezone:</span>
+                <span>{t('aiSettings.timezone')}:</span>
                 <span className="text-[#e5e2e1]">{settings.farm_location.timezone}</span>
               </div>
             </div>

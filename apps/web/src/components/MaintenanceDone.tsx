@@ -47,7 +47,7 @@ export default function MaintenanceDone({ zoneId }: { zoneId: string }) {
   return (
     <div className="space-y-2 rounded-lg border border-white/10 bg-black/30 p-3" onClick={(e) => e.stopPropagation()}>
       <p className="text-xs text-[#bac9cc]">{t('maint.explain')}</p>
-      <input
+      <input aria-label={t('maint.note')}
         value={note}
         onChange={(e) => setNote(e.target.value)}
         maxLength={500}

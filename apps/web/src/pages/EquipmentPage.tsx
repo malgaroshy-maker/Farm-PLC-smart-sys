@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import EmptyState, { ErrorState, LoadingState } from '../components/EmptyState';
+import { useLoad } from '../lib/useLoad';
 import { ZONE_BY_ID } from '../lib/zones';
 import { EquipmentIcon, PumpIcon, SensorIcon, ValveIcon } from '../components/icons/FarmIcons';
 import type { Pump, Sensor, Valve } from '@algaroshy/contracts';
@@ -34,15 +36,10 @@ const zoneName = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 export default function EquipmentPage() {
   const { t, lang } = useT();
   const state = useFarmStore((s) => s.state);
-  const [pumps, setPumps] = useState<Pump[]>([]);
-  const [valves, setValves] = useState<Valve[]>([]);
-  const [sensors, setSensors] = useState<Sensor[]>([]);
-
-  useEffect(() => {
-    apiFetch<Pump[]>('/api/v1/pumps').then(setPumps).catch(() => null);
-    apiFetch<Valve[]>('/api/v1/valves').then(setValves).catch(() => null);
-    apiFetch<Sensor[]>('/api/v1/sensors').then(setSensors).catch(() => null);
-  }, []);
+  const { data, status: loadStatus, reload } = useLoad(() =>
+    Promise.all([apiFetch<Pump[]>('/api/v1/pumps'), apiFetch<Valve[]>('/api/v1/valves'), apiFetch<Sensor[]>('/api/v1/sensors')]),
+  );
+  const [pumps, valves, sensors] = data ?? [[], [], []];
 
   const livePumps = useMemo(() => Object.fromEntries((state?.pumps ?? []).map((p) => [p.pump_id, p])), [state?.pumps]);
   const liveValves = useMemo(() => Object.fromEntries((state?.valves ?? []).map((v) => [v.valve_id, v])), [state?.valves]);
@@ -54,11 +51,17 @@ export default function EquipmentPage() {
         <EquipmentIcon size={24} className="text-[#00e5ff]" /> {t('eq.title')}
       </h1>
 
+      {loadStatus === 'loading' && <LoadingState />}
+      {loadStatus === 'error' && <ErrorState onRetry={reload} />}
+      {loadStatus === 'ok' && pumps.length + valves.length + sensors.length === 0 && (
+        <EmptyState art="equipment" text={t('empty.equipment')} />
+      )}
+
       <section className="space-y-3">
         <h2 className="text-sm font-bold text-[#bac9cc] flex items-center gap-2">
           <PumpIcon size={18} /> {t('eq.pumps')}
         </h2>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,26rem),1fr))]">
           {pumps.map((p) => {
             const l = livePumps[p.id];
             const hours = l?.runtime_hours ?? p.runtime_hours;
@@ -66,7 +69,7 @@ export default function EquipmentPage() {
             const status = l?.state ?? 'stopped';
             return (
               <div key={p.id} className="panel overflow-hidden flex">
-                <img src="/art/detail_pump.webp" alt="" className="w-28 sm:w-36 object-cover shrink-0" style={{ objectPosition: p.pump_type === 'well' ? '25% 50%' : '75% 50%' }} />
+                <img src="/art/detail_pump.webp" alt="" className="w-16 sm:w-36 object-cover shrink-0" style={{ objectPosition: p.pump_type === 'well' ? '25% 50%' : '75% 50%' }} />
                 <div className="flex-1 min-w-0 space-y-2 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-bold truncate">{pickName(lang, p.name, p.name_ar)}</div>
@@ -78,7 +81,7 @@ export default function EquipmentPage() {
                     <Stat label={t('eq.startsToday')} value={fmtNum(l?.starts_today ?? 0)} />
                   </div>
                   <div className="text-xs text-[#849396]">
-                    {t('eq.feedback')}: <span className={l?.run_fb ? 'text-[#00e5ff]' : ''}>{l?.run_fb ? 'ON' : 'OFF'}</span>
+                    {t('eq.feedback')}: <span className={l?.run_fb ? 'text-[#00e5ff]' : ''}>{t(l?.run_fb ? 'pump.running' : 'pump.stopped')}</span>
                   </div>
                 </div>
               </div>
@@ -152,9 +155,10 @@ export default function EquipmentPage() {
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
     <div className="bg-[#0e0e0e] border border-[#353534] rounded-lg px-2 py-1.5 min-w-0">
-      <div className="text-[#849396] truncate">{label}</div>
-      <div className="font-mono font-bold text-sm">
-        {value} {unit && <span className="text-[10px] text-[#849396]">{unit}</span>}
+      <div className="text-[#849396] truncate" title={label}>{label}</div>
+      <div className="font-mono font-bold text-sm flex flex-wrap items-baseline gap-x-1">
+        <bdi dir="ltr" className="whitespace-nowrap">{value}</bdi>
+        {unit && <span className="text-[10px] text-[#849396] font-sans">{unit}</span>}
       </div>
     </div>
   );

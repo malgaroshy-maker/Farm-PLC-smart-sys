@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import EmptyState from '../components/EmptyState';
+import EmptyState, { ErrorState } from '../components/EmptyState';
 import { EventsIcon } from '../components/icons/FarmIcons';
 import { apiFetch } from '../lib/api';
 import { useT, type MsgKey } from '../lib/i18n';
@@ -36,7 +36,7 @@ function fetchPage(cat: Cat, before?: number): Promise<EventRow[]> {
   const q = new URLSearchParams({ limit: String(PAGE) });
   if (cat !== 'all') q.set('category', cat);
   if (before) q.set('before_id', String(before));
-  return apiFetch<EventRow[]>(`/api/v1/events?${q}`).catch(() => [] as EventRow[]);
+  return apiFetch<EventRow[]>(`/api/v1/events?${q}`);
 }
 
 function summarize(p: Record<string, unknown> | null): string {
@@ -52,25 +52,34 @@ export default function EventsPage() {
   const [cat, setCat] = useState<Cat>('all');
   const [rows, setRows] = useState<EventRow[]>([]);
   const [done, setDone] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadTick, setLoadTick] = useState(0);
   // refresh when commands/alarms change (cheap signal from the live store)
   const pulse = useFarmStore((s) => Object.keys(s.commands).length + (s.state?.active_alarms.length ?? 0));
 
   useEffect(() => {
     let live = true;
-    fetchPage(cat).then((page) => {
-      if (!live) return;
-      setRows(page);
-      setDone(page.length < PAGE);
-    });
+    fetchPage(cat)
+      .then((page) => {
+        if (!live) return;
+        setRows(page);
+        setDone(page.length < PAGE);
+        setLoadError(false);
+      })
+      .catch(() => live && setLoadError(true));
     return () => {
       live = false;
     };
-  }, [cat, pulse]);
+  }, [cat, pulse, loadTick]);
 
   const loadMore = async () => {
-    const page = await fetchPage(cat, rows[rows.length - 1]?.id);
-    setRows((prev) => [...prev, ...page]);
-    setDone(page.length < PAGE);
+    try {
+      const page = await fetchPage(cat, rows[rows.length - 1]?.id);
+      setRows((prev) => [...prev, ...page]);
+      setDone(page.length < PAGE);
+    } catch {
+      setLoadError(true);
+    }
   };
 
   const fmt = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-LY-u-nu-latn' : 'en-GB', {
@@ -125,16 +134,23 @@ export default function EventsPage() {
                 <td className="p-3 font-mono text-xs whitespace-nowrap" dir="ltr" style={{ color: TYPE_COLOR[e.event_type] ?? '#e5e2e1' }}>
                   {e.event_type}
                 </td>
-                <td className="p-3 font-mono text-xs" dir="ltr">
+                <td className="p-3 font-mono text-xs max-w-[12rem] truncate" dir="ltr" title={e.entity_id ?? e.entity_type}>
                   {e.entity_id ?? e.entity_type}
                 </td>
                 <td className="p-3 text-xs">{e.actor_name ?? t(`actor.${e.actor_type}` as MsgKey) ?? e.actor_type}</td>
-                <td className="p-3 text-xs text-[#bac9cc] break-all" dir="ltr">
+                <td className="p-3 text-xs text-[#bac9cc] min-w-[16rem] break-words" dir="ltr">
                   {summarize(e.payload)}
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {loadError && (
+              <tr>
+                <td colSpan={5}>
+                  <ErrorState onRetry={() => setLoadTick((n) => n + 1)} />
+                </td>
+              </tr>
+            )}
+            {!loadError && rows.length === 0 && (
               <tr>
                 <td colSpan={5}>
                   <EmptyState art="events" text={t('empty.events')} />
