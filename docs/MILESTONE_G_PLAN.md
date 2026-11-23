@@ -49,7 +49,7 @@ Owner decisions (2026-11-23): an S7-1500 for now (the hardware research report p
 - **PLC data blocks and command handshake.** The cloud/app can never bypass PLC interlocks.
 - **Test plan with PLCSIM Advanced.** See the `tia-portal-openness` skill.
 
-## G6: Docs refresh
+## G6: Docs refresh ✅ done 2026-11-23 (details in CHANGELOG)
 - `PROJECT_STATUS.md`: the map is now the satellite trace.
 - `README.md`.
 - An Arabic operator guide.
