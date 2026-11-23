@@ -6,6 +6,7 @@
 
 ## Pack Contents
 
+0. `HARDWARE_RESEARCH.md` / `HARDWARE_RESEARCH.ar.md` — what to buy, where it goes and what it costs (generated from `tools/hardware-report`)
 0. `OPERATOR_GUIDE.md` — how to use the app, Arabic + English (generated; also in the app's Help page and as A4 PDFs)
 1. `PRD.md` — master product requirements document
 2. `ARCHITECTURE.md` — system architecture, layers, services, deployment modes

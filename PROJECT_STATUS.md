@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-23
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → **Milestone G** in progress (G1 performance & reliability ✅ · G2 AI ✅ · G3 extensibility ✅ · G4 UI polish ✅ · G6 docs ✅ · G5 PLC design next): hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → **Milestone G** in progress (G1 performance & reliability ✅ · G2 AI ✅ · G3 extensibility ✅ · G4 UI polish ✅ · G6 docs ✅ · hardware research ✅ · G7 field readiness next, then G5 PLC design): hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -71,7 +71,7 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 | **D: Simulation time, schedules, cycles, reports** | ✅ Done 2026-11-19 |
 | **E: AI (alarm assistant, weather advisor, anomaly detection, daily briefing)** | ✅ Done 2026-11-19 |
 | **F: Map weather & UI polish, satellite map** | ✅ Done 2026-11-23 |
-| **G: Hardening, AI, polish, PLC design, research, demo video** | 🔄 G1–G4 and G6 done; G5 PLC design next ([plan](docs/MILESTONE_G_PLAN.md)) |
+| **G: Hardening, AI, polish, PLC design, research, demo video** | 🔄 G1–G4, G6 and the hardware research done; G7 field readiness next, then G5 ([plan](docs/MILESTONE_G_PLAN.md)) |
 | Production track (PLC adapter, hosting, hardening) | ⬜ After the demo |
 
 ## Decisions

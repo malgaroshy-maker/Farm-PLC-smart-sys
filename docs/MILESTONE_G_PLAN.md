@@ -43,6 +43,20 @@ Context: the owner is the only user for now; users and roles UI is deferred. Hos
 ## G4: UI polish ✅ done 2026-11-23 (details in CHANGELOG)
 Accessibility, empty and error states, an Arabic text review across all pages, consistent spacing and typography.
 
+## G7: Field readiness (before G5)
+Gaps found during the hardware research. Owner decisions (2026-11-24): do these **before G5**.
+- **PLC fallback program.** The PLC keeps a copy of today's schedule and runs it if the server or app is down; it resyncs when the server returns. (Today the schedules live only in the app.)
+- **Manual mode in the app.** The PLC reports the panel switches (zone On/Auto/Off, pump Hand/Off/Auto); the app shows "zone in manual", never fights it, and logs it (ALM-042).
+- **Unexpected-flow alarm.** Flow with no zone on means a leak or a valve opened by hand (ALM-021 is defined but never raised).
+- **Power-cut recovery.** A zone interrupted by a power cut resumes its remaining time only if power was out less than 30 minutes (and tank and pressure are fine); otherwise the run is marked interrupted and the owner is alerted.
+- **Farm server installer.** One-time setup on the farm laptop or mini PC: starts at boot, restarts itself on a crash, no terminal window.
+- **Daily database backup** with a restore button (none exists today).
+- **Secure remote access + HTTPS** through a free VPN (Tailscale) on the farm server; its HTTPS also makes phone push work without paid hosting.
+- **Soil sensors + thresholds.** Read wireless (MQTT from the LoRaWAN gateway) or wired (PLC/Modbus) soil sensors; per-crop start/stop moisture levels; soil-based irrigation.
+- **Pump health inputs.** Energy meters, well level, filter clogging and starter faults: values on the dashboard plus alarms.
+- **Modbus TCP adapter** for cheaper controllers (S7-200 SMART, LOGO!, Delta) and the radio boxes' timed valve commands.
+- Not chosen for now: OPC UA security (certificates and user login), on-farm weather station.
+
 ## G5: PLC preparation (design only)
 Owner decisions (2026-11-23): an S7-1500 for now (the hardware research report picks the final CPU); TIA Portal V19 + PLCSIM Advanced, driven through TiaCommander.
 - **OPC UA tag map.** Zones, valves, pumps, tank, flow, pressure, alarms, heartbeat.
@@ -54,7 +68,7 @@ Owner decisions (2026-11-23): an S7-1500 for now (the hardware research report p
 - `README.md`.
 - An Arabic operator guide.
 
-## R: Hardware research report
+## R: Hardware research report ✅ done 2026-11-24 (interactive page + docs/HARDWARE_RESEARCH.md / .ar.md)
 - **Deliverable.** A shareable report page (private link), plus a copy in `docs/`.
 - **Covers:**
   - PLC and control panel: S7-1200/1500, I/O, HMI, UPS, cabinet.
