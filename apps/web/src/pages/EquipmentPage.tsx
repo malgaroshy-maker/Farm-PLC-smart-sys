@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ZONE_BY_ID } from '../lib/zones';
 import { EquipmentIcon, PumpIcon, SensorIcon, ValveIcon } from '../components/icons/FarmIcons';
 import type { Pump, Sensor, Valve } from '@algaroshy/contracts';
 import { apiFetch } from '../lib/api';
 import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
 import { useFarmStore } from '../store/farm';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
 
 const STATUS_COLOR: Record<string, string> = {
   running: '#00e5ff',
@@ -29,7 +29,7 @@ function Badge({ text, status }: { text: string; status: string }) {
   );
 }
 
-const zoneName = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const zoneName = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 
 export default function EquipmentPage() {
   const { t, lang } = useT();

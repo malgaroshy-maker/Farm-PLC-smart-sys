@@ -10,7 +10,7 @@ import { TransformComponent, TransformWrapper, type ReactZoomPanPinchContentRef 
 import { ChevronDown, ChevronUp, Maximize, Moon, Sun, SunMoon, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Alarm, AlarmSeverity, FarmMapState, PumpLiveState, ValveLiveState, ZoneLiveState } from '@algaroshy/contracts';
 import { FARM, polygonCentroid, polygonPath, polylinePath, type Point } from '@algaroshy/map-model';
-import { EQUIPMENT_SIZE, STRIP_LABEL_H, STRIP_LABELS, SPRITES, TEXTURES, TRUNK_LENGTH, TRUNK_PARENT, ZONES, type ZoneLayout } from './farmLayout';
+import { EQUIPMENT_SIZE, STRIP_LABEL_H, STRIP_LABELS, SPRITES, zoneNames, TEXTURES, TRUNK_LENGTH, TRUNK_PARENT, ZONES, type ZoneLayout } from './farmLayout';
 import { TreeCanvas, WetCanvas } from './MapCanvases';
 import { WeatherOverlay } from './WeatherOverlay';
 import WeatherWidget from './WeatherWidget';
@@ -20,6 +20,7 @@ import { apiFetch, type WeatherData, type WeatherForecast } from '../../lib/api'
 import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
 import { SEVERITY, topSeverity } from '../../lib/alarms';
 import { usePrefs } from '../../lib/prefs';
+import { useFeature } from '../../lib/features';
 import { useFarmStore } from '../../store/farm';
 import { useFarmClock } from '../../lib/clock';
 
@@ -429,7 +430,7 @@ function Chip({ z, live, alarm, lang }: { z: ZoneLayout; live?: ZoneLiveState; a
     <foreignObject x={x - w / 2} y={y - h / 2} width={w} height={h} pointerEvents="none" style={{ overflow: 'visible' }}>
       <div className="map-chip-wrap">
         <div className={`map-chip ${z.small ? 'map-chip-sm' : ''}`} style={{ borderColor: s === 'idle' ? undefined : `${STATE_COLOR[s]}99` }}>
-          <div className="map-chip-name">{pickName(lang, z.name, z.nameAr)}</div>
+          <div className="map-chip-name">{pickName(lang, zoneNames(z.id).name, zoneNames(z.id).nameAr)}</div>
           {!z.small && <div className="map-chip-badge">{badge}</div>}
         </div>
       </div>
@@ -454,7 +455,7 @@ function StripLabel({ z, live, alarm, lang }: { z: ZoneLayout; live?: ZoneLiveSt
         <circle cx={-w / 2 + 4.5} cy={0} r={1.8} fill={color} />
         <text x={2} y={2.1} textAnchor="middle" fontSize={5.8} fontWeight={700} fill="#f2efe9">
           {alarm ? '⚠ ' : ''}
-          {pickName(lang, z.name, z.nameAr)}
+          {pickName(lang, zoneNames(z.id).name, zoneNames(z.id).nameAr)}
         </text>
       </g>
     </g>
@@ -470,7 +471,7 @@ function Tooltip({ z, live, alarms, lang, t }: { z: ZoneLayout; live?: ZoneLiveS
   );
   return (
     <div className="panel p-3 text-xs space-y-1 min-w-48 shadow-2xl">
-      <div className="font-bold text-sm mb-1">{pickName(lang, z.name, z.nameAr)}</div>
+      <div className="font-bold text-sm mb-1">{pickName(lang, zoneNames(z.id).name, zoneNames(z.id).nameAr)}</div>
       {row('zones.state', t(`state.${live?.state ?? 'unknown'}` as MsgKey))}
       {row('zones.moisture', `${fmtNum(live?.moisture_pct, 1)} %`)}
       {row('zones.flow', `${fmtNum(live?.flow_m3h, 2)} m³/h`)}
@@ -498,6 +499,9 @@ export default function FarmMap({
 }) {
   const { t, lang } = useT();
   const reduceMotion = usePrefs((s) => s.reduceMotion);
+  const weatherOverlayOn = useFeature('map.weather_overlay');
+  const farmLifeOn = useFeature('map.farm_life');
+  const irrigationAnimOn = useFeature('map.irrigation_animation');
   const focus = useFarmStore((s) => s.focus);
   const clearFocus = useFarmStore((s) => s.clearFocus);
   const [light, setLight] = useState<Light>('auto');
@@ -781,8 +785,8 @@ export default function FarmMap({
                 style={{ width: `min(100cqw, calc(100cqh * ${VW / VH}))`, aspectRatio: `${VW} / ${VH}`, ['--ms' as string]: 1 } as React.CSSProperties}
               >
                 <Ground />
-                <WetCanvas zones={zones} animate={!reduceMotion} />
-                <WeatherOverlay forecast={activeWeather} reduceMotion={reduceMotion} />
+                <WetCanvas zones={zones} animate={!reduceMotion && irrigationAnimOn} />
+                {weatherOverlayOn && <WeatherOverlay forecast={activeWeather} reduceMotion={reduceMotion} />}
                 <TreeCanvas zones={zones} month={clock.month} />
                 <svg viewBox={`${VX} ${VY} ${VW} ${VH}`} className="absolute inset-0 w-full h-full" role="img" aria-label={t('map.title')}>
                   <OverlayDefs />
@@ -805,7 +809,7 @@ export default function FarmMap({
                   <Pipes zones={zones} pumps={pumps} />
                   <Valves valves={valves} alarmed={alarmedEquipment} />
                   <Equipment pumps={pumps} tankPct={state?.tank_level_pct ?? 0} alarmed={alarmedEquipment} t={t} />
-                  {!reduceMotion && <FarmLife alarms={alarms} />}
+                  {!reduceMotion && farmLifeOn && <FarmLife alarms={alarms} />}
                   {dimFeature && (
                     <path
                       d={`M${VX},${VY}H${VW}V${VH}H${VX}Z ${polygonPath(dimFeature)}`}

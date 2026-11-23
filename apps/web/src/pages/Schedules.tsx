@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { ZONE_BY_ID, zoneList } from '../lib/zones';
+import { useFeature } from '../lib/features';
 import { Plus, Trash2, Edit2, AlertTriangle, Check, Clock, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
 import type { ConflictError, Program, ProgramCreate } from '@algaroshy/contracts';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFarmClock, farmHourAndMonth } from '../lib/clock';
@@ -16,7 +17,7 @@ import {
   type StepDraft,
 } from '../lib/schedulesHelper';
 
-const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const SEED = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 const CYAN = '#00e5ff';
 
 const DAYS: { dayNum: number; key: MsgKey }[] = [
@@ -45,6 +46,7 @@ const PRESETS = [15, 30, 45, 60];
 
 export default function SchedulesPage() {
   const { t, lang, isRtl } = useT();
+  const advisorOn = useFeature('ai.advisor');
   const { farmNow } = useFarmClock(lang);
   const { hour: currentHourFrac } = farmHourAndMonth(farmNow);
   const nowPct = Math.max(0, Math.min(100, (currentHourFrac / 24) * 100));
@@ -142,7 +144,7 @@ export default function SchedulesPage() {
       </div>
 
       {/* Advisor suggestions if present */}
-      {suggestions.filter((s) => s.status === 'pending' || s.status === 'approved').length > 0 && (
+      {advisorOn && suggestions.filter((s) => s.status === 'pending' || s.status === 'approved').length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-bold text-[#bac9cc]">
             <AiSparklesIcon size={16} accent="#00e5ff" />
@@ -413,7 +415,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
   const [selectedDays, setSelectedDays] = useState<number[]>(parseDays(program?.weekday_mask));
   const [steps, setSteps] = useState<StepDraft[]>(
     program?.steps?.map((s) => ({ zone_id: s.zone_id, duration_min: s.duration_min })) ?? [
-      { zone_id: ZONE_SEEDS[0].id, duration_min: 30 },
+      { zone_id: zoneList({ enabledOnly: true })[0]?.id ?? '', duration_min: 30 },
     ]
   );
 
@@ -464,7 +466,8 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
   };
 
   const addStep = () => {
-    const defaultZone = ZONE_SEEDS[steps.length % ZONE_SEEDS.length].id;
+    const pickable = zoneList({ enabledOnly: true });
+    const defaultZone = pickable[steps.length % pickable.length]?.id ?? '';
     setSteps((prev) => [...prev, { zone_id: defaultZone, duration_min: 30 }]);
   };
 
@@ -696,7 +699,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
                           onChange={(e) => updateStepZone(idx, e.target.value)}
                           className="w-full px-2.5 py-1.5 rounded-lg bg-[#1e1e20] border border-white/10 text-xs text-[#e5e2e1] focus:border-[#00e5ff] focus:outline-none"
                         >
-                          {ZONE_SEEDS.map((z) => (
+                          {zoneList({ enabledOnly: true }).map((z) => (
                             <option key={z.id} value={z.id}>
                               {pickName(lang, z.name, z.name_ar)} ({t(('crop.' + z.crop_type) as MsgKey)}, max {z.max_runtime_min}m)
                             </option>

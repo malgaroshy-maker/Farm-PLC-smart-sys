@@ -177,6 +177,7 @@ export type EventType =
   | "alarm.reset"
   | "command.updated"
   | "telemetry.stale"
+  | "features.updated"
   | "system.mode.changed"
   | "alarm.updated"
   | "scenario.updated"

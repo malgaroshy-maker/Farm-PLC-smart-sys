@@ -1,12 +1,12 @@
 import { usePoll } from '../../lib/poll';
+import { ZONE_BY_ID } from '../../lib/zones';
 import type { NextIrrigationInfo } from '@algaroshy/contracts';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { parseUtcDate, useFarmClock } from '../../lib/clock';
 import { pickName, useT } from '../../lib/i18n';
 import { ScheduleIcon } from '../icons/FarmIcons';
 import { CROP_ICON } from '../icons/cropIcon';
 
-const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const SEED = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 const CYAN = '#00e5ff';
 
 function formatCountdown(totalSec: number): string {

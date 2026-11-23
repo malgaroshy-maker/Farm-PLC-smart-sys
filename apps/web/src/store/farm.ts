@@ -105,7 +105,8 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       }
       case 'alarm.active': {
         const a = evt.payload as Alarm;
-        if (primed && !seenAlarms.has(a.id) && (a.severity === 'S2' || a.severity === 'S3') && a.condition_active) {
+        const inAppOff = document.documentElement.dataset.featureOff?.split(' ').includes('notify.in_app');
+        if (primed && !inAppOff && !seenAlarms.has(a.id) && (a.severity === 'S2' || a.severity === 'S3') && a.condition_active) {
           if (!usePrefs.getState().muted) playAlarmChime(a.severity);
           set({ focus: { alarmId: a.id, zoneId: a.zone_id, deviceId: a.device_id, at: Date.now() } });
         }
@@ -124,6 +125,9 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       }
       case 'scenario.updated':
         set({ scenario: evt.payload as ScenarioRun });
+        break;
+      case 'features.updated':
+        void import('../lib/features').then((m) => m.refreshFeatures());
         break;
       case 'telemetry.stale': {
         const s = get().state;

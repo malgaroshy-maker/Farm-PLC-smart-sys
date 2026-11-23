@@ -119,6 +119,11 @@ html[lang="en"] body { font-family: "IBM Plex Sans Arabic", system-ui, sans-seri
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
+/* Feature switches (Milestone G3): hide AI buttons the owner switched off */
+html[data-feature-off~='ai.alarm_explain'] .ai-explain-btn {
+  display: none !important;
+}
+
 /* ─── Map label chips (counter-scaled by the zoom level --ms) ─── */
 .map-strip-label {
   transform-box: view-box;

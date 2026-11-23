@@ -29,6 +29,8 @@ import SimTimeBadge from '../components/clock/SimTimeBadge';
 import ClockHeaderChip from '../components/clock/ClockHeaderChip';
 import { getBottomNavItems } from '../lib/nav';
 import { usePoll } from '../lib/poll';
+import { useFeature, useFeatureAttributes } from '../lib/features';
+import { useZoneCatalogSync } from '../lib/zones';
 import { HEALTH_COLOR, SYSTEM_HEALTH_PATH, type SystemHealth } from '../lib/api';
 import HealthPanel from '../components/HealthPanel';
 
@@ -55,6 +57,9 @@ export default function DashboardLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
   const health = usePoll<SystemHealth>(user ? SYSTEM_HEALTH_PATH : null, 15000);
+  const chatOn = useFeature('ai.chat');
+  useFeatureAttributes();
+  useZoneCatalogSync();
   const { formatted: clock } = useFarmClock(lang);
   const prefs = usePrefs();
 
@@ -94,7 +99,7 @@ export default function DashboardLayout() {
     { key: 'nav.events', path: '/events', icon: EventsIcon },
     { key: 'nav.reports', path: '/reports', icon: ReportsIcon },
     ...(showTech ? [{ key: 'nav.simulator' as MsgKey, path: '/simulator', icon: SimulatorIcon }] : []),
-    ...(isAdmin ? [{ key: 'nav.aiSettings' as MsgKey, path: '/settings/ai', icon: AiSparklesIcon }] : []),
+    ...(isAdmin ? [{ key: 'nav.settings' as MsgKey, path: '/settings', icon: AiSparklesIcon }] : []),
   ];
 
   const bottomNav = getBottomNavItems(alarmCount);
@@ -257,7 +262,7 @@ export default function DashboardLayout() {
         <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
           <Outlet />
         </main>
-        <FloatingAssistant />
+        {chatOn && <FloatingAssistant />}
         {healthOpen && <HealthPanel initial={health} onClose={() => setHealthOpen(false)} />}
 
         {/* mobile bottom navigation */}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useFeature } from '../lib/features';
 import { useSearchParams } from 'react-router-dom';
 import { Gauge } from 'lucide-react';
 import FarmMap from '../components/map/FarmMap';
@@ -22,6 +23,8 @@ export default function Dashboard() {
   const [suggestions, setSuggestions] = useState<AdvisorSuggestion[]>([]);
   const { state, sendCommand } = useFarmConnector();
   const { t } = useT();
+  const briefingOn = useFeature('ai.briefing');
+  const advisorOn = useFeature('ai.advisor');
 
   const handleSelectZone = (id: string | null) => {
     setSearchParams(
@@ -61,12 +64,12 @@ export default function Dashboard() {
     setSuggestions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
   };
 
-  const activeSuggestions = suggestions.filter((s) => s.status === 'pending' || s.status === 'approved');
+  const activeSuggestions = advisorOn ? suggestions.filter((s) => s.status === 'pending' || s.status === 'approved') : [];
 
   return (
     <div className="h-full flex flex-col gap-3 lg:gap-4">
       {/* Top Hero: Daily Briefing Card */}
-      <DailyBriefingCard />
+      {briefingOn && <DailyBriefingCard />}
 
       {/* phones: status first */}
       <div className="lg:hidden space-y-3">

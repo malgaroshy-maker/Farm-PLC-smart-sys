@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
+import { ZONE_BY_ID } from '../lib/zones';
 import { Play, Square, X } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { IrrigationCycle, TelemetrySeries, Zone, Alarm } from '@algaroshy/contracts';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
 
 import type { ZoneLiveState } from '../hooks/useFarmConnector';
 import type { CommandOutcome } from '../store/farm';
@@ -28,7 +28,7 @@ interface ZoneDrawerProps {
 type Feedback = { kind: 'ok' | 'error'; text: string } | null;
 type ChartRow = { time: string; moisture?: number; flow?: number };
 
-const SEED: Record<string, Zone> = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const SEED = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 const DETAIL_ART: Record<string, string> = {
   pomegranate: '/art/detail_pomegranate.webp',
   olives: '/art/detail_olive.webp',
@@ -233,7 +233,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                   </div>
                   <button
                     onClick={() => setExplainingAlarm(a)}
-                    className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[#00e5ff] text-[11px] font-bold flex items-center gap-1 shrink-0 transition-colors"
+                    className="ai-explain-btn px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[#00e5ff] text-[11px] font-bold flex items-center gap-1 shrink-0 transition-colors"
                     title={t('ai.explain')}
                   >
                     <AiSparklesIcon size={12} accent="#00e5ff" />

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { ZONE_BY_ID } from '../lib/zones';
 import { Download as DownloadIcon, BarChart3 } from 'lucide-react';
 import {
   Bar,
@@ -16,7 +17,6 @@ import type {
   PumpRuntimeReportRow,
   AlarmHistoryReportRow,
 } from '@algaroshy/contracts';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { apiFetch, apiUrl, session } from '../lib/api';
 import { useFarmClock } from '../lib/clock';
 import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
@@ -24,7 +24,7 @@ import { ReportsIcon } from '../components/icons/FarmIcons';
 import { CROP_ICON } from '../components/icons/cropIcon';
 import { computeReportDateRange, type RangePreset } from '../lib/reportsHelper';
 
-const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const SEED = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 const CYAN = '#00e5ff';
 const YELLOW = '#ffeb3b';
 const GREEN = '#7ee787';

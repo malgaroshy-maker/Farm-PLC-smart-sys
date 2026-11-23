@@ -8,7 +8,7 @@
  *    picked up immediately but the shell still opens when the farm link is down
  *    (the app then shows OFFLINE instead of a browser error page).
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
@@ -56,5 +56,44 @@ self.addEventListener('fetch', (event) => {
         return res;
       })
       .catch(async () => (await caches.match(req)) || (req.mode === 'navigate' ? caches.match('/') : Response.error())),
+  );
+});
+
+// ── Phone push (Milestone G3): S2/S3 alarms and the morning briefing ──
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: event.data ? event.data.text() : 'مزرعة الجروشي' };
+  }
+  const title = data.title || 'مزرعة الجروشي';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: data.tag || 'farm',
+      dir: 'rtl',
+      lang: 'ar',
+      requireInteraction: data.severity === 'S3',
+      data: { url: data.url || '/' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ('focus' in c) {
+          c.navigate(url);
+          return c.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    }),
   );
 });

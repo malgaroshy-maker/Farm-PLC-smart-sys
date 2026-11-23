@@ -111,6 +111,12 @@ export function usePoll<T>(path: string | null, ms: number): T | null {
   );
 }
 
+/** Fetch `path` again right away for all its subscribers (e.g. after a settings change). */
+export function refreshPoll(path: string): void {
+  const e = entries.get(path);
+  if (e && e.intervals.size > 0) schedule(path, e, 0);
+}
+
 /** Test helper: forget all shared state. */
 export function __resetPolls() {
   for (const e of entries.values()) if (e.timer) clearTimeout(e.timer);

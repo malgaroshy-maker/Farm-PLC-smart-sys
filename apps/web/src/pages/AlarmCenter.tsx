@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import { ZONE_BY_ID } from '../lib/zones';
 import EmptyState from '../components/EmptyState';
 import MaintenanceDone from '../components/MaintenanceDone';
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import type { Alarm, AlarmSeverity } from '@algaroshy/contracts';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { useFarmStore } from '../store/farm';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
@@ -13,7 +13,7 @@ import { AiSparklesIcon } from '../components/icons/FarmIcons';
 import ExplainAlarmDrawer from '../components/ai/ExplainAlarmDrawer';
 
 const NO_ALARMS: Alarm[] = [];
-const ZONE_NAME = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const ZONE_NAME = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 
 import { parseUtcDate } from '../lib/clock';
 
@@ -186,7 +186,7 @@ export default function AlarmCenter() {
                   <div className="md:col-span-1 flex justify-end gap-1.5 items-center" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => setExplainingAlarm(alarm)}
-                      className="p-1.5 bg-[#00e5ff]/10 border border-[#00e5ff]/30 rounded hover:bg-[#00e5ff]/20 text-[#00e5ff] transition-colors"
+                      className="ai-explain-btn p-1.5 bg-[#00e5ff]/10 border border-[#00e5ff]/30 rounded hover:bg-[#00e5ff]/20 text-[#00e5ff] transition-colors"
                       title={t('ai.explain')}
                       aria-label={`${t('ai.explain')} ${alarm.alarm_code}`}
                     >
@@ -230,7 +230,7 @@ export default function AlarmCenter() {
                     <div className="pt-1">
                       <button
                         onClick={() => setExplainingAlarm(alarm)}
-                        className="px-3 py-1.5 bg-[#00e5ff]/10 border border-[#00e5ff]/30 rounded-xl hover:bg-[#00e5ff]/20 text-[#00e5ff] text-xs font-bold flex items-center gap-1.5 transition-colors"
+                        className="ai-explain-btn px-3 py-1.5 bg-[#00e5ff]/10 border border-[#00e5ff]/30 rounded-xl hover:bg-[#00e5ff]/20 text-[#00e5ff] text-xs font-bold flex items-center gap-1.5 transition-colors"
                       >
                         <AiSparklesIcon size={14} accent="#00e5ff" />
                         <span>{t('ai.explain')}</span>

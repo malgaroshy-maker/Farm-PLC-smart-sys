@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
+import { ZONE_BY_ID } from '../../lib/zones';
 import { X, AlertTriangle, ShieldAlert, Sparkles, Send, Wrench, XCircle, Copy, Check } from 'lucide-react';
 import type { Alarm } from '@algaroshy/contracts';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { explainAlarm, type AlarmExplanation, type ChatMessage, sendAiChat } from '../../lib/api';
 import { SEVERITY } from '../../lib/alarms';
 import { pickName, useT } from '../../lib/i18n';
@@ -14,7 +14,7 @@ interface ExplainAlarmDrawerProps {
   onClose: () => void;
 }
 
-const ZONE_MAP = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const ZONE_MAP = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 
 export default function ExplainAlarmDrawer({ alarm, onClose }: ExplainAlarmDrawerProps) {
   if (!alarm) return null;

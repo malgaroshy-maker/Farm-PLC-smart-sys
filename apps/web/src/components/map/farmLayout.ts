@@ -3,7 +3,7 @@
  * which mainline trunk feeds which zone, equipment footprints. Computed once.
  */
 import { FARM, ZONE_IDS, polygonCentroid, polylineLength, type Point } from '@algaroshy/map-model';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
+import { ZONE_BY_ID } from '../../lib/zones';
 import type { Species } from './trees';
 
 export type Crop = 'pomegranate' | 'olive' | 'grape' | 'mixed';
@@ -124,7 +124,7 @@ export const OTHER_TREES: ZoneLayout[] = Object.entries(FARM.other_trees ?? {}).
 const CANOPY_M: Record<string, number> = { zone_zaytoun_2: 6.8, zone_rumman_ummahat: 5.4 };
 const TREE_SPACING_M: Record<string, number> = { zone_rumman_ummahat: 4.6 };
 
-const seedById = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const seedById = ZONE_BY_ID;
 
 export const ZONES: ZoneLayout[] = ZONE_IDS.map((id) => {
   const f = FARM.features[id];
@@ -168,3 +168,9 @@ export const TRUNK_LENGTH: Record<string, number> =Object.fromEntries(
 
 /** Sprite footprints in map units (real size × 1.4 so they read at farm zoom). */
 export const EQUIPMENT_SIZE = { tank: 26, booster: 15, control_room: 20, wellhead: 8 };
+
+/** Current display names (live catalog), so renamed zones show the new name on the map. */
+export function zoneNames(id: string): { name: string; nameAr: string } {
+  const z = ZONE_BY_ID[id];
+  return { name: z?.name ?? id, nameAr: z?.name_ar || z?.name || id };
+}

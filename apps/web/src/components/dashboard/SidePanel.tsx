@@ -1,8 +1,8 @@
 import { useState } from 'react';
+import { ZONE_BY_ID } from '../../lib/zones';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Alarm, FarmMapState, TelemetrySeries } from '@algaroshy/contracts';
-import { ZONE_SEEDS } from '@algaroshy/contracts';
 import { usePoll } from '../../lib/poll';
 import { SEVERITY, sortAlarms } from '../../lib/alarms';
 import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
@@ -10,7 +10,7 @@ import { AlarmIcon, PumpIcon, TankIcon } from '../icons/FarmIcons';
 import { parseUtcDate, useClockStore } from '../../lib/clock';
 
 const CYAN = '#00e5ff';
-const SEED = Object.fromEntries(ZONE_SEEDS.map((z) => [z.id, z]));
+const SEED = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 const tip = {
   contentStyle: { background: '#161618', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 12 },
   labelStyle: { color: '#bac9cc' },
