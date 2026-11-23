@@ -39,6 +39,13 @@ def test_guard_no_forbidden_utcnow_in_services():
         "scheduler.py": [
             "now_real = utcnow()",  # tick downtime detection (real elapsed time between ticks)
         ],
+        "features.py": [
+            "row.updated_at = utcnow()",  # when the owner flipped a switch (real-world audit time)
+        ],
+        "notify.py": [
+            "row.updated_at = utcnow()",  # when push keys were generated (real-world audit time)
+            "s.last_ok_at = utcnow()",  # when a phone push was delivered (real-world time)
+        ],
         "scenarios.py": [  # scenario runner internal execution timers
             "self._started = utcnow()",
             "self._picked_up_at = utcnow()",

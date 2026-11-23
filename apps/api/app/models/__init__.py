@@ -20,7 +20,9 @@ from .clock import FarmClockModel
 from .command import Command
 from .event_log import EventLog
 from .farm import Farm
+from .feature_flag import FeatureFlag
 from .irrigation_cycle import IrrigationCycle
+from .notification import NotificationSettings, PushSubscription
 from .program import Program, ProgramStep, SchedulerState
 from .pump import Pump
 from .schedule import Schedule
@@ -32,6 +34,9 @@ from .water_source import WaterSource
 from .zone import Zone, ZoneCombination
 
 __all__ = [
+    "NotificationSettings",
+    "PushSubscription",
+    "FeatureFlag",
     "AICallLog",
     "Base",
     "Farm",

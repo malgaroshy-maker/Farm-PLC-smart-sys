@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import Actor, get_actor, require_admin, require_roles
 from app.models.zone import Zone
-from app.schemas.zone import ZoneResponse, ZoneUpdate
+from app.schemas.zone import ZoneCreate, ZoneResponse, ZoneUpdate
 from app.services.alarms import MAINTENANCE_DONE
 from app.services.events import log_event
 
@@ -31,14 +31,26 @@ async def get_zone(zone_id: str, _: Actor = Depends(get_actor), db: AsyncSession
     return zone
 
 
+def _check_ranges(zone: Zone) -> None:
+    if zone.flow_min_m3h > zone.flow_max_m3h:
+        raise HTTPException(422, "flow_min_m3h must not exceed flow_max_m3h")
+    if zone.pressure_min_bar > zone.pressure_max_bar:
+        raise HTTPException(422, "pressure_min_bar must not exceed pressure_max_bar")
+    if zone.default_duration_min > zone.max_runtime_min:
+        raise HTTPException(422, "default_duration_min must not exceed max_runtime_min")
+
+
 @router.patch("/{zone_id}", response_model=ZoneResponse)
 async def update_zone(
     zone_id: str,
     update: ZoneUpdate,
-    _: Actor = Depends(require_admin),
+    actor: Actor = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Partially update zone configuration."""
+    """Partially update zone configuration (disable instead of delete: history stays)."""
+    from app.models.valve import Valve
+    from app.services.realtime import manager
+
     zone = await db.get(Zone, zone_id)
     if not zone:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found")
@@ -46,9 +58,96 @@ async def update_zone(
     update_data = update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(zone, field, value)
+    _check_ranges(zone)
+    if "enabled" in update_data:  # the zone's valve follows the zone
+        for v in (await db.execute(select(Valve).where(Valve.zone_id == zone.id))).scalars():
+            v.enabled = zone.enabled
 
-    await db.flush()
+    await log_event(
+        db,
+        "zone.updated",
+        "zone",
+        zone.id,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload=update_data,
+    )
+    await db.commit()
     await db.refresh(zone)
+    await manager.broadcast("zones.updated", {"zone_id": zone.id})
+    return zone
+
+
+@router.post("", response_model=ZoneResponse, status_code=201)
+async def create_zone(
+    body: ZoneCreate,
+    actor: Actor = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a zone with its valve and moisture sensor (owner, G3).
+
+    The controller (simulator now, PLC later) picks it up on its next start; the map shows
+    it once its outline is traced (tools/map-geometry).
+    """
+    from app.config import settings
+    from app.models.sensor import Sensor
+    from app.models.valve import Valve
+    from app.services.realtime import manager
+
+    zid = f"zone_{body.code.lower()}"
+    if (
+        await db.get(Zone, zid)
+        or (await db.execute(select(Zone).where(Zone.code == body.code))).first()
+    ):
+        raise HTTPException(409, f"zone code '{body.code}' already exists")
+    max_prio = (
+        await db.execute(select(Zone.priority).order_by(Zone.priority.desc()))
+    ).scalars().first() or 0
+    zone = Zone(
+        id=zid,
+        farm_id=settings.farm_id,
+        enabled=True,
+        priority=min(99, max_prio + 1),
+        source_preference="tank",
+        allows_direct_well=False,
+        **body.model_dump(),
+    )
+    _check_ranges(zone)
+    db.add(zone)
+    db.add(
+        Valve(
+            id=f"valve_{body.code.lower()}",
+            zone_id=zid,
+            code=f"VALVE_{body.code}",
+            enabled=True,
+            has_open_feedback=True,
+            has_close_feedback=True,
+        )
+    )
+    db.add(
+        Sensor(
+            id=f"sensor_moisture_{body.code.lower()}",
+            farm_id=settings.farm_id,
+            zone_id=zid,
+            code=f"MOISTURE_{body.code}",
+            sensor_type="moisture",
+            unit="%",
+            location_scope="zone",
+            enabled=True,
+        )
+    )
+    await log_event(
+        db,
+        "zone.created",
+        "zone",
+        zid,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload=body.model_dump(),
+    )
+    await db.commit()
+    await db.refresh(zone)
+    await manager.broadcast("zones.updated", {"zone_id": zid})
     return zone
 
 

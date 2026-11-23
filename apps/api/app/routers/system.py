@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +19,7 @@ from app.config import settings
 from app.core.clock import clock
 from app.core.timeutil import utcnow
 from app.database import _is_sqlite, get_db
-from app.deps import Actor, get_actor
+from app.deps import Actor, get_actor, require_admin
 from app.services.ai.agent import is_primary_degraded
 from app.services.live_state import last_update, load_snapshots
 from app.services.monitor import MONITOR_STATUS
@@ -146,3 +147,196 @@ async def system_health(actor: Actor = Depends(get_actor), db: AsyncSession = De
         "checked_at": utcnow().isoformat(),
         "checks": checks,
     }
+
+
+# ── Feature switches (Milestone G3) ──────────────────────────
+
+
+class FeatureUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/features")
+async def list_features(_: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
+    """All feature switches with their group (any signed-in user: the web hides switched-off UI)."""
+    from app.services.features import FEATURES, all_features
+
+    values = await all_features(db)
+    return {
+        "features": values,
+        "groups": {k: g for k, (_d, g) in FEATURES.items()},
+        "defaults": {k: d for k, (d, _g) in FEATURES.items()},
+    }
+
+
+@router.put("/features/{key}")
+async def update_feature(
+    key: str,
+    body: FeatureUpdate,
+    actor: Actor = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.events import log_event
+    from app.services.features import UnknownFeature, set_feature
+    from app.services.realtime import manager
+
+    try:
+        values = await set_feature(db, key, body.enabled, actor.actor_id)
+    except UnknownFeature:
+        raise HTTPException(404, f"unknown feature '{key}'") from None
+    await log_event(
+        db,
+        "system.feature_changed",
+        "feature",
+        key,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"key": key, "enabled": body.enabled},
+    )
+    await db.commit()
+    await manager.broadcast("features.updated", {"features": values})
+    return {"features": values}
+
+
+# ── Notifications (Milestone G3) ─────────────────────────────
+
+
+class TelegramChat(BaseModel):
+    chat_id: str
+
+
+class PushSubscriptionIn(BaseModel):
+    endpoint: str
+    keys: dict[str, str]
+
+
+@router.get("/notifications")
+async def notification_status(
+    _: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import func
+    from sqlalchemy import select as _select
+
+    from app.models.notification import PushSubscription
+    from app.services.features import all_features
+    from app.services.notify import get_settings_row, telegram_configured
+
+    row = await get_settings_row(db)
+    await db.commit()
+    flags = await all_features(db)
+    subs = (await db.execute(_select(func.count()).select_from(PushSubscription))).scalar()
+    return {
+        "in_app": {"enabled": flags["notify.in_app"], "configured": True},
+        "telegram": {
+            "enabled": flags["notify.telegram"],
+            "configured": telegram_configured() and bool(row.telegram_chat_id),
+            "token_set": telegram_configured(),
+            "chat_id": row.telegram_chat_id,
+        },
+        "web_push": {
+            "enabled": flags["notify.web_push"],
+            "configured": bool(subs),
+            "devices": subs,
+        },
+        "severities": ["S3", "S2"],
+    }
+
+
+@router.post("/notifications/telegram/detect")
+async def telegram_detect(_: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """After the owner sends /start to the bot, read the chat id from the bot's updates."""
+    from app.core.timeutil import utcnow as _now
+    from app.services.notify import get_settings_row, telegram_configured, telegram_detect_chat
+
+    if not telegram_configured():
+        raise HTTPException(409, "telegram_token_missing")
+    chat_id = await telegram_detect_chat()
+    if not chat_id:
+        raise HTTPException(404, "telegram_no_message")
+    row = await get_settings_row(db)
+    row.telegram_chat_id = chat_id
+    row.updated_at = _now()
+    await db.commit()
+    return {"chat_id": chat_id}
+
+
+@router.put("/notifications/telegram")
+async def telegram_set_chat(
+    body: TelegramChat, _: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)
+):
+    from app.core.timeutil import utcnow as _now
+    from app.services.notify import get_settings_row
+
+    row = await get_settings_row(db)
+    row.telegram_chat_id = body.chat_id.strip() or None
+    row.updated_at = _now()
+    await db.commit()
+    return {"chat_id": row.telegram_chat_id}
+
+
+@router.post("/notifications/test")
+async def notification_test(_: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    from app.services.notify import Notification, dispatch
+
+    result = await dispatch(
+        Notification(
+            kind="test",
+            title_ar="رسالة تجريبية من نظام الري",
+            title_en="Test message from the irrigation system",
+            body_ar="إذا وصلتك هذه الرسالة فالتنبيهات تعمل.",
+            body_en="If you got this, notifications work.",
+        ),
+        db,
+    )
+    return {"result": result}
+
+
+@router.get("/push/public-key")
+async def push_public_key(_: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
+    from app.services.notify import vapid_keys
+
+    pub, _priv = await vapid_keys(db)
+    return {"public_key": pub}
+
+
+@router.post("/push/subscribe")
+async def push_subscribe(
+    body: PushSubscriptionIn, actor: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import select as _select
+
+    from app.core.timeutil import utcnow as _now
+    from app.models.notification import PushSubscription
+
+    if not body.keys.get("p256dh") or not body.keys.get("auth"):
+        raise HTTPException(422, "subscription keys missing")
+    row = (
+        await db.execute(
+            _select(PushSubscription).where(PushSubscription.endpoint == body.endpoint)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = PushSubscription(
+            endpoint=body.endpoint,
+            p256dh=body.keys["p256dh"],
+            auth=body.keys["auth"],
+            created_at=_now(),
+        )
+        db.add(row)
+    row.user_id = actor.actor_id
+    row.p256dh, row.auth = body.keys["p256dh"], body.keys["auth"]
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/push/unsubscribe")
+async def push_unsubscribe(
+    body: PushSubscriptionIn, _: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import delete as _delete
+
+    from app.models.notification import PushSubscription
+
+    await db.execute(_delete(PushSubscription).where(PushSubscription.endpoint == body.endpoint))
+    await db.commit()
+    return {"ok": True}
