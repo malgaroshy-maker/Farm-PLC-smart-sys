@@ -1,0 +1,43 @@
+{
+  "_about": "EXAMPLE tag map for the OPC UA adapter (Milestone G3 skeleton). The real node ids come from the TIA Portal project in Milestone G5 and are validated with PLCSIM Advanced before any hardware. Node id style follows S7-1500 OPC UA: ns=3;s=\"DB\".\"Member\".",
+  "endpoint": "opc.tcp://192.168.0.10:4840",
+  "system": {
+    "mode": "ns=3;s=\"DB_Farm\".\"Mode\"",
+    "estop": "ns=3;s=\"DB_Farm\".\"EStop\"",
+    "tank_level_pct": "ns=3;s=\"DB_Farm\".\"TankLevelPct\"",
+    "main_pressure_bar": "ns=3;s=\"DB_Farm\".\"MainPressureBar\"",
+    "main_flow_m3h": "ns=3;s=\"DB_Farm\".\"MainFlowM3h\"",
+    "heartbeat": "ns=3;s=\"DB_Farm\".\"Heartbeat\""
+  },
+  "zones": {
+    "zone_rumman_1": {
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"ValveOpenFb\"",
+      "valve_closed_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"ValveClosedFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"MoisturePct\""
+    }
+  },
+  "pumps": {
+    "pump_booster_01": {
+      "run_fb": "ns=3;s=\"DB_Pumps\".\"Booster\".\"RunFb\"",
+      "fault": "ns=3;s=\"DB_Pumps\".\"Booster\".\"Fault\"",
+      "runtime_hours": "ns=3;s=\"DB_Pumps\".\"Booster\".\"RuntimeHours\""
+    },
+    "pump_well_01": {
+      "run_fb": "ns=3;s=\"DB_Pumps\".\"Well\".\"RunFb\"",
+      "fault": "ns=3;s=\"DB_Pumps\".\"Well\".\"Fault\"",
+      "runtime_hours": "ns=3;s=\"DB_Pumps\".\"Well\".\"RuntimeHours\""
+    }
+  },
+  "command": {
+    "seq": "ns=3;s=\"DB_Cmd\".\"Seq\"",
+    "type": "ns=3;s=\"DB_Cmd\".\"Type\"",
+    "target": "ns=3;s=\"DB_Cmd\".\"Target\"",
+    "duration_min": "ns=3;s=\"DB_Cmd\".\"DurationMin\"",
+    "ack_seq": "ns=3;s=\"DB_Cmd\".\"AckSeq\"",
+    "ack_status": "ns=3;s=\"DB_Cmd\".\"AckStatus\"",
+    "ack_reason": "ns=3;s=\"DB_Cmd\".\"AckReason\""
+  }
+}

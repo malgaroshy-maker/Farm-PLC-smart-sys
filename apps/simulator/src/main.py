@@ -36,15 +36,28 @@ async def run_simulator():
 
     api_url = os.getenv("API_URL", "http://127.0.0.1:8000/api/v1")
     token = os.getenv("SIMULATOR_TOKEN", "dev-simulator-token")
-    client = APIClient(engine, base_url=api_url, token=token, initial_timescale=time_scale)
+
+    # Which controller is on the farm side (Milestone G3): simulator (default) or opcua
+    kind = os.getenv("CONTROLLER_ADAPTER", "simulator").strip().lower()
+    if kind == "opcua":
+        from .adapters.opcua_adapter import OpcUaAdapter, load_tagmap
+
+        tagmap_path = os.getenv("OPCUA_TAGMAP", "")
+        if not tagmap_path:
+            raise SystemExit("CONTROLLER_ADAPTER=opcua needs OPCUA_TAGMAP=<tag map json>")
+        adapter = OpcUaAdapter(load_tagmap(tagmap_path))
+        client = APIClient(adapter, base_url=api_url, token=token)
+        run_engine = False
+    else:
+        client = APIClient(engine, base_url=api_url, token=token, initial_timescale=time_scale)
+        run_engine = True
 
     # Run loops concurrently
     loop = asyncio.get_running_loop()
 
-    tasks = [
-        loop.create_task(engine.run_loop()),
-        loop.create_task(client.run_loop()),
-    ]
+    tasks = [loop.create_task(client.run_loop())]
+    if run_engine:
+        tasks.append(loop.create_task(engine.run_loop()))
 
     def shutdown_signal(sig):
         print(f"Received exit signal {sig}...")

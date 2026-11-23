@@ -2,10 +2,10 @@
 
 import asyncio
 import json
-from datetime import datetime
 
 import httpx
 
+from .adapter import Layout
 from .engine import SimulatorEngine
 from .state import SimPumpState, SimSensorState, SimValveState, SimZoneState, ZoneConfig, utcnow
 
@@ -17,16 +17,26 @@ SENSOR_METRICS = {
 
 
 class APIClient:
-    """Pulls pending commands and pushes live state, authenticated with the service token."""
+    """Gateway between the API and the farm controller (Milestone G3).
+
+    Pulls pending commands and pushes live state, authenticated with the service token.
+    The farm side is a ControllerAdapter: the simulator today, OPC UA (S7 PLC) later.
+    Passing a SimulatorEngine still works (it is wrapped in a SimulatorAdapter).
+    """
 
     def __init__(
         self,
-        engine: SimulatorEngine,
+        controller,
         base_url: str = "http://127.0.0.1:8000/api/v1",
         token: str = "dev-simulator-token",
         initial_timescale: float = 1.0,
     ):
-        self.engine = engine
+        from .adapters.simulator_adapter import SimulatorAdapter
+
+        if isinstance(controller, SimulatorEngine):
+            controller = SimulatorAdapter(controller)
+        self.adapter = controller
+        self.engine = getattr(controller, "engine", None)  # simulator only (tests, scenarios)
         self.base_url = base_url
         self.token = token
         self.initial_timescale = initial_timescale
@@ -36,7 +46,6 @@ class APIClient:
             timeout=5.0,
         )
         self.running = False
-        self._comms_down = False
         root = base_url.replace("/api/v1", "")
         ws_proto = "wss://" if root.startswith("https://") else "ws://"
         host_part = root.split("://", 1)[1] if "://" in root else root
@@ -51,6 +60,7 @@ class APIClient:
                 self._handle_clock_update(data)
                 if (
                     self.initial_timescale != 1.0
+                    and self.adapter.name == "simulator"
                     and data.get("mode") == "real"
                     and data.get("speed") == 1.0
                 ):
@@ -60,35 +70,10 @@ class APIClient:
                     if set_resp.status_code == 200:
                         self._handle_clock_update(set_resp.json())
         except Exception as e:
-            print(f"[SIMULATOR] Could not sync clock: {e}")
+            print(f"[GATEWAY] Could not sync clock: {e}")
 
     def _handle_clock_update(self, payload: dict) -> None:
-        speed = payload.get("speed")
-        paused = payload.get("paused")
-        if paused is None:
-            paused = payload.get("clock_paused", False)
-        action = payload.get("action")
-        farm_now_str = payload.get("farm_now")
-        if farm_now_str:
-            try:
-                s = farm_now_str.replace("Z", "+00:00")
-                dt = datetime.fromisoformat(s)
-                gap = (dt - self.engine.sim_time).total_seconds()
-                threshold = max(300.0, 5.0 * max(1.0, self.engine.timescale))
-                if action == "step":
-                    delta = (dt - self.engine.sim_time).total_seconds()
-                    if 0 < delta <= 300:
-                        self.engine.manual_step(delta)
-                    self.engine.sim_time = dt
-                elif action in ("jump", "reset") or abs(gap) > threshold:
-                    self.engine.jump(dt)
-                else:
-                    self.engine.sim_time = dt
-            except Exception:
-                pass
-        if speed is not None:
-            self.engine.timescale = float(speed)
-        self.engine.paused = bool(paused)
+        self.adapter.on_clock(payload)
 
     async def ws_loop(self) -> None:
         import websockets
@@ -107,50 +92,43 @@ class APIClient:
                             if event_type in ("clock.changed", "state.snapshot"):
                                 self._handle_clock_update(payload)
                         except Exception as e:
-                            print(f"[SIMULATOR] WS message error: {e}")
+                            print(f"[GATEWAY] WS message error: {e}")
             except Exception:
                 await asyncio.sleep(2.0)
 
     async def fetch_initial_layout(self) -> bool:
-        """Load zones, pumps, valves and sensors from the API. Returns True on success."""
+        """Load zones, pumps, valves and sensors from the API and start the adapter."""
         try:
             responses = {}
             for path in ("/zones", "/pumps", "/valves", "/sensors"):
                 r = await self.client.get(path)
                 r.raise_for_status()
-                responses[path] = r.json()
+                responses[path.strip("/")] = r.json()
         except httpx.HTTPStatusError as e:
             if e.response.status_code in (401, 403):
-                print("API rejected the simulator token — check SIMULATOR_TOKEN matches the API.")
+                print("API rejected the gateway token — check SIMULATOR_TOKEN matches the API.")
             else:
                 print(f"Could not fetch layout: {e}")
             return False
         except httpx.HTTPError as e:
             print(f"API not reachable yet ({e.__class__.__name__}); retrying…")
             return False
-
-        apply_layout(self.engine, **{k.strip("/"): v for k, v in responses.items()})
-        s = self.engine.state
-        print(
-            f"Seeded simulator: {len(s.zones)} zones, {len(s.pumps)} pumps, "
-            f"{len(s.valves)} valves, {len(s.sensors)} sensors."
-        )
+        try:
+            await self.adapter.start(Layout(**responses))
+        except Exception as e:
+            print(f"[GATEWAY] {self.adapter.name} adapter could not start: {e}")
+            return False
         return True
 
     def comms_dropped(self) -> bool:
-        until = self.engine.state.faults.comms_drop_until
-        down = until is not None and utcnow() < until
-        if down != self._comms_down:
-            print("Comms DROPPED (simulated)" if down else "Comms restored")
-            self._comms_down = down
-        return down
+        return not self.adapter.link_ok()
 
     async def poll_commands(self) -> None:
         try:
             resp = await self.client.get("/commands/pending")
             resp.raise_for_status()
-            updates = self.engine.process_commands(resp.json())
-            for res in updates + self.engine.drain_outbox():
+            updates = await self.adapter.execute(resp.json())
+            for res in updates + await self.adapter.drain_events():
                 cid = res.pop("command_id")
                 await self.client.patch(f"/commands/{cid}/sync", json=res)
         except httpx.HTTPError as e:
@@ -158,14 +136,17 @@ class APIClient:
 
     async def push_state(self) -> None:
         try:
-            resp = await self.client.post("/state/sync", json=self.engine.state.get_sync_payloads())
+            payloads = await self.adapter.read_state()
+            if not payloads:
+                return
+            resp = await self.client.post("/state/sync", json=payloads)
             resp.raise_for_status()
         except httpx.HTTPError as e:
             print(f"Error pushing state: {e}")
 
     async def run_loop(self) -> None:
         self.running = True
-        print(f"API Client started, connecting to {self.base_url}")
+        print(f"Gateway ({self.adapter.name}) started, connecting to {self.base_url}")
 
         while self.running and not await self.fetch_initial_layout():
             await asyncio.sleep(2.0)
@@ -182,6 +163,7 @@ class APIClient:
                 await asyncio.sleep(1.0)
         finally:
             ws_task.cancel()
+            await self.adapter.stop()
 
 
 def apply_layout(engine: SimulatorEngine, zones, pumps, valves, sensors) -> None:

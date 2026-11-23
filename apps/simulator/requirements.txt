@@ -3,6 +3,9 @@ pydantic>=2.11.0
 httpx>=0.28.0
 websockets>=15.0
 
+# OPC UA adapter (CONTROLLER_ADAPTER=opcua; also used by the adapter tests)
+asyncua>=1.1
+
 # Dev
 pytest>=8.3.0
 pytest-asyncio>=0.25.0
