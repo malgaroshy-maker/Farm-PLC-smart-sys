@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-20
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (Map Weather & UI Polish) → next is the **Production track** (Siemens S7-1200/1500 OPC UA adapter, hosting, hardening)
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → next is **Milestone G**: hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
