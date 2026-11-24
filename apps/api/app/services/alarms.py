@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.alarm_catalog import CATALOG, SEVERITY_RANK, AlarmSpec
 from app.core.clock import clock
+from app.core.domain import ACTIVE_ZONE_STATES
 from app.core.timeutil import as_utc, utcnow
 from app.deps import Actor
 from app.models.alarm import Alarm
@@ -197,6 +198,112 @@ class AlarmEngine:
                 out.append(Condition("ALM-042"))
             elif m == "maintenance":
                 out.append(Condition("ALM-043"))
+        # G7: a selector switch on the panel not on Auto (one info alarm per switch)
+        zone_live = {
+            s.state.get("zone_id"): s.state for k, s in snapshots.items() if k.startswith("zone_")
+        }
+        for zid, st in zone_live.items():
+            if st.get("panel_mode", "auto") != "auto":
+                out.append(
+                    Condition("ALM-042", zone_id=zid, detail=f"zone switch {st['panel_mode']}")
+                )
+        for k, s in snapshots.items():
+            if k.startswith("pump_") and s.state.get("panel_mode", "auto") != "auto":
+                out.append(
+                    Condition(
+                        "ALM-042",
+                        device_id=s.state.get("pump_id"),
+                        detail=f"pump switch {s.state['panel_mode']}",
+                    )
+                )
+        # G7: water moving or a valve open with nothing commanded → leak or opened by hand
+        busy = {
+            zid
+            for zid, st in zone_live.items()
+            if st.get("state") in ACTIVE_ZONE_STATES
+            or st.get("panel_mode") == "on"
+            or st.get("state") == "stopping"
+        }
+        for k, s in snapshots.items():
+            if not k.startswith("valve_"):
+                continue
+            v = s.state
+            stray = v.get("status") in ("open", "opening") and v.get("zone_id") not in busy
+            if self._debounced(
+                f"ALM-021:{v.get('valve_id')}", stray, settings.alarm_debounce_sec, r_now
+            ):
+                out.append(
+                    Condition(
+                        "ALM-021",
+                        zone_id=v.get("zone_id"),
+                        device_id=v.get("valve_id"),
+                        detail="valve open without a command",
+                    )
+                )
+        # G7 soil: silent probes (ALM-016), dry with nothing planned (ALM-017), over-watered (ALM-018)
+        from app.services import soil
+
+        for k, s in snapshots.items():
+            st = s.state
+            if k.startswith("sensor_") and st.get("external"):
+                silent = not soil._fresh(st.get("timestamp"), r_now, soil.PROBE_FAULT_AFTER)
+                if silent or st.get("quality") != "good":
+                    out.append(
+                        Condition(
+                            "ALM-016",
+                            zone_id=st.get("zone_id"),
+                            device_id=st.get("sensor_id"),
+                            detail="soil probe silent for 6 h or reporting bad data",
+                        )
+                    )
+        if await soil.logic_on(db):
+            status = await soil.soil_status(db, snapshots)
+            for z in await soil.dry_without_run(db, status):
+                out.append(
+                    Condition(
+                        "ALM-017",
+                        zone_id=z.zone_id,
+                        value=z.moisture,
+                        threshold=z.start,
+                        detail="below the start level and no run planned in 12 h",
+                    )
+                )
+            for z in status.values():
+                if z.confirmed and z.moisture is not None and z.moisture > z.stop + 10:
+                    out.append(
+                        Condition(
+                            "ALM-018",
+                            zone_id=z.zone_id,
+                            value=z.moisture,
+                            threshold=z.stop,
+                            detail="above the stop level",
+                        )
+                    )
+        if stats and stats.state.get("filter_dp_bar") is not None:
+            dp = float(stats.state["filter_dp_bar"])
+            if self._debounced(
+                "ALM-039", dp > settings.filter_dp_alarm_bar, settings.alarm_debounce_sec, r_now
+            ):
+                out.append(
+                    Condition(
+                        "ALM-039",
+                        value=round(dp, 2),
+                        threshold=settings.filter_dp_alarm_bar,
+                        detail="head-unit filter is clogging",
+                    )
+                )
+        if stats:
+            flow = float(stats.state.get("main_flow_m3h", 0.0))
+            stray_flow = flow > settings.unexpected_flow_m3h and not busy
+            if self._debounced("ALM-021:flow", stray_flow, settings.alarm_debounce_sec * 3, r_now):
+                out.append(
+                    Condition(
+                        "ALM-021",
+                        value=round(flow, 2),
+                        threshold=settings.unexpected_flow_m3h,
+                        detail="water flowing with no zone on",
+                    )
+                )
 
         # ALM-036: repeated major faults on the same zone in 24 h. A recorded
         # "maintenance done" restarts that zone's window, so the alarm clears
@@ -363,6 +470,11 @@ class AlarmEngine:
         plc_codes = {c for c, s in CATALOG.items() if s.source == "plc"}
         derived_codes = {
             "ALM-001",
+            "ALM-016",
+            "ALM-017",
+            "ALM-018",
+            "ALM-021",
+            "ALM-039",
             "ALM-008",
             "ALM-010",
             "ALM-036",

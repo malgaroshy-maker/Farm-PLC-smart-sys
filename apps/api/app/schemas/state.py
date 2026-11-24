@@ -15,7 +15,10 @@ class ZoneLiveState(BaseModel):
     flow_m3h: float | None = None
     moisture_pct: float | None = None
     runtime_sec: float = 0
+    target_runtime_sec: float = 0
     active_alarm_count: int = 0
+    panel_mode: str = "auto"
+    run_source: str | None = None
     last_updated: datetime
 
 
@@ -25,6 +28,11 @@ class PumpLiveState(BaseModel):
     run_fb: bool = False
     fault: bool = False
     runtime_hours: float = 0.0
+    starts_today: int = 0
+    panel_mode: str = "auto"
+    power_kw: float = 0.0
+    energy_kwh_today: float = 0.0
+    current_a: float = 0.0
     last_updated: datetime
 
 
@@ -60,6 +68,10 @@ class FarmMapState(BaseModel):
     speed: float = 1.0
     clock_mode: str = "real"
     clock_paused: bool = False
+    power_ok: bool = True
+    fallback_active: bool = False
+    well_level_m: float | None = None
+    filter_dp_bar: float | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

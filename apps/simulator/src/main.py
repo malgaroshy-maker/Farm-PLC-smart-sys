@@ -37,7 +37,7 @@ async def run_simulator():
     api_url = os.getenv("API_URL", "http://127.0.0.1:8000/api/v1")
     token = os.getenv("SIMULATOR_TOKEN", "dev-simulator-token")
 
-    # Which controller is on the farm side (Milestone G3): simulator (default) or opcua
+    # Which controller is on the farm side (Milestone G3): simulator (default), opcua or modbus (G7)
     kind = os.getenv("CONTROLLER_ADAPTER", "simulator").strip().lower()
     if kind == "opcua":
         from .adapters.opcua_adapter import OpcUaAdapter, load_tagmap
@@ -46,6 +46,15 @@ async def run_simulator():
         if not tagmap_path:
             raise SystemExit("CONTROLLER_ADAPTER=opcua needs OPCUA_TAGMAP=<tag map json>")
         adapter = OpcUaAdapter(load_tagmap(tagmap_path))
+        client = APIClient(adapter, base_url=api_url, token=token)
+        run_engine = False
+    elif kind == "modbus":
+        from .adapters.modbus_adapter import ModbusAdapter, load_map
+
+        map_path = os.getenv("MODBUS_MAP", "")
+        if not map_path:
+            raise SystemExit("CONTROLLER_ADAPTER=modbus needs MODBUS_MAP=<register map json>")
+        adapter = ModbusAdapter(load_map(map_path))
         client = APIClient(adapter, base_url=api_url, token=token)
         run_engine = False
     else:

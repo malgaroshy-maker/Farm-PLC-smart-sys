@@ -36,6 +36,18 @@ def _check_ranges(zone: Zone) -> None:
         raise HTTPException(422, "flow_min_m3h must not exceed flow_max_m3h")
     if zone.pressure_min_bar > zone.pressure_max_bar:
         raise HTTPException(422, "pressure_min_bar must not exceed pressure_max_bar")
+    if (
+        zone.moisture_start_pct is not None
+        and zone.moisture_stop_pct is not None
+        and zone.moisture_start_pct >= zone.moisture_stop_pct
+    ):
+        raise HTTPException(422, "moisture_start_pct must be below moisture_stop_pct")
+    if (
+        zone.soil_fc_vwc is not None
+        and zone.soil_wp_vwc is not None
+        and zone.soil_wp_vwc >= zone.soil_fc_vwc
+    ):
+        raise HTTPException(422, "soil_wp_vwc must be below soil_fc_vwc")
     if zone.default_duration_min > zone.max_runtime_min:
         raise HTTPException(422, "default_duration_min must not exceed max_runtime_min")
 

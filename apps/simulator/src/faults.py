@@ -7,9 +7,13 @@ payload = {"target_type": ..., "target_id": ..., "fault_type": ..., "value": ...
 |-------------|-----------------------------------|------------------------------------------|
 | pump        | trip / fail_start / clear         | motor trip, no run feedback, repair       |
 | valve       | stuck_closed / stuck_open / clear | actuator stuck, repair                    |
+| valve       | hand_open / clear                 | someone opened the valve by hand (G7)     |
 | zone        | blocked / clear                   | line/filter blocked → no flow             |
 | system      | mainline_leak / clear_leak        | pipe burst on the mainline                |
 | system      | estop / estop_release             | emergency stop button                     |
+| system      | power_cut / power_restore         | mains power lost / back (G7)              |
+| system      | well_low / well_recover           | aquifer drawn down / recovered (G7)       |
+| system      | filter_clog / filter_clean        | head-unit filter fouled / flushed (G7)    |
 | system      | clear_all                         | repair everything                         |
 | sensor      | tank_level_fault / clear          | tank level reading frozen, quality bad    |
 | tank        | set_level (value = %)             | teleport tank level (for scenarios)       |
@@ -65,9 +69,12 @@ class FaultInjector:
             f.valve_stuck_closed.add(vid)
         elif fault == "stuck_open":
             f.valve_stuck_open.add(vid)
+        elif fault == "hand_open":
+            f.valve_hand_open.add(vid)
         elif fault == "clear":
             f.valve_stuck_closed.discard(vid)
             f.valve_stuck_open.discard(vid)
+            f.valve_hand_open.discard(vid)
         else:
             return False, f"Unknown valve fault '{fault}'"
         return True, "ok"
@@ -93,6 +100,19 @@ class FaultInjector:
             s.system.estop = True
         elif fault == "estop_release":
             s.system.estop = False
+        elif fault == "power_cut":
+            s.faults.power_cut = True
+        elif fault == "power_restore":
+            s.faults.power_cut = False
+        elif fault == "well_low":
+            s.faults.well_low = True
+        elif fault == "well_recover":
+            s.faults.well_low = False
+            s.system.well_level_m = s.hyd.well_static_m
+        elif fault == "filter_clog":
+            s.system.filter_dp_bar = 0.7
+        elif fault == "filter_clean":
+            s.system.filter_dp_bar = s.hyd.filter_clean_dp_bar
         elif fault == "clear_all":
             s.faults.clear_all()
             s.system.estop = False

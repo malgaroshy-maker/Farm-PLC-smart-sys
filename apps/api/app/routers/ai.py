@@ -56,6 +56,7 @@ from app.services.ai import (
     reject_suggestion,
 )
 from app.services.anomaly import anomaly_detector
+from app.services.realtime import manager
 from app.services.weather import WeatherForecast, weather_service
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -269,7 +270,48 @@ async def api_approve_suggestion(
     db: AsyncSession = Depends(get_db),
     actor: Actor = Depends(require_operator),
 ):
-    """Operator approves suggestion and creates one-day scheduler override."""
+    """Operator approves suggestion and creates one-day scheduler override.
+
+    G7: a soil "extra_run" suggestion instead starts the zone now, through the normal command
+    path (all interlocks apply), as the person who approved it.
+    """
+    from app.models.ai import AISuggestion
+
+    sug = await db.get(AISuggestion, suggestion_id)
+    payload = json.loads(sug.action_payload_json or "{}") if sug else {}
+    if sug and payload.get("action") == "extra_run":
+        if sug.status != "pending":
+            raise HTTPException(status_code=400, detail=f"Suggestion is already {sug.status}")
+        from app.schemas.command import CommandCreate
+        from app.services.commands import CommandRejected, submit_command
+
+        try:
+            cmd = await submit_command(
+                db,
+                CommandCreate(
+                    command_type="start_zone",
+                    target_type="zone",
+                    target_id=payload["zone_id"],
+                    payload={
+                        "duration_min": int(payload.get("duration_min", 45)),
+                        "notes": f"Extra run approved from soil suggestion {sug.id}",
+                    },
+                ),
+                actor,
+            )
+        except CommandRejected as exc:
+            raise HTTPException(status_code=409, detail=f"{exc.code}: {exc.message}") from exc
+        sug.status, sug.responded_at, sug.responded_by = "approved", clock.farm_now(), actor.name
+        await db.commit()
+        await manager.broadcast(
+            "ai.suggestion.approved", {"suggestion_id": sug.id, "action": "extra_run"}
+        )
+        return {
+            "status": "approved",
+            "suggestion_id": sug.id,
+            "action": "extra_run",
+            "command_id": cmd.id,
+        }
     try:
         override = await approve_suggestion(db, suggestion_id, operator_name=actor.name)
         return {

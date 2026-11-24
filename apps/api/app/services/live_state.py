@@ -48,10 +48,13 @@ def build_map_state(
 ) -> FarmMapState:
     zones, pumps, valves, sensors = [], [], [], []
     system_mode = "off"
+    power_ok, fallback_active = True, False
     stats: dict[str, Any] = {}
     for key, snap in sorted(snapshots.items()):
         if key == "system_mode":
             system_mode = snap.state.get("mode", "off")
+            power_ok = bool(snap.state.get("power_ok", True))
+            fallback_active = bool(snap.state.get("fallback_active", False))
         elif key == "simulation_stats":
             stats = snap.state
         elif key.startswith("zone_"):
@@ -64,9 +67,29 @@ def build_map_state(
             sensors.append(snap.state)
         # plc_alarms is consumed by the alarm engine, not shown raw
 
+    # G7: fresh soil probes (posted by the gateway) override the controller's moisture value
+    from app.services.soil import probe_readings
+
+    probes = probe_readings(snapshots)
+    if probes:
+        zones = [
+            {
+                **z,
+                "moisture_pct": round(
+                    sum(float(p["value"]) for p in probes[z["zone_id"]])
+                    / len(probes[z["zone_id"]]),
+                    1,
+                ),
+            }
+            if z.get("zone_id") in probes
+            else z
+            for z in zones
+        ]
     last = last_update(snapshots)
     return FarmMapState(
         system_mode=system_mode,
+        power_ok=power_ok,
+        fallback_active=fallback_active,
         zones=zones,
         pumps=pumps,
         valves=valves,
@@ -74,6 +97,8 @@ def build_map_state(
         tank_level_pct=stats.get("tank_level_pct", 0.0),
         main_pressure_bar=stats.get("main_pressure_bar", 0.0),
         main_flow_m3h=stats.get("main_flow_m3h", 0.0),
+        well_level_m=stats.get("well_level_m"),
+        filter_dp_bar=stats.get("filter_dp_bar"),
         active_alarms=active_alarms or [],
         data_fresh=is_fresh(snapshots),
         last_snapshot_ts=last,

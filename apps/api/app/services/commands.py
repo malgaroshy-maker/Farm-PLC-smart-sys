@@ -106,6 +106,16 @@ async def _validate_structure(db: AsyncSession, req: CommandCreate) -> Zone | No
                 422, f"payload needs target_type ({'|'.join(sorted(FAULT_TARGETS))}) and fault_type"
             )
         return None
+    if ct == "set_panel":
+        if settings.deployment_mode != "simulation":
+            raise HTTPException(422, "Panel switches are set by hand on the real panel")
+        if req.target_type != "simulator" or not req.target_id:
+            raise HTTPException(422, "'set_panel' requires target_type 'simulator' and a target_id")
+        kind, pos = payload.get("kind"), payload.get("position")
+        valid = {"zone": ("auto", "on", "off"), "pump": ("auto", "hand", "off")}
+        if kind not in valid or pos not in valid[kind]:
+            raise HTTPException(422, "payload needs kind (zone|pump) and a valid position")
+        return None
     raise HTTPException(422, f"Unsupported command '{ct}'")
 
 
@@ -142,6 +152,17 @@ async def _check_start_interlocks(
     mode_value = mode.state.get("mode") if mode else "off"
     if mode_value not in ("auto", "manual"):
         raise _Interlock("mode_blocks_start", f"System mode '{mode_value}' does not allow starts")
+    if mode and mode.state.get("power_ok") is False:
+        raise _Interlock("no_power", "Mains power is off at the farm")
+    panel = (
+        snapshots.get(f"zone_{zone.id}").state.get("panel_mode", "auto")
+        if snapshots.get(f"zone_{zone.id}")
+        else "auto"
+    )
+    if panel != "auto":
+        raise _Interlock(
+            "zone_manual", f"Zone {zone.code} is switched to {panel.upper()} on the panel"
+        )
 
     zone_states = {
         s.state.get("zone_id"): s.state.get("state")
@@ -184,7 +205,12 @@ async def _check_start_interlocks(
     pump_live = {
         s.state.get("pump_id"): s.state for k, s in snapshots.items() if k.startswith("pump_")
     }
-    if not any(not pump_live.get(p.id, {}).get("fault", False) for p in pumps):
+
+    def usable(p) -> bool:
+        live = pump_live.get(p.id, {})
+        return not live.get("fault", False) and live.get("panel_mode", "auto") != "off"
+
+    if not any(usable(p) for p in pumps):
         raise _Interlock("no_pump_available", "No healthy, enabled pump is available")
 
     stats = snapshots.get("simulation_stats")
@@ -247,6 +273,16 @@ async def submit_command(db: AsyncSession, req: CommandCreate, actor: Actor) -> 
         requested_at_real=utcnow(),
     )
     rejection: _Interlock | None = None
+    if req.command_type == "stop_zone" and zone is not None:
+        snap = (await load_snapshots(db)).get(f"zone_{zone.id}")
+        if snap and snap.state.get("panel_mode") == "on":
+            rejection = _Interlock(
+                "zone_manual",
+                f"Zone {zone.code} is switched ON on the panel; turn the switch to stop it",
+            )
+            cmd.status = "rejected"
+            cmd.failure_reason = f"{rejection.code}: {rejection.message}"
+            cmd.completed_at = cmd.requested_at
     if req.command_type == "start_zone" and zone is not None:
         try:
             await _check_start_interlocks(db, zone, await load_snapshots(db))

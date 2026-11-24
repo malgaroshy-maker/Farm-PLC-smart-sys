@@ -108,18 +108,27 @@ def push_state(
     plc_alarms: list[dict] | None = None,
     pressure: float = 0.0,
     updated_at: str | None = None,
+    flow: float = 0.0,
+    system_extra: dict | None = None,
+    zone_extra: dict[str, dict] | None = None,
+    pump_extra: dict[str, dict] | None = None,
+    valves: list[dict] | None = None,
 ) -> None:
     """Act as the simulator and push a live-state snapshot."""
     now = updated_at or utcnow().isoformat()
     zone_states = zone_states or {}
     payloads = [
-        {"device_key": "system_mode", "state_json": {"mode": mode}, "updated_at": now},
+        {
+            "device_key": "system_mode",
+            "state_json": {"mode": mode, **(system_extra or {})},
+            "updated_at": now,
+        },
         {
             "device_key": "simulation_stats",
             "state_json": {
                 "tank_level_pct": tank,
                 "main_pressure_bar": pressure,
-                "main_flow_m3h": 0,
+                "main_flow_m3h": flow,
             },
             "updated_at": now,
         },
@@ -138,6 +147,7 @@ def push_state(
                     "flow_m3h": 5.0 if zone_states.get(zid) == "running" else 0.0,
                     "runtime_sec": 0,
                     "last_updated": now,
+                    **(zone_extra or {}).get(zid, {}),
                 },
                 "updated_at": now,
             }
@@ -151,7 +161,16 @@ def push_state(
                     "state": "faulted" if pump_fault else "stopped",
                     "fault": pump_fault,
                     "last_updated": now,
+                    **(pump_extra or {}).get(pid, {}),
                 },
+                "updated_at": now,
+            }
+        )
+    for v in valves or []:
+        payloads.append(
+            {
+                "device_key": f"valve_{v['valve_id']}",
+                "state_json": {"last_command": "close", "last_updated": now, **v},
                 "updated_at": now,
             }
         )

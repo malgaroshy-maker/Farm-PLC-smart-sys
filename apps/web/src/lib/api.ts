@@ -156,7 +156,7 @@ export interface AdvisorSuggestion {
   program_name?: string;
   program_name_ar?: string;
   zone_id?: string;
-  action: 'skip' | 'shorten' | 'extend' | 'reschedule';
+  action: 'skip' | 'shorten' | 'extend' | 'reschedule' | 'extra_run';
   adjustment_pct?: number;
   /** "why?" details (Milestone G2): the rule that fired and the inputs it used */
   rule?: string;
@@ -391,8 +391,9 @@ export async function fetchAiSuggestions(): Promise<AdvisorSuggestion[]> {
       rule: typeof payload.rule === 'string' ? payload.rule : undefined,
       inputs: Array.isArray(payload.inputs) ? (payload.inputs as AdvisorSuggestion['inputs']) : undefined,
       adjustment_pct: typeof s.adjustment_pct === 'number' ? s.adjustment_pct : adjustmentPct,
-      reason: String(s.reasoning ?? s.description ?? s.reason ?? ''),
-      reason_ar: String(s.reasoning_ar ?? s.description_ar ?? s.reason_ar ?? ''),
+      // G7 soil suggestions carry their explanation in the description
+      reason: String((payload.action === 'extra_run' ? s.description : s.reasoning) ?? s.description ?? s.reason ?? ''),
+      reason_ar: String((payload.action === 'extra_run' ? s.description_ar : s.reasoning_ar) ?? s.description_ar ?? s.reason_ar ?? ''),
       weather_summary: (s.weather_summary ?? payload.weather_summary ?? {
         condition: 'partly_cloudy',
       }) as AdvisorSuggestion['weather_summary'],

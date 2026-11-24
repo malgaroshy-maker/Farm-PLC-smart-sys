@@ -19,7 +19,13 @@ from app.core.timeutil import as_utc, utcnow
 from app.models.telemetry import TelemetryPoint
 from app.services.live_state import Snapshot
 
-SYSTEM_METRICS = ("tank_level_pct", "main_pressure_bar", "main_flow_m3h")
+SYSTEM_METRICS = (
+    "tank_level_pct",
+    "main_pressure_bar",
+    "main_flow_m3h",
+    "well_level_m",
+    "filter_dp_bar",
+)
 ZONE_METRICS = ("moisture_pct", "flow_m3h", "pressure_bar")
 METRIC_KEYS = (*SYSTEM_METRICS, *(f"zone.{m}" for m in ZONE_METRICS))
 
@@ -77,6 +83,9 @@ class Recorder:
                 zid = snap.state.get("zone_id")
                 for m in ZONE_METRICS:
                     add(f"zone.{m}", snap.state.get(m), zid)
+            elif key.startswith("pump_"):  # G7 pump health
+                pid = snap.state.get("pump_id")
+                add(f"pump.{pid}.power_kw", snap.state.get("power_kw"))
         db.add_all(points)
         await db.commit()
         return len(points)
@@ -261,8 +270,11 @@ async def water_today(db: AsyncSession) -> list[dict]:
 async def prune_old(db: AsyncSession) -> None:
     cutoff = clock.farm_now() - timedelta(days=settings.telemetry_retention_days)
     await db.execute(delete(TelemetryPoint).where(TelemetryPoint.ts < cutoff))
-    await downsample_old(db)
     await db.commit()
+    await downsample_old(db)
+
+
+DOWNSAMPLE_WINDOW = timedelta(hours=6)
 
 
 async def downsample_old(db: AsyncSession) -> int:
@@ -270,30 +282,53 @@ async def downsample_old(db: AsyncSession) -> int:
 
     Recent data stays at full resolution; older data (for 24 h / 7 d charts) is thinned
     so the table does not grow without bound between prunes.
+
+    G7: works in 6-hour slices and commits after each one. A single statement over the
+    whole table held SQLite's write lock for 15+ s on a busy farm PC, so the simulator's
+    state pushes failed with "database is locked".
     """
     before = clock.farm_now() - timedelta(hours=settings.telemetry_downsample_after_hours)
     bucket = max(1, settings.telemetry_downsample_bucket_sec)
-    if db.bind.dialect.name == "sqlite":
+    sqlite = db.bind.dialect.name == "sqlite"
+    if sqlite:
         epoch = "CAST(strftime('%s', ts) AS INTEGER)"
     else:  # PostgreSQL
         epoch = "CAST(EXTRACT(EPOCH FROM ts) AS BIGINT)"
-    res = await db.execute(
-        text(
-            f"""
-            DELETE FROM telemetry_points
-            WHERE ts < :before AND id NOT IN (
-                SELECT MIN(id) FROM telemetry_points
-                WHERE ts < :before
-                GROUP BY metric_key, COALESCE(zone_id, ''), {epoch} / :bucket
-            )
-            """
-        ),
-        {
-            "before": before.replace(tzinfo=None) if db.bind.dialect.name == "sqlite" else before,
-            "bucket": bucket,
-        },
-    )
-    return res.rowcount or 0
+
+    def bind(t: datetime):
+        return t.replace(tzinfo=None) if sqlite else t
+
+    oldest = (
+        await db.execute(
+            select(TelemetryPoint.ts)
+            .where(TelemetryPoint.ts < bind(before))
+            .order_by(TelemetryPoint.ts)
+            .limit(1)
+        )
+    ).scalar()
+    if oldest is None:
+        return 0
+    start = as_utc(oldest) if sqlite else oldest
+    removed = 0
+    while start < before:
+        end = min(before, start + DOWNSAMPLE_WINDOW)
+        res = await db.execute(
+            text(
+                f"""
+                DELETE FROM telemetry_points
+                WHERE ts >= :start AND ts < :end AND id NOT IN (
+                    SELECT MIN(id) FROM telemetry_points
+                    WHERE ts >= :start AND ts < :end
+                    GROUP BY metric_key, COALESCE(zone_id, ''), {epoch} / :bucket
+                )
+                """
+            ),
+            {"start": bind(start), "end": bind(end), "bucket": bucket},
+        )
+        await db.commit()  # release the write lock between slices
+        removed += res.rowcount or 0
+        start = end
+    return removed
 
 
 recorder = Recorder()

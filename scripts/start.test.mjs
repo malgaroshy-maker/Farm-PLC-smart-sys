@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls } from './start.mjs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { applyPendingRestore, dbPaths, isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls, restartDelay } from './start.mjs';
 
 test('isVirtualOrLinkLocal filters link-local addresses (169.254.x.x)', () => {
   assert.equal(isVirtualOrLinkLocal('169.254.0.1'), true);
@@ -90,4 +93,37 @@ test('lanAddresses drops VirtualBox, vEthernet and link-local adapters', () => {
     'Wi-Fi': [{ address: '192.168.0.100', family: 'IPv4', internal: false }],
   });
   assert.deepEqual([...got], ['192.168.0.100']);
+});
+
+test('restartDelay backs off 5s, 10s, 20s, 40s, then once a minute', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 9].map(restartDelay), [5000, 10000, 20000, 40000, 60000, 60000]);
+});
+
+test('dbPaths follows DATABASE_URL and BACKUP_DIR', () => {
+  const p = dbPaths({ DATABASE_URL: 'sqlite+aiosqlite:///./farm.db' });
+  assert.ok(p.db.endsWith(path.join('apps', 'api', 'farm.db')));
+  assert.equal(p.backups, path.join(path.dirname(p.db), 'backups'));
+  assert.equal(dbPaths({ DATABASE_URL: 'postgresql://x/y' }), null);
+});
+
+test('applyPendingRestore swaps the chosen backup in and keeps the old database', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'farm-restore-'));
+  const backups = path.join(dir, 'backups');
+  mkdirSync(backups);
+  const db = path.join(dir, 'farm.db');
+  writeFileSync(db, 'current');
+  writeFileSync(db + '-wal', 'wal');
+  writeFileSync(path.join(backups, 'farm-20261120-030000.db'), 'old-good');
+  writeFileSync(path.join(backups, 'restore.pending'), 'farm-20261120-030000.db');
+  const name = applyPendingRestore({ db, backups }, new Date('2026-11-24T10:00:00Z'));
+  assert.equal(name, 'farm-20261120-030000.db');
+  assert.equal(readFileSync(db, 'utf8'), 'old-good');
+  assert.equal(existsSync(db + '-wal'), false);
+  assert.equal(existsSync(path.join(backups, 'restore.pending')), false);
+  assert.equal(readFileSync(path.join(backups, 'pre-restore-20261124-100000.db'), 'utf8'), 'current');
+  // a bad marker is dropped without touching the database
+  writeFileSync(path.join(backups, 'restore.pending'), '../farm.db');
+  assert.equal(applyPendingRestore({ db, backups }), null);
+  assert.equal(readFileSync(db, 'utf8'), 'old-good');
+  rmSync(dir, { recursive: true, force: true });
 });

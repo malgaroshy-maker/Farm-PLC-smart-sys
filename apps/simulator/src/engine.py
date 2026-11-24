@@ -14,14 +14,21 @@ Constants live in `Hydraulics` until real site data exists.
 import asyncio
 import json
 import math
+import os
 import random
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .faults import FaultInjector
 from .state import AlarmCondition, FarmSimulationState, SimZoneState, utcnow
 
 ACTIVE_STATES = {"starting_pump", "opening_valve", "validating_flow", "running", "stopping"}
+PANEL_ZONE = {"auto", "on", "off"}
+PANEL_PUMP = {"auto", "hand", "off"}
+# Owner rule (G7): a run cut by a power failure resumes only if power was out less than this.
+RESUME_MAX_S = float(os.getenv("POWER_RESUME_MAX_MIN", "30")) * 60
+# The PLC switches to its own copy of today's program after losing the app for this long (real s).
+FALLBACK_AFTER_S = float(os.getenv("FALLBACK_AFTER_SEC", "120"))
 PUMP_ALARMS = {"booster": ("ALM-005", "ALM-006"), "well": ("ALM-004", "ALM-007")}
 TRIPOLI_UTC_OFFSET_H = 2
 
@@ -44,6 +51,12 @@ class SimulatorEngine:
         self.leak_t = 0.0
         self.true_tank_pct = state.system.tank_level_pct
         self.outbox: list[dict] = []  # command updates to send to the API
+        # G7: power-cut memory, fallback program and app link supervision
+        self.power_off_at: datetime | None = None
+        self.interrupted: dict[str, float] = {}  # zone → seconds still to run
+        self.fallback: list[dict] = []  # [{key, zone_id, start (aware dt), duration_min}]
+        self.fallback_done: set[str] = set()
+        self.api_seen = utcnow()  # last successful contact with the app
 
     # ── Commands ─────────────────────────────────────────
 
@@ -81,7 +94,32 @@ class SimulatorEngine:
         if ctype == "inject_fault":
             ok, msg = self.faults.handle(payload)
             return ("completed", None) if ok else ("failed", msg)
+        if ctype == "set_panel":
+            return self.set_panel(
+                payload.get("kind"), tid or payload.get("id"), payload.get("position")
+            )
         return "rejected", f"Unsupported command {ctype}"
+
+    def set_panel(self, kind, target, position) -> tuple[str, str | None]:
+        """Turn a selector switch on the panel (simulation of a person at the cabinet)."""
+        s = self.state
+        if kind == "zone":
+            z = s.zones.get(target)
+            if not z or position not in PANEL_ZONE:
+                return "failed", "Unknown zone or switch position"
+            old, z.panel_mode = z.panel_mode, position
+            if old == "on" and position != "on":
+                self.begin_stop(target)
+            elif position == "off":
+                self.begin_stop(target)
+            return "completed", None
+        if kind == "pump":
+            p = s.pumps.get(target)
+            if not p or position not in PANEL_PUMP:
+                return "failed", "Unknown pump or switch position"
+            p.panel_mode = position
+            return "completed", None
+        return "failed", "kind must be 'zone' or 'pump'"
 
     @staticmethod
     def _update(cid, status, reason=None) -> dict:
@@ -97,13 +135,17 @@ class SimulatorEngine:
 
     # ── Zone sequences ───────────────────────────────────
 
-    def start_zone(self, zid, duration_min, cid=None) -> tuple[str, str | None]:
+    def start_zone(self, zid, duration_min, cid=None, run_source="app") -> tuple[str, str | None]:
         s, h = self.state, self.state.hyd
         z, cfg = s.zones.get(zid), s.zone_cfg.get(zid)
         if not z or not cfg:
             return "failed", f"Zone {zid} not found"
         if s.system.estop:
             return "failed", "Emergency stop is active"
+        if not s.system.power_ok:
+            return "failed", "No mains power"
+        if z.panel_mode != "auto":
+            return "failed", f"Zone {cfg.code} is switched to {z.panel_mode.upper()} on the panel"
         if z.state in ACTIVE_STATES:
             return "failed", f"Zone {cfg.code} is already active"
         use_well = cfg.allows_direct_well and s.system.tank_level_pct < h.tank_warning_pct
@@ -113,10 +155,17 @@ class SimulatorEngine:
         pump = s.pump_of_type("well" if use_well else "booster")
         if not pump or pump.fault or pump.state == "failed_start":
             return "failed", f"{'Well' if use_well else 'Booster'} pump unavailable"
+        if pump.panel_mode == "off":
+            return (
+                "failed",
+                f"{'Well' if use_well else 'Booster'} pump is switched OFF on the panel",
+            )
         minutes = duration_min or cfg.default_duration_min
         minutes = max(1, min(int(minutes), cfg.max_runtime_min))
         z.state, z.health, z.source_mode = "starting_pump", "healthy", source
         z.runtime_sec, z.target_runtime_sec = 0, minutes * 60
+        z.run_source = run_source
+        s.clear_alarm("ALM-033", zid)
         self.phase_t[zid] = 0.0
         self.zone_abort.pop(zid, None)
         if cid:
@@ -163,7 +212,23 @@ class SimulatorEngine:
     def _step_zone(self, zid: str, dt: float) -> None:
         s, h = self.state, self.state.hyd
         z, cfg = s.zones[zid], s.zone_cfg.get(zid)
-        if cfg is None or z.state not in ACTIVE_STATES:
+        if cfg is None:
+            return
+        if z.panel_mode == "on" and not s.system.estop and s.system.power_ok:
+            # Hard-wired: the switch powers the valve coil directly; the PLC (in Auto) still
+            # supplies the booster because it sees the switch input.
+            if z.state not in ACTIVE_STATES or z.state == "stopping":
+                z.state, z.health, z.source_mode, z.run_source = (
+                    "running",
+                    "healthy",
+                    "tank",
+                    "panel",
+                )
+                z.runtime_sec, z.target_runtime_sec = 0, 0
+            self._valve_command(zid, "open")
+            z.runtime_sec += dt
+            return
+        if z.state not in ACTIVE_STATES:
             return
         self.phase_t[zid] = self.phase_t.get(zid, 0.0) + dt
         t = self.phase_t[zid]
@@ -216,6 +281,7 @@ class SimulatorEngine:
                 z.state = "faulted" if zid in self.zone_abort else "completed"
                 if z.state == "completed":
                     z.health = "healthy"
+                z.run_source = None
                 self.phase_t[zid] = 0.0
             elif t >= h.valve_timeout_s and valve.status != "fault":
                 valve.status = "fault"  # stuck open: PLC isolates by stopping the pump
@@ -229,6 +295,12 @@ class SimulatorEngine:
 
     def _pump_demand(self, pump) -> bool:
         s = self.state
+        if not s.system.power_ok or pump.panel_mode == "off":
+            return False
+        if pump.pump_type == "well" and "ALM-027:system" in s.alarms:
+            return False  # dry-run protection holds the well pump off (also in Hand)
+        if pump.panel_mode == "hand":
+            return True
         if pump.pump_type == "well" and s.system.refilling:
             return True
         source = "well_direct" if pump.pump_type == "well" else "tank"
@@ -285,6 +357,9 @@ class SimulatorEngine:
     def _step_valves(self, dt: float) -> None:
         s, h = self.state, self.state.hyd
         for v in s.valves.values():
+            if v.valve_id in s.faults.valve_hand_open:
+                v.status = "open"  # feedback shows open although the PLC never asked
+                continue
             if v.status == "fault":
                 continue
             key = f"valve:{v.valve_id}"
@@ -421,6 +496,152 @@ class SimulatorEngine:
             s.system.refilling = True
         elif level >= h.tank_refill_stop_pct:
             s.system.refilling = False
+
+    # ── Pump health: energy, current, well level, filter (G7) ─
+
+    def _step_health(self, dt: float) -> None:
+        s, h = self.state, self.state.hyd
+        local = self.sim_time.astimezone(ZoneInfo("Africa/Tripoli"))
+        new_day = getattr(self, "_health_day", None) != local.date()
+        self._health_day = local.date()
+        for p in s.pumps.values():
+            if new_day:
+                p.energy_kwh_today = 0.0
+            running = p.state == "running"
+            if p.pump_type == "well":
+                kw = h.well_pump_kw if running else 0.0
+            else:  # hydraulic power / efficiency
+                q = s.system.main_flow_m3h / 3600.0
+                kw = (
+                    q * s.system.main_pressure_bar * 1e5 / h.pump_efficiency / 1000.0
+                    if running
+                    else 0.0
+                )
+                kw = max(kw, 0.6) if running else 0.0  # motor losses at low flow
+            p.power_kw = round(kw, 2)
+            p.current_a = round(kw * 1000 / (1.732 * 400 * 0.85), 1)  # 3-phase 400 V, pf 0.85
+            p.energy_kwh_today += kw * dt / 3600.0
+        well = s.pump_of_type("well")
+        if well and well.state == "running":
+            s.system.well_level_m -= (
+                h.well_drawdown_m_per_h * dt / 3600.0 * (4.0 if s.faults.well_low else 1.0)
+            )
+        elif not s.faults.well_low:
+            s.system.well_level_m = min(
+                h.well_static_m, s.system.well_level_m + h.well_recovery_m_per_h * dt / 3600.0
+            )
+        s.system.well_level_m = max(0.0, s.system.well_level_m)
+        if s.system.well_level_m < h.well_dry_run_m:
+            if "ALM-027:system" not in s.alarms:
+                s.raise_alarm(
+                    AlarmCondition(
+                        "ALM-027",
+                        value=round(s.system.well_level_m, 2),
+                        threshold=h.well_dry_run_m,
+                        detail="well level below the pump's safe minimum",
+                    )
+                )
+        elif s.system.well_level_m > h.well_dry_run_m + 2.0:
+            s.clear_alarm("ALM-027")
+        s.system.filter_dp_bar += s.system.main_flow_m3h * dt / 3600.0 * h.filter_clog_bar_per_m3
+
+    # ── Power cuts and the fallback program (G7) ─────────
+
+    def _step_power(self) -> bool:
+        """Returns False while mains power is off (nothing hydraulic can run)."""
+        s = self.state
+        if s.faults.power_cut:
+            if self.power_off_at is None:
+                self.power_off_at = self.sim_time
+                s.system.power_ok = False
+                s.raise_alarm(AlarmCondition("ALM-033", detail="mains power lost"))
+                for zid, z in s.zones.items():
+                    if z.state in ACTIVE_STATES and z.run_source != "panel":
+                        self.interrupted[zid] = max(0.0, z.target_runtime_sec - z.runtime_sec)
+                    if z.state in ACTIVE_STATES:
+                        z.state = "interrupted"
+                    z.flow_m3h = z.pressure_bar = 0.0
+                for v in s.valves.values():  # normally-closed coils drop out
+                    v.status, v.last_command = "closed", "close"
+                for p in s.pumps.values():
+                    if p.state in ("starting", "running"):
+                        p.state, p.run_fb = "stopped", False
+                s.system.main_flow_m3h = s.system.main_pressure_bar = 0.0
+            return False
+        if self.power_off_at is not None:
+            outage = (self.sim_time - self.power_off_at).total_seconds()
+            self.power_off_at = None
+            s.system.power_ok = True
+            s.clear_alarm("ALM-033")
+            for zid, remaining in self.interrupted.items():
+                z = s.zones[zid]
+                if z.state != "interrupted":
+                    continue
+                if outage <= RESUME_MAX_S and remaining > 0 and not s.system.estop:
+                    z.state, z.run_source = "starting_pump", "resume"
+                    self.phase_t[zid] = 0.0
+                else:
+                    z.state, z.health = "faulted", "warning"
+                    minutes = round(outage / 60)
+                    self.zone_abort[zid] = (
+                        "ALM-033",
+                        f"Power was out {minutes} min; run not resumed",
+                    )
+                    s.raise_alarm(
+                        AlarmCondition(
+                            "ALM-033",
+                            zone_id=zid,
+                            value=minutes,
+                            threshold=RESUME_MAX_S / 60,
+                            detail="run not resumed after power cut",
+                        )
+                    )
+            for z in s.zones.values():  # panel runs simply carry on with power
+                if z.state == "interrupted":
+                    z.state, z.run_source = "off", None
+            self.interrupted.clear()
+        return True
+
+    def note_api_contact(self) -> None:
+        self.api_seen = utcnow()
+
+    def load_fallback(self, runs: list[dict]) -> None:
+        """Today's program from the app, kept by the PLC in case the app goes down."""
+        parsed = []
+        for r in runs:
+            try:
+                start = datetime.fromisoformat(r["scheduled_start_farm"])
+                key = f"{r['program_id']}:{r['step_order']}:{start.isoformat()}"
+                parsed.append(
+                    {
+                        "key": key,
+                        "zone_id": r["zone_id"],
+                        "start": start,
+                        "duration_min": int(r["duration_min"]),
+                    }
+                )
+            except (KeyError, ValueError, TypeError):
+                continue
+        self.fallback = parsed
+
+    def _step_fallback(self) -> None:
+        s = self.state
+        offline = (utcnow() - self.api_seen).total_seconds() > FALLBACK_AFTER_S
+        s.system.fallback_active = offline and bool(self.fallback)
+        if not s.system.fallback_active:
+            return
+        for run in self.fallback:
+            if run["key"] in self.fallback_done:
+                continue
+            end = run["start"] + timedelta(minutes=run["duration_min"])
+            if run["start"] <= self.sim_time < end:
+                z = s.zones.get(run["zone_id"])
+                if z is None or z.state in ACTIVE_STATES or z.panel_mode != "auto":
+                    continue
+                left = max(1, math.ceil((end - self.sim_time).total_seconds() / 60))
+                status, _ = self.start_zone(run["zone_id"], left, None, run_source="fallback")
+                if status in ("completed", "accepted"):
+                    self.fallback_done.add(run["key"])
 
     # ── Protection & environment ─────────────────────────
 
@@ -582,12 +803,16 @@ class SimulatorEngine:
             return
 
         self.sim_time += timedelta(seconds=dt)
-        self._step_protection()
-        for zid in list(self.state.zones):
-            self._step_zone(zid, dt)
-        self._step_pumps(dt)
-        self._step_valves(dt)
-        self._step_hydraulics(dt)
+        powered = self._step_power()
+        if powered:
+            self._step_protection()
+            self._step_fallback()
+            for zid in list(self.state.zones):
+                self._step_zone(zid, dt)
+            self._step_pumps(dt)
+            self._step_valves(dt)
+            self._step_hydraulics(dt)
+            self._step_health(dt)
         self._step_environment(dt)
         self._step_sensors()
         for obj in (

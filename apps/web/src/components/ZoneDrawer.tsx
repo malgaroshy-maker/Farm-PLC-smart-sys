@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ZONE_BY_ID } from '../lib/zones';
-import { Play, Square, X } from 'lucide-react';
+import SoilLine from './SoilLine';
+import { Hand, Play, Square, X } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { IrrigationCycle, TelemetrySeries, Zone, Alarm } from '@algaroshy/contracts';
 
@@ -245,6 +246,8 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
             {zoneAlarms.some((a) => a.alarm_code === 'ALM-036') && <MaintenanceDone zoneId={zoneId} />}
           </section>
 
+          {zoneId && <SoilLine zoneId={zoneId} />}
+
           {/* 1.5 — Baseline Section (Normal Flow & Pressure Band) */}
           <BaselineSection
             zoneId={zoneId}
@@ -254,7 +257,14 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
 
           {/* 2 — controls */}
           <section className="panel p-4 space-y-3">
-            {!canControl ? (
+            {zoneState?.panel_mode && zoneState.panel_mode !== 'auto' ? (
+              <p className="text-sm text-[#ff9f43] flex gap-2">
+                <Hand size={18} className="shrink-0 mt-0.5" aria-hidden="true" />
+                <span>
+                  <b>{t(`panel.zone.${zoneState.panel_mode}` as MsgKey)}</b> — {t('panel.drawerNote')}
+                </span>
+              </p>
+            ) : !canControl ? (
               <p className="text-sm text-[#849396]">{t('drawer.viewOnly')}</p>
             ) : active ? (
               <button disabled={busy} onClick={() => run('stop')} className="w-full py-3 rounded-xl border border-[#ffb4ab]/60 text-[#ffb4ab] hover:bg-[#ffb4ab]/10 font-bold flex items-center justify-center gap-2 disabled:opacity-50">

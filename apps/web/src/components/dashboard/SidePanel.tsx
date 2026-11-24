@@ -70,12 +70,25 @@ export function PumpsCard({ state }: { state: FarmMapState | null }) {
               <PumpIcon size={22} accent={color} />
             </span>
             <span className="flex-1 text-sm">{lang === 'ar' ? ar : en}</span>
+            {p.state === 'running' && (p.power_kw ?? 0) > 0 && (
+              <bdi dir="ltr" className="text-xs font-mono text-[#bac9cc]">
+                {fmtNum(p.power_kw, 1)} kW
+              </bdi>
+            )}
             <span className="text-xs font-bold" style={{ color }}>
               {t(`pump.${p.state}` as MsgKey)}
             </span>
           </div>
         );
       })}
+      {state?.well_level_m != null && (
+        <div className="flex items-center justify-between text-xs text-[#849396] pt-1 border-t border-white/5">
+          <span>{t('eq.wellLevel')}</span>
+          <bdi dir="ltr" className={`font-mono ${state.well_level_m < 3 ? 'text-[#ff5449] font-bold' : 'text-[#bac9cc]'}`}>
+            {fmtNum(state.well_level_m, 1)} m
+          </bdi>
+        </div>
+      )}
     </div>
   );
 }

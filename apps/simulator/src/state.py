@@ -38,6 +38,15 @@ class Hydraulics:
     valve_timeout_s: float = 10.0
     flow_validation_s: float = 12.0
     leak_detect_s: float = 10.0
+    # G7 pump health
+    well_static_m: float = 12.0  # water above the intake when the well rests
+    well_drawdown_m_per_h: float = 3.0  # level drop while pumping
+    well_recovery_m_per_h: float = 4.0
+    well_dry_run_m: float = 1.5  # PLC stops the well pump below this (ALM-027)
+    well_pump_kw: float = 5.5
+    filter_clean_dp_bar: float = 0.08
+    filter_clog_bar_per_m3: float = 0.0004  # slow fouling per m³ filtered
+    pump_efficiency: float = 0.6
     tank_warning_pct: float = 25.0
     tank_critical_pct: float = 10.0
     tank_critical_clear_pct: float = 15.0
@@ -79,6 +88,10 @@ class SimZoneState(BaseModel):
     runtime_sec: float = 0
     target_runtime_sec: float = 0
     active_alarm_count: int = 0
+    # G7: panel switch (auto | on | off) and who started the current run
+    # (app | fallback | panel | resume; None when idle)
+    panel_mode: str = "auto"
+    run_source: str | None = None
     last_updated: datetime
 
 
@@ -90,6 +103,11 @@ class SimPumpState(BaseModel):
     fault: bool = False
     runtime_hours: float = 0.0
     starts_today: int = 0
+    panel_mode: str = "auto"  # G7: hand | off | auto
+    # G7 pump health (energy meter + motor current)
+    power_kw: float = 0.0
+    energy_kwh_today: float = 0.0
+    current_a: float = 0.0
     last_updated: datetime
 
 
@@ -117,6 +135,10 @@ class SimSystemState(BaseModel):
     main_flow_m3h: float = 0.0
     estop: bool = False
     refilling: bool = False
+    power_ok: bool = True  # G7: mains power at the panel
+    well_level_m: float = 12.0  # G7: water above the pump intake
+    filter_dp_bar: float = 0.08  # G7: pressure drop across the head-unit filter
+    fallback_active: bool = False  # G7: PLC running its own copy of today's program
 
 
 @dataclass
@@ -154,6 +176,9 @@ class Faults:
     valve_stuck_closed: set[str] = field(default_factory=set)
     valve_stuck_open: set[str] = field(default_factory=set)
     zone_blocked: set[str] = field(default_factory=set)  # no flow despite open valve
+    valve_hand_open: set[str] = field(default_factory=set)  # someone opened it by hand (G7)
+    power_cut: bool = False  # mains power lost (G7)
+    well_low: bool = False  # aquifer drawn down (G7)
     mainline_leak: bool = False
     tank_sensor_fault: bool = False
     comms_drop_until: datetime | None = None
@@ -198,7 +223,15 @@ class FarmSimulationState:
             return {"device_key": key, "state_json": data, "updated_at": now}
 
         payloads = [
-            item("system_mode", {"mode": self.system.system_mode, "estop": self.system.estop}),
+            item(
+                "system_mode",
+                {
+                    "mode": self.system.system_mode,
+                    "estop": self.system.estop,
+                    "power_ok": self.system.power_ok,
+                    "fallback_active": self.system.fallback_active,
+                },
+            ),
             item(
                 "simulation_stats",
                 {
@@ -206,6 +239,8 @@ class FarmSimulationState:
                     "main_pressure_bar": round(self.system.main_pressure_bar, 3),
                     "main_flow_m3h": round(self.system.main_flow_m3h, 3),
                     "refilling": self.system.refilling,
+                    "well_level_m": round(self.system.well_level_m, 2),
+                    "filter_dp_bar": round(self.system.filter_dp_bar, 3),
                 },
             ),
             item("plc_alarms", {"active": [a.as_dict() for a in self.alarms.values()]}),

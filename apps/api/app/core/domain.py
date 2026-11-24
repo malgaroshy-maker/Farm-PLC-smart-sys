@@ -20,6 +20,7 @@ CommandType = Literal[
     "force_valve",
     "source_override",
     "inject_fault",
+    "set_panel",
 ]
 CommandStatus = Literal[
     "pending", "accepted", "rejected", "executing", "completed", "failed", "timed_out"
@@ -35,6 +36,7 @@ ZoneState = Literal[
     "completed",
     "warning",
     "faulted",
+    "interrupted",
 ]
 CycleOutcome = Literal[
     "completed",
@@ -64,6 +66,7 @@ COMMAND_PERMISSIONS: dict[str, frozenset[str]] = {
     "stop_all": frozenset({"owner_admin", "operator"}),
     "set_mode": frozenset({"owner_admin"}),
     "inject_fault": frozenset({"owner_admin"}),
+    "set_panel": frozenset({"owner_admin"}),
 }
 # Known command types that have no implementation yet.
 NOT_IMPLEMENTED_COMMANDS = frozenset({"ack_alarm", "reset_alarm", "force_valve", "source_override"})

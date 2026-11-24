@@ -93,6 +93,11 @@ async def get_upcoming_runs(
     db: AsyncSession = Depends(get_db),
 ):
     """Next irrigation runs in farm time for dashboard and mobile status cards."""
+    return await compute_upcoming_runs(db, hours)
+
+
+async def compute_upcoming_runs(db: AsyncSession, hours: int = 24) -> list[UpcomingRun]:
+    """Runs starting (or still running) within the next `hours`, in farm time."""
     programs = await _get_all_programs(db)
     zones = await _get_zones_map(db)
 

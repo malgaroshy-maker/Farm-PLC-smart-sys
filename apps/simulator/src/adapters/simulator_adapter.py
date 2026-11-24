@@ -36,6 +36,12 @@ class SimulatorAdapter:
     async def drain_events(self) -> list[dict]:
         return self.engine.drain_outbox()
 
+    async def load_fallback(self, runs: list[dict]) -> None:
+        self.engine.load_fallback(runs)
+
+    def api_contact(self) -> None:
+        self.engine.note_api_contact()
+
     def link_ok(self) -> bool:
         until = self.engine.state.faults.comms_drop_until
         down = until is not None and utcnow() < until

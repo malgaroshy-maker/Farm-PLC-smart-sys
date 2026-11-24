@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     monitor_interval_sec: float = 1.0
 
     # ── Alarms & telemetry ───────────────────────────────
+    filter_dp_alarm_bar: float = 0.5  # G7: clean the filter above this pressure drop (ALM-039)
+    unexpected_flow_m3h: float = 0.8  # G7: flow above this with no zone on → ALM-021
+    power_resume_max_min: int = (
+        30  # G7 owner rule; the controller applies it (POWER_RESUME_MAX_MIN)
+    )
     alarm_debounce_sec: float = 10.0  # derived pressure warnings
     tank_warning_debounce_sec: float = 5.0
     repeated_fault_threshold: int = 3  # ALM-036: major faults per zone per 24 h
@@ -72,6 +77,16 @@ class Settings(BaseSettings):
     log_file_max_mb: int = 5
     log_file_backups: int = 5
     farm_id: str = "farm_algaroshy"
+
+    # ── Backups (G7) ─────────────────────────────────────
+    # Daily SQLite copy at backup_time (farm wall clock, not the demo clock), keep backup_keep.
+    backup_dir: str = "backups"
+    backup_keep: int = 14
+    backup_time: str = "03:00"
+    # Optional second copy on a USB stick / external disk, e.g. "E:/FarmBackups" or "/media/usb/farm".
+    backup_usb_dir: str = ""
+    # Optional off-site copy with rclone, e.g. "gdrive:FarmBackups" (set up once with `rclone config`).
+    backup_rclone_remote: str = ""
 
     # ── AI Services (Milestone E) ────────────────────────
     # Primary: APInex (OpenAI-compatible)

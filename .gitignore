@@ -108,3 +108,7 @@ screenshots/
 design/satellite/*.jpg
 design/satellite/*.png
 design/satellite/*.tif
+
+# Farm server (G7): launcher logs and database backups
+logs/
+apps/api/backups/

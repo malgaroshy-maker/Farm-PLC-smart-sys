@@ -1,6 +1,6 @@
 """Sensor model."""
 
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, IdentityMixin, TimestampMixin
@@ -17,6 +17,9 @@ class Sensor(Base, IdentityMixin, TimestampMixin):
     location_scope: Mapped[str] = mapped_column(String(20), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     calibration_meta_json: Mapped[str | None] = mapped_column(Text)
+    # G7: id of a wireless/wired soil probe as the gateway reports it (e.g. LoRaWAN DevEUI)
+    external_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    depth_cm: Mapped[int | None] = mapped_column(Integer)
 
     # Relationships
     farm = relationship("Farm", back_populates="sensors")

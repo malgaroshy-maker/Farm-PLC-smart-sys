@@ -7,7 +7,7 @@
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch';
-import { ChevronDown, ChevronUp, Maximize, Moon, Sun, SunMoon, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronDown, ChevronUp, Hand, Maximize, Moon, Sun, SunMoon, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Alarm, AlarmSeverity, FarmMapState, PumpLiveState, ValveLiveState, ZoneLiveState } from '@algaroshy/contracts';
 import { FARM, polygonCentroid, polygonPath, polylinePath, type Point } from '@algaroshy/map-model';
 import { EQUIPMENT_SIZE, STRIP_LABEL_H, STRIP_LABELS, SPRITES, zoneNames, TEXTURES, TRUNK_LENGTH, TRUNK_PARENT, ZONES, type ZoneLayout } from './farmLayout';
@@ -27,7 +27,7 @@ import { useFarmClock } from '../../lib/clock';
 type Light = 'auto' | 'day' | 'night';
 type UiState = 'running' | 'busy' | 'fault' | 'idle';
 
-const TRANSITIONAL = new Set(['queued', 'starting_pump', 'opening_valve', 'validating_flow', 'stopping']);
+const TRANSITIONAL = new Set(['queued', 'starting_pump', 'opening_valve', 'validating_flow', 'stopping', 'interrupted']);
 const [VX, VY, VW, VH] = FARM.viewBox;
 const CYAN = '#00e5ff';
 
@@ -289,6 +289,15 @@ function Equipment({
             <path key={a} d={`M0,0 Q${r * 0.6},${-r * 0.4} ${r},0 Q${r * 0.6},${r * 0.2} 0,0`} fill={color} transform={`rotate(${a})`} />
           ))}
         </g>
+        {p?.panel_mode && p.panel_mode !== 'auto' && (
+          // G7: the pump's switch on the panel is not on Auto
+          <g transform={`translate(${r + 1.5} ${-r - 6})`}>
+            <rect x={0} y={0} width={22} height={6.5} rx={3.2} fill="#0e0e0e" fillOpacity={0.85} stroke="#ff9f43" strokeWidth={0.5} />
+            <text x={11} y={4.7} textAnchor="middle" fontSize={4} fill="#ff9f43">
+              ✋ {t(`panel.pump.${p.panel_mode}` as MsgKey)}
+            </text>
+          </g>
+        )}
       </g>
     );
   };
@@ -399,6 +408,7 @@ function mmss(sec: number) {
 
 /** Glass name chip + live badge. Counter-scaled so it grows only gently when zooming. */
 function Chip({ z, live, alarm, lang }: { z: ZoneLayout; live?: ZoneLiveState; alarm: Alarm | null; lang: 'ar' | 'en' }) {
+  const { t } = useT();
   const s = uiState(live);
   const [x, y] = z.label;
   const w = z.small ? 60 : 120;
@@ -423,6 +433,14 @@ function Chip({ z, live, alarm, lang }: { z: ZoneLayout; live?: ZoneLiveState; a
     badge = (
       <span style={{ color: '#bac9cc' }}>
         💧 <bdi>{fmtNum(live?.moisture_pct, 0)}%</bdi>
+      </span>
+    );
+  }
+  const manual = live?.panel_mode && live.panel_mode !== 'auto';
+  if (manual) {
+    badge = (
+      <span style={{ color: '#ff9f43' }}>
+        <Hand size={11} className="inline -mt-0.5" aria-hidden="true" /> {t(`panel.zone.${live.panel_mode}` as MsgKey)}
       </span>
     );
   }

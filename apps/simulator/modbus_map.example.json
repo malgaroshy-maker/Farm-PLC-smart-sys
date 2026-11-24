@@ -1,0 +1,64 @@
+{
+  "_about": "EXAMPLE register map for the Modbus TCP adapter (Milestone G7). Every entry is one 16-bit holding register (hr = 0-based address, as sent on the wire); value = register / scale, signed. The real addresses come from the PLC program. Zone 'index' is the number the PLC uses as the command target. Panel modes: zones 0 auto, 1 on, 2 off; pumps 0 auto, 1 hand, 2 off. ack_status: 1 accepted, 2 rejected. ack_reason codes: 1 interlock, 2 zone_in_manual, 3 no_power, 4 pump_unavailable, 5 tank_low, 6 estop_active, 9 other.",
+  "host": "192.168.0.10",
+  "port": 502,
+  "unit": 1,
+  "system": {
+    "mode": { "hr": 0 },
+    "estop": { "hr": 1 },
+    "power_ok": { "hr": 2 },
+    "fallback_active": { "hr": 3 },
+    "tank_level_pct": { "hr": 4, "scale": 10 },
+    "main_pressure_bar": { "hr": 5, "scale": 100 },
+    "main_flow_m3h": { "hr": 6, "scale": 100 },
+    "well_level_m": { "hr": 7, "scale": 100 },
+    "filter_dp_bar": { "hr": 8, "scale": 100 }
+  },
+  "zones": {
+    "zone_rumman_1": {
+      "index": 1,
+      "running": { "hr": 100 },
+      "valve_open_fb": { "hr": 101 },
+      "flow_m3h": { "hr": 102, "scale": 100 },
+      "pressure_bar": { "hr": 103, "scale": 100 },
+      "moisture_pct": { "hr": 104, "scale": 10 },
+      "panel_mode": { "hr": 105 }
+    },
+    "zone_rumman_2": {
+      "index": 2,
+      "running": { "hr": 110 },
+      "valve_open_fb": { "hr": 111 },
+      "flow_m3h": { "hr": 112, "scale": 100 },
+      "pressure_bar": { "hr": 113, "scale": 100 },
+      "moisture_pct": { "hr": 114, "scale": 10 },
+      "panel_mode": { "hr": 115 }
+    }
+  },
+  "pumps": {
+    "pump_booster_01": {
+      "run_fb": { "hr": 200 },
+      "fault": { "hr": 201 },
+      "runtime_hours": { "hr": 202 },
+      "panel_mode": { "hr": 203 },
+      "power_kw": { "hr": 204, "scale": 100 },
+      "current_a": { "hr": 205, "scale": 10 }
+    },
+    "pump_well_01": {
+      "run_fb": { "hr": 210 },
+      "fault": { "hr": 211 },
+      "runtime_hours": { "hr": 212 },
+      "panel_mode": { "hr": 213 },
+      "power_kw": { "hr": 214, "scale": 100 },
+      "current_a": { "hr": 215, "scale": 10 }
+    }
+  },
+  "command": {
+    "seq": { "hr": 300 },
+    "type": { "hr": 301 },
+    "target": { "hr": 302 },
+    "duration_min": { "hr": 303 },
+    "ack_seq": { "hr": 304 },
+    "ack_status": { "hr": 305 },
+    "ack_reason": { "hr": 306 }
+  }
+}

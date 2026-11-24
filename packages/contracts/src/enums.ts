@@ -29,7 +29,9 @@ export type ZoneState =
   | "stopping"
   | "completed"
   | "warning"
-  | "faulted";
+  | "faulted"
+  /** G7: run paused by a mains power cut (resumes if power returns within 30 min) */
+  | "interrupted";
 
 /** Zone health derived status (DOMAIN_MODEL.md §4) */
 export type ZoneHealth =
@@ -111,7 +113,9 @@ export type CommandType =
   | "force_valve"
   | "source_override"
   /** Simulation only — rejected by the API outside deployment_mode=simulation */
-  | "inject_fault";
+  | "inject_fault"
+  /** Simulation only — turns a selector switch on the panel (G7) */
+  | "set_panel";
 
 /** Command lifecycle status (DOMAIN_MODEL.md §2) */
 export type CommandStatus =
