@@ -93,7 +93,7 @@ async def _validate_structure(db: AsyncSession, req: CommandCreate) -> Zone | No
             # always send an explicit duration: the PLC refuses an open-ended start (G5)
             req.payload = {**payload, "duration_min": zone.default_duration_min}
         return zone
-    if ct in ("stop_all", "set_mode"):
+    if ct in ("stop_all", "set_mode", "reset_alarm"):
         if req.target_type != "system" or req.target_id:
             raise HTTPException(422, f"'{ct}' requires target_type 'system' and no target_id")
         if ct == "set_mode" and payload.get("mode") not in SYSTEM_MODES:

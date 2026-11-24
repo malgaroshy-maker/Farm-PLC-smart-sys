@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 
 from ..adapter import Layout
-from ..modbus_tcp import ModbusTcpClient
+from ..modbus_tcp import ModbusError, ModbusTcpClient
 from ..state import utcnow
 from . import plc_common as pc
 
@@ -166,7 +166,10 @@ class ModbusAdapter:
     async def read_state(self) -> list[dict]:
         try:
             await self._send_heartbeat()
-            v, raw = await self._read_all()
+            try:
+                v, raw = await self._read_all()
+            except (TimeoutError, OSError, ModbusError):
+                v, raw = await self._read_all()  # one slow reply: retry once on a fresh connection
         except Exception as exc:
             self._ok = False
             print(f"[MODBUS] read failed: {type(exc).__name__}")

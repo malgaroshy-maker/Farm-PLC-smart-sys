@@ -56,6 +56,39 @@ def test_latched_alarm_needs_ack_and_reset(client):
     assert active(client, op) == []
 
 
+def resets_sent(client):
+    return [
+        c
+        for c in client.get("/api/v1/commands/pending", headers=SIM).json()
+        if c["command_type"] == "reset_alarm"
+    ]
+
+
+def test_reset_also_resets_the_controller(client):
+    admin = login(client, "admin")
+    push_state(client, plc_alarms=[TRIP])
+    aid = by_code(active(client, admin), "ALM-005")["id"]
+    push_state(client, plc_alarms=[])
+    assert client.post(f"/api/v1/alarms/{aid}/reset", headers=admin).status_code == 200
+    assert len(resets_sent(client)) == 1  # the PLC clears its beacon / HMI latch too
+
+
+def test_failed_start_held_by_the_plc_can_be_reset_while_active(client):
+    """G5: a PLC latches a failed pump start until reset, so the alarm never clears on its own."""
+    admin = login(client, "admin")
+    failed = {"code": "ALM-006", "device_id": "pump_booster_01"}
+    push_state(client, plc_alarms=[failed])
+    a = by_code(active(client, admin), "ALM-006")
+    assert a["controller_reset"] is True and a["condition_active"] is True
+    r = client.post(f"/api/v1/alarms/{a['id']}/reset", headers=admin)
+    assert (
+        r.status_code == 200 and r.json()["status"] != "cleared"
+    )  # still active until the PLC clears
+    assert r.json()["reset_at"] and len(resets_sent(client)) == 1
+    push_state(client, plc_alarms=[])  # the PLC took the reset: no second click needed
+    assert all(x["alarm_code"] != "ALM-006" for x in active(client, admin))
+
+
 def test_ack_required_alarm_stays_until_acked(client):
     op = login(client, "operator")
     push_state(client, plc_alarms=[NO_FLOW])

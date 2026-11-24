@@ -32,3 +32,4 @@ class AlarmResponse(BaseModel):
     condition_active: bool
     requires_ack: bool
     requires_manual_reset: bool
+    controller_reset: bool = False  # the controller holds it until reset (can reset while active)

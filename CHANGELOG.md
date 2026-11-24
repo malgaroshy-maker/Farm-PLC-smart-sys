@@ -31,7 +31,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
     - Gateway fix: one Modbus timeout stopped the gateway for good. It now reconnects, and a late reply can no longer leave the client one answer behind.
     - API fix: a start without a duration now carries the zone's default duration (the PLC refuses open-ended starts).
     - Scenario fixes: the prep waits for zones to finish stopping, comms loss waits for the link to return, and refusals are logged with their reason.
-    - The scenarios each pass on their own. Four points need the owner: an alarm reset to the PLC, valve limit switches, per-zone flow limits, and the clock-speed scenarios (listed in `plc/README.md`).
+    - **Alarm reset reaches the PLC (owner):** every Alarm Center reset also sends `reset_alarm` to the controller. Alarms the PLC holds until reset (ALM-006/007 failed pump start, ALM-027 dry-run lock-out) can be reset while active; one click clears both.
+    - PLC fix: a pump trip no longer holds ALM-005 for the zone's 30 s fault hold after the pump is repaired.
+    - 9 of the 15 scenarios pass in a row on the real PLC. Three points still need the owner: valve limit switches, per-zone flow limits, and the clock-speed scenarios (listed in `plc/README.md`).
 - **Gateway adapters speak the PLC design** (OPC UA and Modbus):
   - zone state and run source, runtime, faults;
   - PLC alarms;

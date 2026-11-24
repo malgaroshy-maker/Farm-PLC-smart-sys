@@ -25,12 +25,14 @@ TIA Portal source files for the farm PLC: ET 200SP CPU 1512SP-1 PN, all SCL. Des
   - The app talks to the PLC as on the farm: Modbus TCP to 192.168.0.1. The Simulator page's panel switches and faults go to the farm model, so the PLC sees them as input changes.
   - Settings: `PLCSIM_HOST` (default 192.168.0.1), `PLCSIM_INSTANCE` (the instance name in PLCSIM, default `PLC`), `PLCSIM_BRIDGE_PORT` (default 1600).
   - Time runs at 1x: the PLC's timers are real time, so the simulation speed buttons do not speed it up.
-- **Scenario suite on the real PLC (2026-11-24).** Normal cycle, direct-well cycle, tank critical, booster failed start, booster trip, emergency stop, comms loss and reset each pass on their own. Running the whole suite in a row found:
+- **Scenario suite on the real PLC (2026-11-24): 9 of 15 pass in a row.** Normal cycle, direct-well cycle, tank critical, booster failed start, booster trip, no flow, emergency stop, comms loss and reset. The other six wait on the owner's points below. Running the suite found:
   - **Fixed (app):** a start without a duration was refused by the PLC (`plc_rejected`; the simulator used the zone default). The API now always sends the zone's default duration.
   - **Fixed (app):** one Modbus timeout stopped the gateway for good; it now reconnects (see `docs/CONTROLLER_ADAPTER.md`).
   - **Fixed (scenarios):** the prep waits until no zone is starting, running or stopping, because a PLC zone takes the valve travel time (10 s) to stop and refuses a new start until then. The comms-loss scenario waits for the controller to come back, not a fixed 20 s. A refused command now shows its reason in the scenario log.
+  - **Fixed (owner, 2026-11-24): the alarm reset reaches the PLC.** Every reset in the Alarm Center also queues a `reset_alarm` command. The PLC holds a failed pump start (ALM-006/007) and the dry-run lock-out (ALM-027) until it gets one, so the Reset button shows on those alarms even while they are active. One click clears the PLC latch and the alarm. The scenario prep does the same.
+  - **Fixed (PLC):** a zone stopped by a pump trip set the pump's alarm bit for its 30 s fault hold, so ALM-005 stayed active after the pump was repaired. Pump and system alarm bits now come only from their own source.
+  - **Fixed (app):** a slow Modbus reply is retried once on a fresh connection before the link is marked down.
   - **Open, needs the owner:**
-    - The app never sends an alarm reset to the controller (`reset_alarm` is not implemented), so the PLC's latched failed start (ALM-006/007) and well lock-out (ALM-027) can't be cleared from the app.
     - Wired valves have no limit switch, so the PLC can't raise ALM-019/020 (valve failed to open or close). It sees a stuck valve only as no flow (ALM-012) or unexpected flow (ALM-021).
     - The PLC's per-zone flow and pressure limits are still the 1-30 m3/h defaults, so a mainline leak can't trip ALM-013 until each zone's limits are set.
     - The scheduled-day scenarios speed up the clock; a real PLC runs on real time, so they only run in simulator mode.

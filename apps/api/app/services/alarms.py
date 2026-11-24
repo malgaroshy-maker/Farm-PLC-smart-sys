@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.alarm_catalog import CATALOG, SEVERITY_RANK, AlarmSpec
 from app.core.clock import clock
-from app.core.domain import ACTIVE_ZONE_STATES
+from app.core.domain import ACTIVE_ZONE_STATES, CONTROLLER_LATCHED_ALARMS
 from app.core.timeutil import as_utc, utcnow
 from app.deps import Actor
 from app.models.alarm import Alarm
@@ -97,6 +97,7 @@ def to_response(a: Alarm) -> AlarmResponse:
         condition_active=a.cleared_at is None,
         requires_ack=spec.requires_ack if spec else False,
         requires_manual_reset=spec.requires_manual_reset if spec else False,
+        controller_reset=a.alarm_code in CONTROLLER_LATCHED_ALARMS,
     )
 
 
@@ -579,15 +580,19 @@ class AlarmEngine:
             raise HTTPException(404, "Alarm not found")
         if alarm.status == "cleared":
             raise HTTPException(409, "Alarm is already cleared")
-        if alarm.cleared_at is None:
+        held_by_controller = alarm.alarm_code in CONTROLLER_LATCHED_ALARMS
+        if alarm.cleared_at is None and not held_by_controller:
             raise HTTPException(409, "Condition is still active — fix the cause before resetting")
+        await send_controller_reset(db, actor)
         now = clock.farm_now()
         if not alarm.acknowledged_at:
             alarm.acknowledged_at = now
             alarm.acknowledged_by = actor.actor_id
         alarm.reset_at = now
         alarm.reset_by = actor.actor_id
-        alarm.status = "cleared"
+        if alarm.cleared_at is not None:
+            alarm.status = "cleared"
+        # else: the controller clears it once it has taken the reset (the reset is already recorded)
         await log_event(
             db,
             "alarm.reset",
@@ -601,13 +606,35 @@ class AlarmEngine:
 
     async def reset_all_cleared(self, db: AsyncSession, actor: Actor) -> int:
         """Reset every latched alarm whose condition is gone (scenario prep)."""
-        latched = [a for a in await open_alarms(db) if a.cleared_at is not None]
+        alarms = await open_alarms(db)
+        latched = [a for a in alarms if a.cleared_at is not None]
+        held = [
+            a for a in alarms if a.cleared_at is None and a.alarm_code in CONTROLLER_LATCHED_ALARMS
+        ]
         now = clock.farm_now()
         for a in latched:
             a.acknowledged_at = a.acknowledged_at or now
             a.reset_at, a.reset_by, a.status = now, actor.actor_id, "cleared"
+        for a in held:
+            a.acknowledged_at = a.acknowledged_at or now
+            a.reset_at, a.reset_by = now, actor.actor_id
+        if latched or held:
+            await send_controller_reset(db, actor)
         await self._publish(db, [("alarm.reset", a) for a in latched])
-        return len(latched)
+        return len(latched) + len(held)
+
+
+async def send_controller_reset(db: AsyncSession, actor: Actor) -> None:
+    """Queue a reset_alarm for the controller: a PLC clears its own latches (failed pump start,
+    dry-run lock-out, beacon) only when told. The simulator latches nothing extra."""
+    from app.schemas.command import CommandCreate
+    from app.services import commands as cmd_svc  # avoid import cycle
+
+    if actor.role != "owner_admin":
+        return
+    await cmd_svc.submit_command(
+        db, CommandCreate(command_type="reset_alarm", target_type="system"), actor
+    )
 
 
 def blocking_critical(alarms: Iterable[Alarm]) -> Alarm | None:
