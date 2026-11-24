@@ -59,6 +59,7 @@ BUILTIN_FUNCS = {
     "DINT_TO_TIME",
     "TIME_TO_DINT",
     "USINT_TO_INT",
+    "DINT_TO_REAL",
 }
 BLOCK_PAIRS = [
     ("TYPE", "END_TYPE"),

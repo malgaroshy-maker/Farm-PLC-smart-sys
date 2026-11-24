@@ -8,6 +8,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone G5 — PLC program (in progress, 2026-11-24)
+- **Design** approved by the owner ([docs/PLC_PROGRAM.md](docs/PLC_PROGRAM.md)):
+  - ET 200SP CPU 1512SP-1 PN, programmed all in SCL, for 16 zones;
+  - OPC UA and Modbus TCP;
+  - a 3-position panel switch per zone and per pump;
+  - an MTP1000 Unified HMI with Arabic and English;
+  - zone valves either wired or on radio boxes, chosen per zone;
+  - testing in PLCSIM Advanced, with our simulator playing the farm.
+- **PLC program written** as TIA source files in `plc/src`: zones, pumps, interlocks, the command handshake, the link watchdog and fallback schedule, the 30-minute power-cut rule, hydraulics and trips, radio boxes and energy meters, the Modbus TCP server and alarms.
+  - A static checker (`tools/tia/scl_lint.py`) checks it. It is **not compiled yet**: TIA Portal on the development PC has no active STEP 7 licence (the licence service was stopped).
+- **Gateway adapters speak the PLC design** (OPC UA and Modbus):
+  - zone state and run source, runtime, faults;
+  - PLC alarms;
+  - a heartbeat sent only after the API answered;
+  - the 24-hour fallback schedule written into the PLC;
+  - real tag and register maps for all 12 zones.
+- **Fixed:**
+  - Command refusals now reach the app as `failure_reason`.
+  - The OPC UA adapter writes 16-bit integers, as S7 `Int` requires.
+  - An idle zone is reported as `off`.
+  - Valves from a PLC carry `last_command`. The API also defaults it, so one incomplete device record can no longer break the live map.
+- **All 15 scenarios pass over the PLC path** (virtual-PLC mode). Fixed along the way:
+  - **Alarm reporting for a PLC:** the app latches alarms itself and lets an admin reset one only once the cause is gone, so the PLC must report live conditions.
+    - Zone faults are reported for 30 s (`AlarmCode`), and the PLC's own latch no longer goes to the app.
+    - The virtual PLC reports a zone alarm only while its cause exists.
+  - The mainline-leak alarm (ALM-013) is passed on as a system alarm.
+  - Repeated faults (ALM-036) also count runs that ended faulted. A PLC accepts a start and reports the fault later, so failed commands alone never reached 3.
+  - The Simulator page's comms drop cuts the virtual PLC's link.
+  - Run timers in PLC mode now use seconds, and changes to the clock speed reach the virtual PLC.
+  - Scenario tests: the scheduled checks count only the scenario's own program, and the scenario picks a start time free of the farm's real programs.
+- **Virtual PLC:** `run.bat demo plc` runs the whole app over the PLC path (Modbus TCP, the real register map) with the simulator playing the PLC. The Simulator page's switches and faults act on the simulated farm.
+
 ### Milestone G7 — Field readiness (2026-11-24)
 Gaps found during the hardware research, built before the PLC design (owner decision).
 - **Manual mode.** The controller reports its panel switches: zones auto/on/off, pumps auto/hand/off.

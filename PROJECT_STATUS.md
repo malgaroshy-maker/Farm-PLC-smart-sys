@@ -48,7 +48,21 @@
 | Operator guide | ✅ | Arabic + English guide in two parts (daily operation, administration): in-app Help page, [docs/OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md) and a printable A4 PDF. |
 | Tests + CI | ✅ | 250 API + 41 simulator + 107 web + 7 map-model + 11 launcher tests (416 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
 
-## Live scenario suite (2026-11-19)
+## Live scenario suite (2026-11-19, re-run over the PLC path 2026-11-24)
+
+**2026-11-24, virtual-PLC mode** (`run.bat demo plc`): all **15/15** pass. Here the app drives the farm through the production Modbus adapter and the PLC's register map, with the simulator playing the PLC.
+- **The first pass found five problems that would also have hit a real PLC:**
+  - zone fault alarms were held until the zone ran again, so the app could never reset them;
+  - PLC-latched alarms went to the app;
+  - the mainline-leak alarm was dropped;
+  - repeated faults were counted only from failed commands, but a PLC accepts the start and reports the fault later;
+  - the comms-drop test fault didn't cut the PLC link.
+- **Two problems in the scenario tests themselves:**
+  - old demo runs dated in the future satisfied the scheduled-day check;
+  - a test program at 06:00 lost the farm to the real 06:00 program.
+- All seven are fixed, with tests.
+
+**2026-11-19, simulator mode:**
 
 All **15/15** scenarios pass against the running API + simulator (timescale 1× and 60×): normal cycle, direct-well cycle, tank critical during a run, booster failed start, pump trip mid-cycle, valve failed open, no flow, valve failed close, mainline leak (verifying ALM-046 anomaly trigger), emergency stop, comms loss, repeated fault, reset farm, scheduled day (3 sequential zones with water > 0), scheduled blocked start (low tank interlock skip + S1 alarm + continuation).
 

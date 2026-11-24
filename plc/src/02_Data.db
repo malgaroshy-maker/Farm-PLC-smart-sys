@@ -12,6 +12,7 @@ VERSION : 0.1
       ValveTravelS : Int := 10;
       FlowValidateS : Int := 45;
       BandTripS : Int := 20;               // out-of-band pressure/flow this long stops a zone
+      FaultHoldS : Int := 30;              // a zone fault is reported to the app this long (it latches it)
       TankWarnPct : Real := 25.0;
       TankCritPct : Real := 10.0;
       RefillStartPct : Real := 40.0;

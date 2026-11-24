@@ -131,10 +131,10 @@ BEGIN
          "DB_Modbus".HR[#b + 3] := "FC_W"(Value := "DB_Zones".Zone[#i].PressureBar, Scale := 100.0);
          "DB_Modbus".HR[#b + 4] := "FC_W"(Value := "DB_Zones".Zone[#i].MoisturePct, Scale := 10.0);
          "DB_Modbus".HR[#b + 5] := INT_TO_WORD("DB_Zones".Zone[#i].PanelMode);
-         "DB_Modbus".HR[#b + 6] := INT_TO_WORD("DB_Zones".Zone[#i].State);
-         "DB_Modbus".HR[#b + 7] := INT_TO_WORD(DINT_TO_INT("DB_Zones".Zone[#i].RuntimeSec / 60));
-         "DB_Modbus".HR[#b + 8] := INT_TO_WORD(DINT_TO_INT("DB_Zones".Zone[#i].TargetSec / 60));
-         "DB_Modbus".HR[#b + 9] := INT_TO_WORD("DB_Zones".Zone[#i].FaultCode);
+         "DB_Modbus".HR[#b + 6] := INT_TO_WORD("DB_Zones".Zone[#i].State + 256 * "DB_Zones".Zone[#i].RunSource);
+         "DB_Modbus".HR[#b + 7] := "FC_W"(Value := DINT_TO_REAL("DB_Zones".Zone[#i].RuntimeSec), Scale := 1.0);  // seconds
+         "DB_Modbus".HR[#b + 8] := "FC_W"(Value := DINT_TO_REAL("DB_Zones".Zone[#i].TargetSec), Scale := 1.0);
+         "DB_Modbus".HR[#b + 9] := INT_TO_WORD("DB_Zones".Zone[#i].AlarmCode);  // reported fault (0 = none)
       END_FOR;
    END_REGION
 

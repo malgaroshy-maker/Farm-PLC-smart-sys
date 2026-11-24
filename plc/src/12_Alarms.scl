@@ -52,9 +52,9 @@ BEGIN
          IF "DB_Zones".Zone[#i].PanelMode <> 0 AND #i <= "DB_Config".ZoneCount THEN
             #manual := TRUE;
          END_IF;
-         // a faulted zone shows its fault until the alarm is reset or the zone starts again
-         #code := "DB_Zones".Zone[#i].FaultCode;
-         IF "DB_Zones".Zone[#i].State = 7 AND #code >= 1 AND #code <= 48 THEN
+         // a zone fault is reported while AlarmCode holds it (FB_Zone); the app latches it
+         #code := "DB_Zones".Zone[#i].AlarmCode;
+         IF #code >= 1 AND #code <= 48 THEN
             "DB_Alarms".Active[#code] := TRUE;
          END_IF;
       END_FOR;
@@ -70,6 +70,8 @@ BEGIN
    END_REGION
 
    REGION Pack bits: Word0 = ALM 1-16, Word1 = 17-32, Word2 = 33-48 (bit 0 = lowest number)
+      // Only LIVE conditions go to the app: it latches alarms itself and lets an admin reset them
+      // once the cause is gone. The PLC's own latch is for the beacon and the HMI.
       #w0 := 16#0000;
       #w1 := 16#0000;
       #w2 := 16#0000;
@@ -77,6 +79,8 @@ BEGIN
       FOR #i := 1 TO 48 DO
          IF "DB_Alarms".Active[#i] OR "DB_Alarms".Latched[#i] THEN
             "DB_Alarms".AnyActive := TRUE;
+         END_IF;
+         IF "DB_Alarms".Active[#i] THEN
             IF #i <= 16 THEN
                #w0 := #w0 OR SHL(IN := WORD#16#0001, N := INT_TO_USINT(#i - 1));
             ELSIF #i <= 32 THEN

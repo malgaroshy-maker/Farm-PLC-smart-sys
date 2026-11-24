@@ -61,7 +61,30 @@ The gateway reads these when the controller provides them. In OPC UA they are ex
 
 **Fallback program:** the gateway keeps the next 24 hours of runs (`/schedules/upcoming`) and hands them to the controller. If the server is unreachable for longer than `FALLBACK_AFTER_SEC`, the controller runs them by itself. When the link returns, the runs it made are recorded as unattended cycles. Today only the simulator adapter loads the fallback program; the PLC version is part of G5.
 
+## G5: talking to the farm PLC
+Both PLC adapters now follow the farm PLC's data blocks (`plc/src`, [PLC_PROGRAM.md](PLC_PROGRAM.md)). Their shared translations are in `src/adapters/plc_common.py`.
+- **Zone state and run source.** The PLC's zone state number becomes the app's state name. The run source tells the app whether a run came from the panel, the fallback program or a power-cut resume, so those runs are logged as unattended cycles. The adapters also read runtime, target and the fault code.
+- **PLC alarms.** The alarm bits (`DB_Alarms.Word0..2`) become `plc_alarms`, using only the codes the catalog marks as PLC alarms. Pump alarms are attached to their pump and zone faults to their zone; the app works out the other alarms itself.
+- **Heartbeat.** It is written only after the API accepted a push, so the PLC switches to its stored schedule when the **server** is down, not just when this gateway is.
+- **Fallback schedule.** Every 5 minutes the next 24 hours of runs are written into `DB_Fallback`, then its sequence number is bumped so the PLC commits the list. Over Modbus that is registers 318–399 (20 runs); over OPC UA it is 48 runs.
+- `opcua_tagmap.example.json` and `modbus_map.example.json` are the real maps for the 12 zones, generated from the PLC design.
+
+### Virtual PLC (run the PLC path without TIA)
+`run.bat demo plc` (or `node scripts/start.mjs demo plc`) runs the app against a **virtual farm PLC**.
+- **How it works.** The simulator serves the PLC's Modbus registers (`src/virtual_plc.py`), and the gateway uses the production Modbus adapter to talk to it. Commands, refusal codes, the heartbeat watchdog and the fallback list all take the same path as with the real PLC.
+- **Simulator page.** Its panel switches and faults go straight to the simulated farm, like PLCSIM inputs, because a PLC does not receive them over Modbus.
+- **Field sensors** reach the app directly, as they will on the farm (LoRaWAN gateway).
+- **Settings.** `CONTROLLER_ADAPTER=modbus VIRTUAL_PLC=1`, with the port in `VIRTUAL_PLC_PORT` (default 1502, local only).
+
+Fixed while doing this (they would have broken on the real PLC):
+- Command refusals were reported as `reason`, but the API reads `failure_reason`, so the app never showed why the PLC refused.
+- The OPC UA adapter wrote 32-bit integers; S7 `Int` is 16-bit, so the PLC would have rejected every command.
+- The OPC UA adapter reported an idle zone as `idle`, which is not one of the app's zone states (it is `off`).
+- The PLC adapters sent valves without `last_command`, and the live map refused the whole state. The adapters now send it, and the API defaults it to `none`, so one incomplete device record can't break the map.
+
 ## Tests
+`apps/simulator/tests/test_opcua_farm_plc.py` builds an OPC UA server from the whole example tag map, with the PLC's data types, and checks the state, alarms, heartbeat, handshake and fallback writes.
+
 `apps/simulator/tests/test_modbus_adapter.py` runs the adapter against the in-process register server. The server plays the PLC: it accepts a start, rejects a zone in manual, and in one test never answers. The test also checks scaling and what happens when the link is lost.
 
 `apps/simulator/tests/test_opcua_adapter.py` starts a real in-process OPC UA server built from a tag map. That server answers the handshake the way the PLC will: it accepts a start, rejects an interlocked zone, and in a separate test stays silent so the no-ack path is covered. Validation against **PLCSIM Advanced** comes in G5, before any hardware.

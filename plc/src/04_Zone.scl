@@ -23,6 +23,7 @@ VERSION : 0.1
       tValve : TON_TIME;
       tValidate : TON_TIME;
       tBand : TON_TIME;
+      tFault : TON_TIME;
    END_VAR
    VAR_TEMP
       entered : Bool;
@@ -171,6 +172,13 @@ BEGIN
    IF #s.State = 7 THEN
       #s.ValveCmd := FALSE;
       #s.NeedPump := FALSE;
+   END_IF;
+   // report the fault to the app for FaultHoldS (it latches the alarm), then stop reporting it
+   #tFault(IN := #s.State = 7 AND NOT #entered, PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".FaultHoldS) * 1000));
+   IF #s.State = 7 AND NOT #tFault.Q THEN
+      #s.AlarmCode := #s.FaultCode;
+   ELSE
+      #s.AlarmCode := 0;
    END_IF;
    IF #c.ValveKind = 0 THEN
       #s.ValveOpenFb := #s.ValveCmd;                    // no limit switch on wired valves

@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import clock
@@ -270,8 +271,8 @@ SCENARIOS: dict[str, Scenario] = {
                     ],
                 ),
                 ("clock_speed", 1.0),
-                ("clock_jump", "05:55"),
-                ("note", "Jumped to 05:55 on farm clock. Setting speed to 60×..."),
+                ("clock_jump", "PROGRAM-5"),
+                ("note", "Jumped to 5 min before the program. Setting speed to 60×..."),
                 ("clock_speed", 60.0),
                 ("wait_completed_cycles", 3, 180),
                 ("clock_speed", 1.0),
@@ -297,7 +298,7 @@ SCENARIOS: dict[str, Scenario] = {
                 ),
                 ("fault", "tank", None, "set_level", 8),
                 ("clock_speed", 1.0),
-                ("clock_jump", "06:55"),
+                ("clock_jump", "PROGRAM-5"),
                 ("clock_speed", 60.0),
                 ("wait_skipped_cycle", "zone_rumman_1", 60),
                 ("wait_completed_cycles", 1, 120),
@@ -353,6 +354,39 @@ async def cleanup_scenario_programs(db: AsyncSession) -> int:
     return count
 
 
+async def _free_slot(db: AsyncSession, preferred: str, total_min: int) -> str:
+    """A start time (HH:MM) whose run window, with 15 min of margin, overlaps no enabled
+    program of the farm: the scheduler runs one program at a time, so a real program at the
+    same hour would take the farm and the scenario's program would never start."""
+    from app.models.program import Program, ProgramStep
+
+    busy: list[tuple[int, int]] = []
+    progs = (await db.execute(select(Program).where(Program.enabled.is_(True)))).scalars().all()
+    for prog in progs:
+        if prog.id.startswith("prog_scen_") or not prog.start_time_local:
+            continue
+        steps = (
+            (await db.execute(select(ProgramStep).where(ProgramStep.program_id == prog.id)))
+            .scalars()
+            .all()
+        )
+        h, m = (int(x) for x in prog.start_time_local.split(":"))
+        start = h * 60 + m
+        busy.append((start, start + sum(st.duration_min for st in steps)))
+
+    def free(t: int) -> bool:
+        lo, hi = t - 15, t + total_min + 15
+        return all(hi <= b0 or lo >= b1 for b0, b1 in busy)
+
+    h, m = (int(x) for x in preferred.split(":"))
+    t = h * 60 + m
+    for _ in range(24 * 4):
+        if free(t) and 10 <= t <= 1430 - total_min:
+            break
+        t = (t + 15) % 1440
+    return f"{t // 60:02d}:{t % 60:02d}"
+
+
 class ScenarioRunner:
     def __init__(self) -> None:
         self.state = RunState()
@@ -361,6 +395,8 @@ class ScenarioRunner:
         self._started_farm = clock.farm_now()
         self._picked_up_at = utcnow()  # when the controller took the last command
         self.poll_s = 0.5
+        self._program_ids: list[str] = []  # programs this run created (cycle checks)
+        self._program_start = "06:00"
         self.pickup_timeout_s = 10.0
 
     def catalog(self) -> list[dict]:
@@ -389,6 +425,7 @@ class ScenarioRunner:
         steps = (PREP if scenario.prep else []) + scenario.steps
         self._started = utcnow()
         self._started_farm = clock.farm_now()
+        self._program_ids = []
         self.state = RunState(
             name=name, status="running", total=len(steps), started_at=utcnow().isoformat()
         )
@@ -486,6 +523,8 @@ class ScenarioRunner:
             from app.models.program import Program, ProgramStep
 
             async with async_session_factory() as db:
+                start_time = await _free_slot(db, start_time, sum(d for _, d in steps_list))
+                self._program_start = start_time
                 p_id = f"prog_scen_{uuid4().hex[:8]}"
                 now = clock.farm_now()
                 prog = Program(
@@ -512,7 +551,10 @@ class ScenarioRunner:
                         )
                     )
                 await db.commit()
-            await self._publish(f"Created program '{prog_name}' with {len(steps_list)} steps")
+            self._program_ids.append(p_id)
+            await self._publish(
+                f"Created program '{prog_name}' at {start_time} with {len(steps_list)} steps"
+            )
         elif kind == "clock_speed":
             speed = float(step[1])
             clock.set_speed(speed)
@@ -525,6 +567,10 @@ class ScenarioRunner:
             await self._publish(f"Clock speed set to {speed}×")
         elif kind == "clock_jump":
             time_str = step[1]
+            if time_str == "PROGRAM-5":
+                h, m = (int(x) for x in self._program_start.split(":"))
+                t = (h * 60 + m - 5) % 1440
+                time_str = f"{t // 60:02d}:{t % 60:02d}"
             prev_sim, next_sim = clock.jump_to(time_str)
             self._started_farm = next_sim
             async with async_session_factory() as db:
@@ -639,6 +685,7 @@ class ScenarioRunner:
                     select(IrrigationCycle).where(
                         IrrigationCycle.outcome == "completed",
                         IrrigationCycle.actual_start_at >= self._started_farm,
+                        IrrigationCycle.program_id.in_(self._program_ids),
                         IrrigationCycle.water_estimate_m3 > 0,
                     )
                 )
@@ -661,6 +708,7 @@ class ScenarioRunner:
                         IrrigationCycle.zone_id == zone_id,
                         IrrigationCycle.outcome == "skipped",
                         IrrigationCycle.actual_start_at >= self._started_farm,
+                        IrrigationCycle.program_id.in_(self._program_ids),
                     )
                 )
                 if res.scalars().first():

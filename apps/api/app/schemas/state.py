@@ -39,7 +39,7 @@ class PumpLiveState(BaseModel):
 class ValveLiveState(BaseModel):
     valve_id: str
     status: str
-    last_command: str
+    last_command: str = "none"  # older or partial controller payloads must not break the map
     last_updated: datetime
 
 

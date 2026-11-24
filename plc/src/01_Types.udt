@@ -31,7 +31,10 @@ VERSION : 0.1
       PressureBar : Real;
       MoisturePct : Real;            // soil probes reach the app directly (G7); kept for the map
       PanelMode : Int;               // 0 auto, 1 on, 2 off (3-position selector)
-      FaultCode : Int;               // alarm number that faulted the zone (e.g. 12 = ALM-012)
+      FaultCode : Int;               // alarm number that faulted the zone (e.g. 12 = ALM-012); kept for display
+      AlarmCode : Int;               // = FaultCode while the fault is reported to the app (FaultHoldS), else 0.
+                                     // The app latches alarms itself and lets an admin reset them only once the
+                                     // controller stops reporting the cause, so the PLC must not hold it forever.
       ValveCmd : Bool;               // valve should be open (wired DQ or radio box)
       ValveOpenFb : Bool;
       NeedPump : Bool;

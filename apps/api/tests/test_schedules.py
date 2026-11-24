@@ -190,3 +190,36 @@ def test_live_conflict_check(client):
     assert (
         client.delete(f"/api/v1/schedules/{created.json()['id']}", headers=admin).status_code == 204
     )
+
+
+def test_scenario_program_avoids_the_farms_own_programs(client):
+    """G5 regression: a scenario program at the same hour as a real program never started
+    (one program runs at a time), so the scenario picks a free slot."""
+    import asyncio
+
+    from app.database import async_session_factory
+    from app.services.scenarios import _free_slot
+
+    admin = login(client, "admin")
+    resp = client.post(
+        "/api/v1/schedules",
+        headers=admin,
+        json={
+            "name": "Farm morning",
+            "enabled": True,
+            "start_time_local": "06:00",
+            "weekday_mask": "1,2,3,4,5,6,7",
+            "steps": [
+                {"zone_id": "zone_enab", "step_order": 1, "duration_min": 25},
+                {"zone_id": "zone_fruit_mix", "step_order": 2, "duration_min": 20},
+            ],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+    async def slot(preferred, total):
+        async with async_session_factory() as db:
+            return await _free_slot(db, preferred, total)
+
+    assert asyncio.run(slot("06:00", 6)) == "07:00"  # 06:00-06:45 busy, 15 min margin
+    assert asyncio.run(slot("03:00", 6)) == "03:00"  # already free

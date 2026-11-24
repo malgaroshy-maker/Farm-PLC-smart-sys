@@ -260,3 +260,30 @@ def test_reset_demo_clears_history_but_keeps_users(client):
     op = login(client, "operator")  # users survive
     assert client.get("/api/v1/alarms", headers=op).json() == []
     assert client.get("/api/v1/zones", headers=op).json()  # config survives
+
+
+def test_repeated_faulted_runs_raise_maintenance_alarm_with_a_plc(client):
+    """G5: a PLC accepts each start (the command completes) and the zone faults afterwards,
+    while the stuck valve keeps ONE alarm open: the faulted runs still count."""
+    push_state(client)
+    op = login(client, "operator")
+    for _ in range(3):
+        cid = client.post(
+            "/api/v1/commands",
+            json={
+                "command_type": "start_zone",
+                "target_type": "zone",
+                "target_id": "zone_enab",
+                "payload": {"duration_min": 5},
+            },
+            headers=op,
+        ).json()["id"]
+        client.patch(f"/api/v1/commands/{cid}/sync", json={"status": "completed"}, headers=SIM)
+        push_state(client, zone_states={"zone_enab": "running"})
+        push_state(
+            client,
+            zone_states={"zone_enab": "faulted"},
+            plc_alarms=[{"code": "ALM-019", "zone_id": "zone_enab", "device_id": "valve_enab"}],
+        )
+    a = by_code(active(client, op), "ALM-036")
+    assert a["zone_id"] == "zone_enab" and a["current_value"] == 3

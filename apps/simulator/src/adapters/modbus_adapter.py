@@ -1,19 +1,27 @@
-"""Adapter #3: a controller over Modbus TCP (Milestone G7).
+"""Adapter #3: a controller over Modbus TCP (Milestones G7 and G5).
 
-For the cheaper controllers in the hardware report (Siemens S7-200 SMART or LOGO!, Delta AS,
-or an S7-1200 used without OPC UA). Select it with CONTROLLER_ADAPTER=modbus and
+For the farm PLC's Modbus TCP server (docs/PLC_PROGRAM.md) and for cheaper controllers
+(S7-200 SMART, LOGO!, Delta AS). Select it with CONTROLLER_ADAPTER=modbus and
 MODBUS_MAP=<file> (see modbus_map.example.json).
 
 Register map: every value is one 16-bit holding register with an optional `scale`
-(value = register / scale). Zones have an `index` (1..n): the command target the PLC uses.
+(value = register / scale, signed). Zones have an `index` (1..16): the command target.
 
 Command handshake (same as OPC UA; the PLC decides, interlocks live in the PLC):
   1. write type, target (zone index), duration_min, then seq = seq + 1
   2. the PLC acts or refuses and writes ack_status (1 = accepted, 2 = rejected) and
-     ack_reason (a code, see REASONS), then ack_seq = seq
+     ack_reason (a code, see plc_common.REASONS), then ack_seq = seq
   3. no ack within ack_timeout_s -> "failed: plc_no_ack"
-The PLC also runs a start for exactly `duration_min` on its own timer, so a lost link can
-never leave a valve open (the same rule the radio boxes follow).
+The PLC runs a start for exactly `duration_min` on its own timer, so a lost link can
+never leave a valve open.
+
+G5 additions (all optional in the map, so simpler controllers still work):
+  - zone `state` register: state + 256 * run source (plc_common.ZONE_STATES / RUN_SOURCES),
+    `runtime_sec`, `target_sec` (seconds, so the app's timer runs smoothly), `fault`
+  - system `alarm_word0..2`: the PLC's alarm bits -> the app's `plc_alarms`
+  - command `app_heartbeat`: written after every successful push to the API, so the PLC
+    runs its stored schedule when the *server* is down (not just this gateway)
+  - `fallback`: the next 24 h of runs written into the PLC (seq bumped last)
 """
 
 from __future__ import annotations
@@ -26,20 +34,11 @@ from pathlib import Path
 from ..adapter import Layout
 from ..modbus_tcp import ModbusTcpClient
 from ..state import utcnow
+from . import plc_common as pc
 
 COMMAND_TYPES = {"start_zone": 1, "stop_zone": 2, "stop_all": 3, "reset_alarm": 4}
-MODES = {0: "off", 1: "auto", 2: "manual", 3: "maintenance"}
-PANEL_ZONE = {0: "auto", 1: "on", 2: "off"}
-PANEL_PUMP = {0: "auto", 1: "hand", 2: "off"}
-REASONS = {
-    1: "interlock",
-    2: "zone_in_manual",
-    3: "no_power",
-    4: "pump_unavailable",
-    5: "tank_low",
-    6: "estop_active",
-    9: "plc_rejected",
-}
+REASONS = pc.REASONS
+ALARM_WORDS = ("alarm_word0", "alarm_word1", "alarm_word2")
 
 
 class MapError(ValueError):
@@ -76,6 +75,11 @@ class ModbusAdapter:
         self._ok = False
         self._events: list[dict] = []
         self._addr = self._addresses()
+        self._heartbeat = 0
+        self._heartbeat_due = False
+        self._zone_index = {
+            zid: int(z["index"]) for zid, z in regmap["zones"].items() if "index" in z
+        }
 
     def _addresses(self) -> dict[str, tuple[int, float]]:
         out = {}
@@ -116,9 +120,13 @@ class ModbusAdapter:
     def on_clock(self, payload: dict) -> None:
         return None  # the PLC runs on real time
 
+    def api_contact(self) -> None:
+        """The API took our last push: tell the PLC the app is alive (written on the next read)."""
+        self._heartbeat_due = True
+
     # ── state ──────────────────────────────────────────────
 
-    async def _read_all(self) -> dict[str, float]:
+    async def _read_raw(self) -> dict[int, int]:
         addrs = sorted({a for a, _ in self._addr.values()})
         values: dict[int, int] = {}
         start = addrs[0]
@@ -127,16 +135,29 @@ class ModbusAdapter:
             for i, v in enumerate(await self.client.read_holding(start, count)):
                 values[start + i] = v
             start += count
-        out = {}
+        return values
+
+    async def _read_all(self) -> tuple[dict[str, float], dict[str, int]]:
+        raw = await self._read_raw()
+        scaled, words = {}, {}
         for key, (a, scale) in self._addr.items():
-            raw = values[a]
-            raw = raw - 0x10000 if raw >= 0x8000 else raw  # signed 16-bit
-            out[key] = raw / scale
-        return out
+            r = raw[a]
+            words[key] = r
+            scaled[key] = (r - 0x10000 if r >= 0x8000 else r) / scale  # signed 16-bit
+        return scaled, words
+
+    async def _send_heartbeat(self) -> None:
+        a = self._addr.get("command.app_heartbeat")
+        if a is None or not self._heartbeat_due:
+            return
+        self._heartbeat = (self._heartbeat + 1) % 30000
+        await self.client.write_register(a[0], self._heartbeat)
+        self._heartbeat_due = False
 
     async def read_state(self) -> list[dict]:
         try:
-            v = await self._read_all()
+            await self._send_heartbeat()
+            v, raw = await self._read_all()
         except Exception as exc:
             self._ok = False
             print(f"[MODBUS] read failed: {type(exc).__name__}")
@@ -148,50 +169,55 @@ class ModbusAdapter:
             return {"device_key": key, "state_json": data, "updated_at": now}
 
         sys = lambda k, d=0.0: v.get(f"system.{k}", d)  # noqa: E731
+        stats = {
+            "tank_level_pct": sys("tank_level_pct"),
+            "main_pressure_bar": sys("main_pressure_bar"),
+            "main_flow_m3h": sys("main_flow_m3h"),
+            "refilling": bool(sys("refilling")),
+        }
+        for opt in ("well_level_m", "filter_dp_bar"):
+            if f"system.{opt}" in v:
+                stats[opt] = sys(opt)
         out = [
             item(
                 "system_mode",
                 {
-                    "mode": MODES.get(int(sys("mode", 1)), "auto"),
+                    "mode": pc.MODES.get(int(sys("mode", 1)), "auto"),
                     "estop": bool(sys("estop")),
                     "power_ok": bool(sys("power_ok", 1)),
                     "fallback_active": bool(sys("fallback_active")),
                 },
             ),
-            item(
-                "simulation_stats",
-                {
-                    "tank_level_pct": sys("tank_level_pct"),
-                    "main_pressure_bar": sys("main_pressure_bar"),
-                    "main_flow_m3h": sys("main_flow_m3h"),
-                    "refilling": False,
-                    **({"well_level_m": sys("well_level_m")} if "system.well_level_m" in v else {}),
-                    **(
-                        {"filter_dp_bar": sys("filter_dp_bar")}
-                        if "system.filter_dp_bar" in v
-                        else {}
-                    ),
-                },
-            ),
+            item("simulation_stats", stats),
         ]
+
+        zone_faults: dict[str, int] = {}
         for zid in self.map["zones"]:
             z = lambda k, d=0.0, _z=zid: v.get(f"zone.{_z}.{k}", d)  # noqa: E731
-            running = bool(z("running"))
-            out.append(
-                item(
-                    f"zone_{zid}",
-                    {
-                        "zone_id": zid,
-                        "state": "running" if running else "idle",
-                        "health": "ok",
-                        "flow_m3h": z("flow_m3h"),
-                        "pressure_bar": z("pressure_bar"),
-                        "moisture_pct": z("moisture_pct", 0.0),
-                        "panel_mode": PANEL_ZONE.get(int(z("panel_mode")), "auto"),
-                        "last_updated": now,
-                    },
-                )
-            )
+            state_key = f"zone.{zid}.state"
+            if state_key in raw:
+                code = raw[state_key]
+                state, source = pc.zone_state(code & 0xFF), pc.RUN_SOURCES.get(code >> 8)
+            else:  # a simple controller: only a running bit
+                state, source = ("running" if z("running") else "off"), None
+            fault = int(z("fault"))
+            if fault:  # the PLC reports a zone fault while its cause is live; the app latches it
+                zone_faults[zid] = fault
+            data = {
+                "zone_id": zid,
+                "state": state,
+                "health": "warning" if state == "faulted" else "healthy",
+                "flow_m3h": z("flow_m3h"),
+                "pressure_bar": z("pressure_bar"),
+                "moisture_pct": z("moisture_pct", 0.0),
+                "panel_mode": pc.PANEL_ZONE.get(int(z("panel_mode")), "auto"),
+                "run_source": source if state not in ("off", "completed") else None,
+                "last_updated": now,
+            }
+            if f"zone.{zid}.runtime_sec" in v:
+                data["runtime_sec"] = z("runtime_sec")
+                data["target_runtime_sec"] = z("target_sec")
+            out.append(item(f"zone_{zid}", data))
             valve_id = "valve_" + zid.removeprefix("zone_")
             out.append(
                 item(
@@ -200,6 +226,7 @@ class ModbusAdapter:
                         "valve_id": valve_id,
                         "zone_id": zid,
                         "status": "open" if z("valve_open_fb") else "closed",
+                        "last_command": "open" if z("valve_open_fb") else "close",
                         "last_updated": now,
                     },
                 )
@@ -216,14 +243,39 @@ class ModbusAdapter:
                         "run_fb": run,
                         "fault": fault,
                         "runtime_hours": p("runtime_hours"),
-                        "panel_mode": PANEL_PUMP.get(int(p("panel_mode")), "auto"),
+                        "panel_mode": pc.PANEL_PUMP.get(int(p("panel_mode")), "auto"),
                         "power_kw": p("power_kw"),
                         "current_a": p("current_a"),
+                        "energy_kwh_today": p("energy_kwh_today"),
                         "last_updated": now,
                     },
                 )
             )
+
+        if all(f"system.{w}" in raw for w in ALARM_WORDS):
+            active = pc.alarm_bits([raw[f"system.{w}"] for w in ALARM_WORDS])
+            out.append(item("plc_alarms", {"active": pc.plc_alarms(active, zone_faults)}))
         return out
+
+    # ── fallback program (G7/G5) ───────────────────────────
+
+    async def load_fallback(self, runs: list[dict]) -> None:
+        fb = self.map.get("fallback")
+        if not fb:
+            return
+        rows = pc.fallback_runs(runs, self._zone_index, int(fb.get("max_runs", 20)))
+        try:
+            base = int(fb["base"])
+            if rows:
+                words = [w for row in rows for w in row]
+                await self.client.write_registers(base, words)
+            await self.client.write_register(int(fb["count"]["hr"]), len(rows))
+            seq_addr = int(fb["seq"]["hr"])
+            seq = (await self.client.read_holding(seq_addr, 1))[0]
+            await self.client.write_register(seq_addr, (seq + 1) & 0x7FFF)  # last: the PLC commits
+        except Exception as exc:
+            self._ok = False
+            print(f"[MODBUS] fallback write failed: {type(exc).__name__}")
 
     # ── commands (handshake) ───────────────────────────────
 
@@ -233,7 +285,7 @@ class ModbusAdapter:
             status, reason = await self._send(cmd)
             res = {"command_id": cmd.get("id") or cmd.get("command_id"), "status": status}
             if reason:
-                res["reason"] = reason
+                res["failure_reason"] = reason
             results.append(res)
         return results
 
@@ -256,7 +308,7 @@ class ModbusAdapter:
                 payload = {}
         c = {k: a for k, (a, _s) in self._addr.items() if k.startswith("command.")}
         try:
-            seq = ((await self.client.read_holding(c["command.seq"], 1))[0] + 1) & 0xFFFF
+            seq = ((await self.client.read_holding(c["command.seq"], 1))[0] + 1) & 0x7FFF
             await self.client.write_register(c["command.type"], ctype)
             await self.client.write_register(c["command.target"], target)
             await self.client.write_register(
