@@ -26,6 +26,10 @@ class ZoneResponse(BaseModel):
     pressure_max_bar: float
     flow_min_m3h: float
     flow_max_m3h: float
+    moisture_start_pct: float | None = None
+    moisture_stop_pct: float | None = None
+    soil_fc_vwc: float | None = None
+    soil_wp_vwc: float | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -52,6 +56,10 @@ class ZoneUpdate(BaseModel):
     pressure_max_bar: float | None = Field(default=None, ge=0, le=10)
     flow_min_m3h: float | None = Field(default=None, ge=0, le=100)
     flow_max_m3h: float | None = Field(default=None, ge=0, le=100)
+    moisture_start_pct: float | None = Field(default=None, ge=0, le=100)
+    moisture_stop_pct: float | None = Field(default=None, ge=0, le=100)
+    soil_fc_vwc: float | None = Field(default=None, gt=0, le=60)
+    soil_wp_vwc: float | None = Field(default=None, ge=0, le=40)
 
 
 class ZoneCreate(BaseModel):

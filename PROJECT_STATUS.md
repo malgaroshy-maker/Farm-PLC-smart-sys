@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-23
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → **Milestone G** in progress (G1 performance & reliability ✅ · G2 AI ✅ · G3 extensibility ✅ · G4 UI polish ✅ · G6 docs ✅ · hardware research ✅ · G7 field readiness next, then G5 PLC design): hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → **Milestone G** in progress (G1 performance & reliability ✅ · G2 AI ✅ · G3 extensibility ✅ · G4 UI polish ✅ · G6 docs ✅ · hardware research ✅ · G7 field readiness ✅ (owner review pending) · G5 PLC design next): hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -30,7 +30,7 @@
 | Telemetry history | ✅ | Persisted every 10 s farm time, at most 1/s real, farm timestamps, retention in farm time. `/telemetry/series` and `/telemetry/water-today` drive zone and dashboard charts. |
 | Farm map | ✅ | **Traced from Esri satellite imagery (z17), north-up**, 0.5035 m per map unit (`tools/map-geometry/satellite_retrace.py`); the owner's sketch is kept as an area cross-check. Owner-confirmed layout: block 8 strips (rumman ummahat with big mother trees, enab trellis rows, zaytoun_2 as three rows of big old olives), mixed-fruit strip (almond, lemon, orange; not irrigated), one connected building (barn, brooder, workers' rooms), the farm rest house inside the boundary, and the underground well just north of the control room. Thousands of individual trees at real row spacing, fruit following the season. Fly-to on zone select and on new S2/S3 alarms, alarm rings, farm-life sprites (tractor, birds, worker), buried mainline + laterals, tank, booster, control room. Animations follow flow and farm-local day/night; each can be switched off in Settings. |
 | Arabic-first UI | ✅ | Arabic by default with full RTL and an English toggle. Bundled IBM Plex Sans Arabic font (works offline). Logo + مزرعة الجروشي branding. Farm-local clock. Numbers stay Western digits. |
-| Pages | ✅ | Dashboard, Zones, Equipment, Alarm Center, Event log, Schedules, Reports, Settings (Features · Notifications · Zones & equipment · AI), Help (operator guide), Simulator (admin-only, behind **presenter mode**). Every page has loading, empty (illustrated) and error-with-retry states. |
+| Pages | ✅ | Dashboard, Zones, Equipment, Alarm Center, Event log, Schedules, Reports, Settings (Features · Notifications · Zones & equipment · AI · Backups), Help (operator guide), Simulator (admin-only, behind **presenter mode**). Every page has loading, empty (illustrated) and error-with-retry states. |
 | Start script | ✅ | `run.bat` / `run.sh` (dev) and `run.bat demo` (phones + PWA). One window, first-run self-setup, a single `API_PORT`, clean Ctrl+C shutdown, `stop.bat` safety net, `--smoke` self-test. `run.bat reset` clears operating history for a clean demo (keeps users and settings). |
 | Phone / PWA | ✅ | Responsive layout with bottom navigation and a slide-in menu. Installable (manifest, icons, service worker that never caches `/api` or `/ws`). |
 | Web MVP | ✅ | Real login, live map (incl. starting/stopping state), dashboard side column (tank, pumps, alarms, trends, water today, next irrigation), zone panel with a duration picker + confirm and real cycle history, start/stop with interlock feedback, alarm chime + mute, reduce-motion toggle, global STOP ALL, Alarm Center (active/history, ack/reset, AR/EN guidance), Simulator page with Virtual Farm Clock panel, Schedules page with 24h timeline and drawer, Reports page with charts and CSV export, honest connection status. |
@@ -42,9 +42,11 @@
 | Performance & health | ✅ | Shared polling paused when the tab is hidden, SQLite WAL, composite telemetry index, SQL-bucketed chart series (about 80 ms), downsampling of old telemetry. `/system/health` drives a health badge (green/amber/red) with a plain-language panel. |
 | Feature switches | ✅ | Owner switches for each AI feature, map effects, automation (schedules, daily weather check, anomaly detection) and alert channels (`/system/features`); changes reach every screen live. |
 | Notifications | ✅ | S3 critical and S2 major alarms and the morning briefing go to Telegram and phone push (web push with VAPID), with a test-message button in Settings. Phone push needs HTTPS, so it works on localhost until hosting is decided. |
-| Controller adapter | ✅ | The gateway drives a `ControllerAdapter`: the simulator today, and an OPC UA adapter (S7-1500, seq/ack handshake) tested against an in-process OPC UA server. PLCSIM Advanced validation comes in G5. See [CONTROLLER_ADAPTER](docs/CONTROLLER_ADAPTER.md). |
+| Controller adapter | ✅ | The gateway drives a `ControllerAdapter`: the simulator today, and an OPC UA adapter (S7-1500, seq/ack handshake) tested against an in-process OPC UA server, and a Modbus TCP adapter (G7) tested against a built-in register server. PLCSIM Advanced validation comes in G5. See [CONTROLLER_ADAPTER](docs/CONTROLLER_ADAPTER.md). |
+| Field readiness (G7) | ✅ | Manual mode (panel switches, hand icon, banner, ALM-042), unexpected flow (ALM-021), power cut with the 30-minute resume rule (ALM-033), fallback program, pump health (kW, current, well level, filter, ALM-027/039), soil moisture with per-crop levels and soil logic (levels proposed until the owner confirms). Shown in the simulator; the PLC side is G5. |
+| Farm server & backups | ✅ | `start.mjs server` (headless, restarts crashed parts), Windows/Linux service installers, daily backups (local, USB, Google Drive via rclone) with restore on restart in Settings → Backups, Tailscale HTTPS guide ([FARM_SERVER](docs/FARM_SERVER.md)). The installers have not been run on the farm PC yet. |
 | Operator guide | ✅ | Arabic + English guide in two parts (daily operation, administration): in-app Help page, [docs/OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md) and a printable A4 PDF. |
-| Tests + CI | ✅ | 230 API + 27 simulator + 107 web + 7 map-model + 8 launcher tests (379 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
+| Tests + CI | ✅ | 250 API + 41 simulator + 107 web + 7 map-model + 11 launcher tests (416 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
 
 ## Live scenario suite (2026-11-19)
 
@@ -55,7 +57,9 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 | Gap | Planned in |
 |-----|-----------|
 | PLC program and PLCSIM Advanced test (the adapter skeleton exists) | G5 |
-| Hosting (and with it phone push on phones), PostgreSQL in production, SMS/escalation | Production track |
+| Phone push on phones needs HTTPS: Tailscale `serve` is documented but not set up yet | Farm PC setup |
+| PostgreSQL in production, SMS/escalation | Production track |
+| Per-crop soil levels are proposed values; soil logic waits for the owner to confirm them | Owner input |
 | Farm total area: the satellite trace gives 9.97 ha, the seed says 11.9 ha | Owner input |
 | Scenario suite runs manually against a live stack, not in CI | CI improvement |
 | Pipe routes are a plausible guess. Edit `tools/map-geometry/network.py` with the real routes | Owner input |
@@ -71,7 +75,7 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 | **D: Simulation time, schedules, cycles, reports** | ✅ Done 2026-11-19 |
 | **E: AI (alarm assistant, weather advisor, anomaly detection, daily briefing)** | ✅ Done 2026-11-19 |
 | **F: Map weather & UI polish, satellite map** | ✅ Done 2026-11-23 |
-| **G: Hardening, AI, polish, PLC design, research, demo video** | 🔄 G1–G4, G6 and the hardware research done; G7 field readiness next, then G5 ([plan](docs/MILESTONE_G_PLAN.md)) |
+| **G: Hardening, AI, polish, PLC design, research, demo video** | 🔄 G1–G4, G6, G7 and the hardware research done; G5 next ([plan](docs/MILESTONE_G_PLAN.md)) |
 | Production track (PLC adapter, hosting, hardening) | ⬜ After the demo |
 
 ## Decisions

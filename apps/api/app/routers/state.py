@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.domain import ACTIVE_ZONE_STATES
 from app.database import get_db
 from app.deps import Actor, get_actor, require_service
 from app.models.telemetry import DeviceStateSnapshot
@@ -42,6 +43,20 @@ async def sync_state(
         await manager.broadcast(event_type, payload)
         if event_type == "zone.state.changed":
             new_state = payload.get("current_state") or payload.get("state")
+            if new_state in ACTIVE_ZONE_STATES and payload.get("zone_id"):
+                live = next(
+                    (
+                        p.state_json
+                        for p in payloads
+                        if p.device_key == f"zone_{payload['zone_id']}"
+                    ),
+                    {},
+                )
+                if live.get("run_source") in ("panel", "fallback"):
+                    from app.services.cycles import record_unattended_cycle_start
+
+                    await record_unattended_cycle_start(db, payload["zone_id"], live["run_source"])
+                    await db.commit()
             if new_state in ("off", "completed", "faulted"):
                 zid = payload.get("zone_id")
                 if zid:

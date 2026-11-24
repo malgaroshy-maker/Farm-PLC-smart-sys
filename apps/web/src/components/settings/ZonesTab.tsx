@@ -6,9 +6,16 @@ import { pickName, useT, type MsgKey } from '../../lib/i18n';
 import { createZone, updateZone, type NewZone } from '../../lib/settingsApi';
 import { useZoneCatalog, zoneList } from '../../lib/zones';
 import { Switch } from './FeaturesTab';
+import SoilSection from './SoilSection';
 
 const CROPS: Zone['crop_type'][] = ['pomegranate', 'olives', 'grapes', 'mixed_fruit', 'other'];
-type Editable = Pick<Zone, 'name' | 'name_ar' | 'crop_type' | 'area_ha' | 'max_runtime_min' | 'default_duration_min' | 'flow_min_m3h' | 'flow_max_m3h'>;
+type Editable = Pick<Zone, 'name' | 'name_ar' | 'crop_type' | 'area_ha' | 'max_runtime_min' | 'default_duration_min' | 'flow_min_m3h' | 'flow_max_m3h'> & {
+  moisture_start_pct?: number | null;
+  moisture_stop_pct?: number | null;
+  soil_fc_vwc?: number | null;
+  soil_wp_vwc?: number | null;
+};
+const SOIL_FIELDS = ['moisture_start_pct', 'moisture_stop_pct', 'soil_fc_vwc', 'soil_wp_vwc'] as const;
 const NUM_FIELDS: (keyof Editable)[] = ['area_ha', 'max_runtime_min', 'default_duration_min', 'flow_min_m3h', 'flow_max_m3h'];
 
 function errText(e: unknown, fallback: string): string {
@@ -68,6 +75,14 @@ function ZoneForm({ initial, onSave, onCancel, isNew }: { initial: Editable & { 
           <input className={field} type="number" step="any" min={0} dir="ltr" value={v[k] as number} onChange={(e) => set(k, Number(e.target.value) as never)} required />
         </label>
       ))}
+      {!isNew &&
+        SOIL_FIELDS.map((k) => (
+          <label key={k} className="text-[11px] text-[#849396]">
+            {t(`zoneAdmin.${k}` as MsgKey)}
+            <input className={field} type="number" step="any" min={0} max={100} dir="ltr" placeholder={t('zoneAdmin.cropDefault')}
+              value={v[k] ?? ''} onChange={(e) => set(k, (e.target.value === '' ? null : Number(e.target.value)) as never)} />
+          </label>
+        ))}
       <div className="col-span-2 sm:col-span-4 flex items-center gap-2">
         <button type="submit" className="px-3 py-1.5 rounded-lg bg-[#00e5ff] text-[#0e0e0e] text-xs font-bold">
           {t('settings.save')}
@@ -135,6 +150,7 @@ export default function ZonesTab() {
         </button>
       )}
       <p className="text-[11px] text-[#849396]">{t('zoneAdmin.mapNote')}</p>
+      <SoilSection />
     </div>
   );
 }

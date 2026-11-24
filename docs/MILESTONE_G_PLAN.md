@@ -43,8 +43,9 @@ Context: the owner is the only user for now; users and roles UI is deferred. Hos
 ## G4: UI polish ✅ done 2026-11-23 (details in CHANGELOG)
 Accessibility, empty and error states, an Arabic text review across all pages, consistent spacing and typography.
 
-## G7: Field readiness (before G5)
+## G7: Field readiness (before G5) ✅ built 2026-11-24, owner review pending (details in CHANGELOG)
 Gaps found during the hardware research. Owner decisions (2026-11-24): do these **before G5**.
+Still open: the owner confirms the per-crop soil levels (proposed values are not used until confirmed); the PLC side of the fallback program, panel switches and power-cut rule is G5 work.
 - **PLC fallback program.** The PLC keeps a copy of today's schedule and runs it if the server or app is down; it resyncs when the server returns. (Today the schedules live only in the app.)
 - **Manual mode in the app.** The PLC reports the panel switches (zone On/Auto/Off, pump Hand/Off/Auto); the app shows "zone in manual", never fights it, and logs it (ALM-042).
 - **Unexpected-flow alarm.** Flow with no zone on means a leak or a valve opened by hand (ALM-021 is defined but never raised).

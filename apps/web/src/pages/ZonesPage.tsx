@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Hand } from 'lucide-react';
 import EmptyState, { ErrorState, LoadingState } from '../components/EmptyState';
 import { useLoad } from '../lib/useLoad';
 import { ZonesIcon } from '../components/icons/FarmIcons';
@@ -15,6 +16,7 @@ type Filter = 'all' | 'running' | 'attention';
 const STATE_COLOR: Record<string, string> = {
   running: '#00e5ff',
   faulted: '#ff5449',
+  interrupted: '#ff9f43',
   completed: '#7ee787',
   off: '#849396',
 };
@@ -50,7 +52,13 @@ export default function ZonesPage() {
   const rows = config.filter((z) => {
     const l = live[z.id];
     if (filter === 'running') return l && l.state !== 'off' && l.state !== 'completed' && l.state !== 'faulted';
-    if (filter === 'attention') return l?.state === 'faulted' || (alarmsByZone[z.id]?.length ?? 0) > 0 || (l?.moisture_pct ?? 50) < 25;
+    if (filter === 'attention')
+      return (
+        l?.state === 'faulted' ||
+        (alarmsByZone[z.id]?.length ?? 0) > 0 ||
+        (l?.moisture_pct ?? 50) < 25 ||
+        (!!l?.panel_mode && l.panel_mode !== 'auto')
+      );
     return true;
   });
 
@@ -101,9 +109,20 @@ export default function ZonesPage() {
                     {t(`crop.${z.crop_type}` as MsgKey)} · <span dir="ltr">{fmtNum(z.area_ha, 2)} ha</span>
                   </div>
                 </div>
-                <span className="px-2 py-0.5 rounded-md text-xs font-bold border shrink-0" style={{ color, borderColor: `${color}66`, background: `${color}14` }}>
-                  {t(`state.${l?.state ?? 'unknown'}` as MsgKey)}
-                </span>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="px-2 py-0.5 rounded-md text-xs font-bold border" style={{ color, borderColor: `${color}66`, background: `${color}14` }}>
+                    {t(`state.${l?.state ?? 'unknown'}` as MsgKey)}
+                  </span>
+                  {l?.panel_mode && l.panel_mode !== 'auto' && (
+                    <span
+                      className="px-2 py-0.5 rounded-md text-xs font-bold border border-[#ff9f43]/40 bg-[#ff9f43]/10 text-[#ff9f43] flex items-center gap-1"
+                      data-testid={`zone-manual-${z.id}`}
+                    >
+                      <Hand size={12} aria-hidden="true" />
+                      {t(`panel.zone.${l.panel_mode}` as MsgKey)}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div>

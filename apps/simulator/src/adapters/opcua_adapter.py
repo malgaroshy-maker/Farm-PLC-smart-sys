@@ -35,8 +35,18 @@ class TagMapError(ValueError):
     pass
 
 
+def _resolve(path: str | Path) -> Path:
+    """A relative path may be given from the project root (as in .env) or from apps/simulator."""
+    p = Path(path)
+    if not p.is_absolute() and not p.exists():
+        root = Path(__file__).resolve().parents[4] / p
+        if root.exists():
+            return root
+    return p
+
+
 def load_tagmap(path: str | Path) -> dict:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    data = json.loads(_resolve(path).read_text(encoding="utf-8"))
     for key in ("endpoint", "system", "zones", "pumps", "command"):
         if key not in data:
             raise TagMapError(f"tag map is missing '{key}'")

@@ -21,6 +21,7 @@ from app.routers import (
     ai,
     alarms,
     auth,
+    backups,
     commands,
     cycles,
     devices,
@@ -30,6 +31,7 @@ from app.routers import (
     reports,
     schedules,
     sim,
+    soil,
     state,
     system,
     telemetry,
@@ -126,14 +128,18 @@ async def lifespan(app: FastAPI):
         cleaned = await cleanup_scenario_programs(db)
         if cleaned:
             log.info("Cleaned up %d leftover scenario program(s) on startup", cleaned)
+    from app.services.backup import daily_loop
+
     task = asyncio.create_task(Monitor().run())
+    backups_task = asyncio.create_task(daily_loop())
     try:
         yield
     finally:
         await runner.stop()
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        for t in (task, backups_task):
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
 
 
 app = FastAPI(
@@ -171,6 +177,8 @@ for r in (
     reports,
     ai,
     system,
+    soil,
+    backups,
 ):
     app.include_router(r.router, prefix=API_V1)
 

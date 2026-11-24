@@ -27,6 +27,7 @@ from .program import Program, ProgramStep, SchedulerState
 from .pump import Pump
 from .schedule import Schedule
 from .sensor import Sensor
+from .soil import CropMoistureLevel
 from .telemetry import DeviceStateSnapshot, TelemetryPoint
 from .user import User
 from .valve import Valve
@@ -37,6 +38,7 @@ __all__ = [
     "NotificationSettings",
     "PushSubscription",
     "FeatureFlag",
+    "CropMoistureLevel",
     "AICallLog",
     "Base",
     "Farm",

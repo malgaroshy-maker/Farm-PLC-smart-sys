@@ -4,16 +4,19 @@
  *
  *   node scripts/start.mjs            dev mode: hot reload, http://localhost:5173
  *   node scripts/start.mjs demo       demo mode: production build, phone/LAN access, installable PWA
+ *   node scripts/start.mjs server     farm server (G7): like demo, but headless (no browser) and any
+ *                                     part that stops is restarted. Run it from a service: docs/FARM_SERVER.md
  *   node scripts/start.mjs --smoke    start everything, wait until healthy, then stop (self-test)
  *
  * First run sets itself up: Python venv + requirements, pnpm install, and a .env
  * with generated secrets. API_PORT in .env is the single source for the API port;
  * the simulator and the web proxy are pointed at it automatically.
  * Ctrl+C (or closing the window) stops every process it started — no orphans.
+ * A restore chosen in Settings → Backups is applied here, before the database is opened.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -28,15 +31,44 @@ const IS_WIN = process.platform === 'win32';
 const VENV_PY = IS_WIN ? path.join(API_DIR, '.venv', 'Scripts', 'python.exe') : path.join(API_DIR, '.venv', 'bin', 'python');
 
 const args = process.argv.slice(2);
-const MODE = args.includes('demo') ? 'demo' : 'dev';
+const SERVER = args.includes('server');
+const MODE = args.includes('demo') || SERVER ? 'demo' : 'dev';
 const SMOKE = args.includes('--smoke');
 const RESET = args.includes('reset');
-const OPEN_BROWSER = !SMOKE && !args.includes('--no-open');
+const OPEN_BROWSER = !SMOKE && !SERVER && !args.includes('--no-open');
+
+const ANSI = /\x1b\[[0-9;]*m/g;
 
 // ── output ──────────────────────────────────────────────────────────────
 const C = { api: 36, sim: 35, web: 33, setup: 32, err: 31, info: 37 };
 const color = (n, s) => (process.stdout.isTTY ? `\x1b[${n}m${s}\x1b[0m` : s);
-const log = (tag, msg) => console.log(`${color(C[tag] ?? 37, `[${tag}]`.padEnd(8))} ${msg}`);
+// farm server: also keep a log file (logs/farm-server.log, rotated at 5 MB, 3 old copies)
+const LOG_FILE = SERVER ? path.join(ROOT, 'logs', 'farm-server.log') : null;
+let logWrites = 0;
+function rotateLog() {
+  try {
+    if (statSync(LOG_FILE).size < 5 * 1024 * 1024) return;
+  } catch {
+    return;
+  }
+  for (let i = 3; i >= 1; i--) {
+    const from = i === 1 ? LOG_FILE : `${LOG_FILE}.${i - 1}`;
+    if (existsSync(from)) renameSync(from, `${LOG_FILE}.${i}`);
+  }
+}
+const log = (tag, msg) => {
+  console.log(`${color(C[tag] ?? 37, `[${tag}]`.padEnd(8))} ${msg}`);
+  if (!LOG_FILE) return;
+  try {
+    if (logWrites++ % 200 === 0) {
+      mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+      rotateLog();
+    }
+    appendFileSync(LOG_FILE, `${new Date().toISOString()} [${tag}] ${String(msg).replace(ANSI, '')}\n`);
+  } catch {
+    /* logging must never stop the farm */
+  }
+};
 function die(msg) {
   log('err', msg);
   shutdown(1);
@@ -163,9 +195,44 @@ async function portFree(port) {
   return !(await answers(port)) && (await canBind(port));
 }
 
+// ── restore (G7) ────────────────────────────────────────────────────────
+/** Where the API keeps farm.db and its backups (same rules as app/services/backup.py). */
+function dbPaths(env) {
+  const url = process.env.DATABASE_URL || env.DATABASE_URL || 'sqlite+aiosqlite:///./farm.db';
+  if (!url.startsWith('sqlite')) return null;
+  const raw = url.split('///')[1];
+  if (!raw || raw === ':memory:') return null;
+  const db = path.resolve(API_DIR, raw);
+  const bdir = process.env.BACKUP_DIR || env.BACKUP_DIR || 'backups';
+  return { db, backups: path.isAbsolute(bdir) ? bdir : path.join(path.dirname(db), bdir) };
+}
+
+/** Swap in the backup chosen in Settings → Backups. The current DB is kept as pre-restore-*.db. */
+function applyPendingRestore(paths, stamp = new Date()) {
+  if (!paths) return null;
+  const marker = path.join(paths.backups, 'restore.pending');
+  if (!existsSync(marker)) return null;
+  const name = readFileSync(marker, 'utf8').trim();
+  rmSync(marker, { force: true });
+  const src = path.join(paths.backups, name);
+  if (!/^farm-\d{8}-\d{6}\.db$/.test(name) || !existsSync(src)) {
+    log('err', `Restore skipped: backup "${name}" not found.`);
+    return null;
+  }
+  const ts = stamp.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  if (existsSync(paths.db)) copyFileSync(paths.db, path.join(paths.backups, `pre-restore-${ts}.db`));
+  for (const ext of ['-wal', '-shm']) rmSync(paths.db + ext, { force: true });
+  copyFileSync(src, paths.db);
+  log('setup', `Restored the database from ${name} (the previous one is kept as pre-restore-${ts}.db).`);
+  return name;
+}
+
 // ── child processes ─────────────────────────────────────────────────────
 const children = [];
 let stopping = false;
+const restarts = {};
+/** 5 s, 10 s, 20 s, 40 s, then once a minute. */
+const restartDelay = (tries) => Math.min(60_000, 5_000 * 2 ** Math.max(0, tries - 1));
 
 function start(tag, cmd, cmdArgs, opts) {
   const [c, a] = resolveCmd(cmd, cmdArgs);
@@ -193,10 +260,24 @@ function start(tag, cmd, cmdArgs, opts) {
   child.on('exit', (code) => {
     if (stopping) return;
     log('err', `${tag} exited (code ${code}).`);
+    if (SERVER && !SMOKE) {
+      // farm server: never give up — restart this part, backing off up to a minute
+      const i = children.findIndex((c) => c.child === child);
+      if (i >= 0) children.splice(i, 1);
+      const tries = (restarts[tag] = (restarts[tag] ?? 0) + 1);
+      const delay = restartDelay(tries);
+      log('info', `Restarting ${tag} in ${delay / 1000}s…`);
+      setTimeout(() => {
+        if (!stopping) start(tag, cmd, cmdArgs, opts);
+      }, delay);
+      return;
+    }
     if (opts.critical) shutdown(1);
   });
   children.push({ tag, child });
-  writeFileSync(path.join(RUN_DIR, 'pids.json'), JSON.stringify(children.map((c) => ({ tag: c.tag, pid: c.child.pid }))));
+  // the launcher goes first, so stop.bat also stops a farm server that would restart its parts
+  const pids = [{ tag: 'launcher', pid: process.pid }, ...children.map((c) => ({ tag: c.tag, pid: c.child.pid }))];
+  writeFileSync(path.join(RUN_DIR, 'pids.json'), JSON.stringify(pids));
   return child;
 }
 
@@ -264,7 +345,6 @@ function isVirtualOrLinkLocal(addr, ifaceName = '') {
   return false;
 }
 
-const ANSI = /\x1b\[[0-9;]*m/g;
 
 /** IPv4 addresses of real LAN adapters (same rule as the phone list). */
 function lanAddresses(interfaces = os.networkInterfaces()) {
@@ -307,7 +387,7 @@ function openBrowser(url) {
 // ── main ────────────────────────────────────────────────────────────────
 async function main() {
   mkdirSync(RUN_DIR, { recursive: true });
-  log('info', `Algaroshy Farm — ${MODE} mode${SMOKE ? ' (smoke test)' : ''}`);
+  log('info', `Algaroshy Farm — ${SERVER ? 'farm server' : MODE + ' mode'}${SMOKE ? ' (smoke test)' : ''}`);
 
   if (!existsSync(path.join(ROOT, '.env')) && !existsSync(path.join(ROOT, '.env.example'))) die('.env.example missing.');
   const { env, generated } = ensureEnv();
@@ -331,6 +411,7 @@ async function main() {
   const apiBase = `http://127.0.0.1:${apiPort}`;
   const shared = { API_PORT: String(apiPort), API_URL: `${apiBase}/api/v1`, VITE_PROXY_TARGET: apiBase };
 
+  applyPendingRestore(dbPaths(env));
   log('setup', 'Migrating database…');
   if (!run(VENV_PY, ['-m', 'alembic', 'upgrade', 'head'], { cwd: API_DIR, env: { ...process.env, ...shared } })) die('Database migration failed.');
   log('setup', 'Seeding (skipped if already seeded)…');
@@ -404,4 +485,4 @@ if (isEntrypoint()) {
   main().catch((e) => die(e?.stack || String(e)));
 }
 
-export { isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls };
+export { applyPendingRestore, dbPaths, isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls, restartDelay };

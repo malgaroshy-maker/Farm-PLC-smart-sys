@@ -132,7 +132,7 @@ class APIClient:
                 cid = res.pop("command_id")
                 await self.client.patch(f"/commands/{cid}/sync", json=res)
         except httpx.HTTPError as e:
-            print(f"Error polling commands: {e}")
+            print(f"Error polling commands: {e!r}")
 
     async def push_state(self) -> None:
         try:
@@ -141,8 +141,21 @@ class APIClient:
                 return
             resp = await self.client.post("/state/sync", json=payloads)
             resp.raise_for_status()
+            if hasattr(self.adapter, "api_contact"):
+                self.adapter.api_contact()
         except httpx.HTTPError as e:
-            print(f"Error pushing state: {e}")
+            print(f"Error pushing state: {e!r}")
+
+    async def refresh_fallback(self) -> None:
+        """G7: hand the controller today's program so it can irrigate if the app goes down."""
+        if not hasattr(self.adapter, "load_fallback"):
+            return
+        try:
+            resp = await self.client.get("/schedules/upcoming", params={"hours": 24})
+            resp.raise_for_status()
+            await self.adapter.load_fallback(resp.json())
+        except httpx.HTTPError as e:
+            print(f"Could not refresh the fallback program: {e!r}")
 
     async def run_loop(self) -> None:
         self.running = True
@@ -156,10 +169,14 @@ class APIClient:
         ws_task = loop.create_task(self.ws_loop())
 
         try:
+            ticks = 0
             while self.running:
                 if not self.comms_dropped():
                     await self.poll_commands()
                     await self.push_state()
+                    if ticks % 300 == 0:  # every ~5 min
+                        await self.refresh_fallback()
+                ticks += 1
                 await asyncio.sleep(1.0)
         finally:
             ws_task.cancel()

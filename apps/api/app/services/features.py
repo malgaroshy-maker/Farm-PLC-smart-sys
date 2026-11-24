@@ -27,6 +27,7 @@ FEATURES: dict[str, tuple[bool, str]] = {
     "automation.scheduler": (True, "automation"),
     "automation.advisor_auto": (True, "automation"),
     "automation.anomaly": (True, "automation"),
+    "automation.soil": (True, "automation"),  # G7: acts only on confirmed moisture levels
     "notify.in_app": (True, "notify"),
     # off until the owner configures them (token / keys)
     "notify.telegram": (False, "notify"),

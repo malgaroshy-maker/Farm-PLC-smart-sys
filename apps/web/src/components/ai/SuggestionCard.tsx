@@ -39,7 +39,8 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
       setOverrideStatus('approved');
       onStatusChange?.(updated);
 
-      // Start 5-second undo toast countdown
+      // Start 5-second undo toast countdown (not for an extra run: the zone has already started)
+      if (suggestion.action === 'extra_run') return;
       setShowUndoToast(true);
       setUndoSeconds(5);
 
@@ -103,6 +104,7 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
     shorten: { bg: 'bg-[#ffeb3b]/15', text: 'text-[#ffeb3b]', border: 'border-[#ffeb3b]/30' },
     extend: { bg: 'bg-[#00e5ff]/15', text: 'text-[#00e5ff]', border: 'border-[#00e5ff]/30' },
     reschedule: { bg: 'bg-[#b98cff]/15', text: 'text-[#b98cff]', border: 'border-[#b98cff]/30' },
+    extra_run: { bg: 'bg-[#7ee787]/15', text: 'text-[#7ee787]', border: 'border-[#7ee787]/30' },
   };
 
   const actionStyle = actionColorMap[suggestion.action] ?? actionColorMap.shorten;
@@ -203,7 +205,7 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
             className="flex-1 py-1.5 px-3 rounded-xl bg-[#00e5ff] hover:bg-[#00e5ff]/90 text-[#0e0e0e] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
           >
             <Check size={14} />
-            <span>{t('advisor.approve')}</span>
+            <span>{t(suggestion.action === 'extra_run' ? 'advisor.startNow' : 'advisor.approve')}</span>
           </button>
           <button
             onClick={handleReject}

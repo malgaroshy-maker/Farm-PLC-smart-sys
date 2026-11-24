@@ -5,7 +5,7 @@ import { translate, type MsgKey } from '../lib/i18n';
 const FEATURES = [
   'ai.chat', 'ai.alarm_explain', 'ai.advisor', 'ai.briefing',
   'map.weather_overlay', 'map.farm_life', 'map.irrigation_animation',
-  'automation.scheduler', 'automation.advisor_auto', 'automation.anomaly',
+  'automation.scheduler', 'automation.advisor_auto', 'automation.anomaly', 'automation.soil',
   'notify.in_app', 'notify.telegram', 'notify.web_push',
 ];
 

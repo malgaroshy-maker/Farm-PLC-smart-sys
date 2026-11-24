@@ -1,12 +1,13 @@
 /**
  * Settings (Milestone G3, owner's choice: one page with tabs).
- * Features · Notifications · Zones & equipment · AI. Admin only.
+ * Features · Notifications · Zones & equipment · AI · Backups (G7). Admin only.
  */
 import { lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bell, Bot, LayoutGrid, ToggleRight } from 'lucide-react';
+import { Bell, Bot, DatabaseBackup, LayoutGrid, ToggleRight } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useT, type MsgKey } from '../lib/i18n';
+import BackupsTab from '../components/settings/BackupsTab';
 import FeaturesTab from '../components/settings/FeaturesTab';
 import NotificationsTab from '../components/settings/NotificationsTab';
 import ZonesTab from '../components/settings/ZonesTab';
@@ -18,6 +19,7 @@ const TABS = [
   { key: 'notifications', icon: Bell, label: 'settings.tab.notifications' },
   { key: 'zones', icon: LayoutGrid, label: 'settings.tab.zones' },
   { key: 'ai', icon: Bot, label: 'settings.tab.ai' },
+  { key: 'backups', icon: DatabaseBackup, label: 'settings.tab.backups' },
 ] as const;
 
 export default function SettingsPage() {
@@ -54,6 +56,7 @@ export default function SettingsPage() {
         {tab === 'features' && <FeaturesTab />}
         {tab === 'notifications' && <NotificationsTab />}
         {tab === 'zones' && <ZonesTab />}
+        {tab === 'backups' && <BackupsTab />}
         {tab === 'ai' && (
           <Suspense fallback={<div className="text-sm text-[#849396]">{t('common.loading')}</div>}>
             <AiSettingsPage />

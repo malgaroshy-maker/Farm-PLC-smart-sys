@@ -53,6 +53,13 @@ def test_guard_no_forbidden_utcnow_in_services():
             "self.state.log.append(f\"{utcnow().strftime('%H:%M:%S')} {message}\")",
             "self.state.finished_at = utcnow().isoformat()",
         ],
+        # G7 soil probes: a reading is fresh for a real-time window (link staleness, like ALM-044)
+        "soil.py": ["now = now or utcnow()"],
+        # G7 backups run on the real wall clock (a demo clock jump must not skip or repeat them)
+        "backup.py": [
+            '"at": utcnow().isoformat(),',
+            '"last_error_at": utcnow().isoformat()',
+        ],
     }
 
     for path in SERVICES_DIR.glob("*.py"):

@@ -79,6 +79,10 @@ export interface ZoneLiveState {
   /** planned run length for the current cycle */
   target_runtime_sec?: number;
   active_alarm_count: number;
+  /** G7: panel selector switch (auto · on · off) */
+  panel_mode?: "auto" | "on" | "off";
+  /** G7: who started the current run */
+  run_source?: "app" | "fallback" | "panel" | "resume" | null;
   last_updated: string;
 }
 
@@ -127,6 +131,12 @@ export interface PumpLiveState {
   fault: boolean;
   runtime_hours: number;
   starts_today?: number;
+  /** G7: panel selector switch (auto · hand · off) */
+  panel_mode?: "auto" | "hand" | "off";
+  /** G7 pump health */
+  power_kw?: number;
+  energy_kwh_today?: number;
+  current_a?: number;
   last_updated: string;
 }
 
@@ -436,6 +446,14 @@ export interface FarmMapState {
   speed?: number;
   clock_mode?: "real" | "sim";
   clock_paused?: boolean;
+  /** G7: mains power at the panel */
+  power_ok?: boolean;
+  /** G7: the PLC is running its own copy of today's program (app unreachable) */
+  fallback_active?: boolean;
+  /** G7: water above the well pump intake (m) */
+  well_level_m?: number | null;
+  /** G7: pressure drop across the head-unit filter (bar) */
+  filter_dp_bar?: number | null;
 }
 
 // ─── Simulation Clock ───────────────────────────────────

@@ -26,6 +26,12 @@ class Zone(Base, IdentityMixin, TimestampMixin):
     pressure_max_bar: Mapped[float] = mapped_column(Float, default=4.0)
     flow_min_m3h: Mapped[float] = mapped_column(Float, default=2.0)
     flow_max_m3h: Mapped[float] = mapped_column(Float, default=10.0)
+    # G7 soil: optional per-zone overrides of the crop's start/stop levels (% available water)
+    # and the soil's limits for converting probe readings (volumetric water content %)
+    moisture_start_pct: Mapped[float | None] = mapped_column(Float)
+    moisture_stop_pct: Mapped[float | None] = mapped_column(Float)
+    soil_fc_vwc: Mapped[float | None] = mapped_column(Float)
+    soil_wp_vwc: Mapped[float | None] = mapped_column(Float)
 
     # Relationships
     farm = relationship("Farm", back_populates="zones")

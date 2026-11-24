@@ -8,6 +8,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Milestone G7 — Field readiness (2026-11-24)
+Gaps found during the hardware research, built before the PLC design (owner decision).
+- **Manual mode.** The controller reports its panel switches: zones auto/on/off, pumps auto/hand/off.
+  - A zone on its panel switch shows a hand icon on the map, a top banner and an info alarm (ALM-042).
+  - The zone drawer replaces Start/Stop with a note. The app never fights the switch: starts and stops are refused with "zone in manual".
+- **Unexpected flow** (ALM-021). Flow with no zone running, or a valve open that the app did not open, raises an alarm: a leak, or a valve opened by hand.
+- **Power cut** (ALM-033). Starts are blocked while the mains is off.
+  - A run cut by the outage is shown as *interrupted*. It resumes only if the power returns within 30 minutes (owner rule, `POWER_RESUME_MAX_MIN`); otherwise it is skipped with an alarm.
+- **Fallback program.** The gateway keeps the next 24 h of runs and hands them to the controller, which runs them if the server is unreachable for over 2 minutes.
+  - Runs started by the panel or the fallback program are recorded as unattended cycles.
+- **Pump health.**
+  - Values: power (kW), current, energy today, well level and filter pressure drop, on the Equipment page and the Dashboard pumps card.
+  - Alarms: a dry-running well pump (ALM-027, below 1.5 m: the controller stops the pump) and a clogged filter (ALM-039, above 0.5 bar).
+  - New Simulator faults: well low, filter clog.
+- **Soil moisture.**
+  - Moisture is shown as % of available water.
+  - Per-crop start/stop levels are seeded as *proposed*. Soil logic acts only on levels the owner confirms in Settings → Zones & equipment.
+  - Zones can override the levels and soil limits.
+  - External probes can be added (gateway ingest `POST /ingest/soil`).
+  - With the `automation.soil` switch on, soil logic:
+    - skips a scheduled run when the soil is full;
+    - alerts when a zone is dry with no run planned (ALM-017) or too wet (ALM-018), and when a probe goes silent (ALM-016);
+    - stops a run early when the soil is full;
+    - suggests an extra run for a dry zone. The owner approves the suggestion, which starts the zone.
+- **Modbus TCP adapter** (`CONTROLLER_ADAPTER=modbus`) for S7-200 SMART, LOGO!, Delta or an S7-1200 without OPC UA.
+  - It uses the same seq/ack handshake as OPC UA, with a JSON register map (`modbus_map.example.json`).
+  - It needs no new package: a small built-in Modbus client, tested against a built-in register server.
+- **Farm server.**
+  - `node scripts/start.mjs server` runs headless, restarts any part that stops and writes `logs/farm-server.log`.
+  - Installers: a Windows scheduled task (`infra/farm-server/install-windows.ps1`) and a Linux systemd service (`install-linux.sh`).
+- **Backups.**
+  - A daily SQLite online backup at 03:00, keeping 14, with optional copies to a USB drive and to Google Drive (rclone).
+  - Settings → **Backups**: last backup, Back up now, and Restore. A restore is applied on the next restart, and the current database is kept as `pre-restore-*.db`.
+- **Remote access.** Tailscale with HTTPS (`tailscale serve`), which also makes phone push work. The web app accepts `*.ts.net` names. Guide: `docs/FARM_SERVER.md`.
+- **Fixed:**
+  - Long telemetry clean-ups held the database lock and made writes fail. Downsampling now commits in 6-hour windows.
+  - A relative adapter map path in `.env` didn't resolve, because the gateway runs from `apps/simulator`.
+
 ### Hardware research report (2026-11-24)
 - **Interactive bilingual page** (Arabic first, English switch), shared privately, plus `docs/HARDWARE_RESEARCH.md` and `docs/HARDWARE_RESEARCH.ar.md`, all generated from `tools/hardware-report/data.py` (`python tools/hardware-report/build_report.py`).
 - **Five starting points** with installed totals: Lowest cost ≈ $4,564 · Bare minimum ≈ $8,277 · Basic ≈ $12,953 · Recommended ≈ $27,255 · Premium ≈ $71,820 (1 USD = 11 LYD).

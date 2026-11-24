@@ -5,9 +5,10 @@ import type { ScenarioInfo, ScenarioRun, SystemMode } from '@algaroshy/contracts
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFarmStore } from '../store/farm';
-import { useT, type MsgKey } from '../lib/i18n';
+import { pickName, useT, type MsgKey } from '../lib/i18n';
 import { usePresenter } from '../lib/presenter';
 import VirtualClockPanel from '../components/clock/VirtualClockPanel';
+import { zoneList } from '../lib/zones';
 
 interface FaultButton {
   label: string;
@@ -40,6 +41,10 @@ const FAULT_GROUPS: { title: MsgKey; faults: FaultButton[] }[] = [
       { label: 'Tank sensor fault', ar: 'عطل حساس الخزان', target_type: 'sensor', target_id: 'sensor_tank_level', fault_type: 'tank_level_fault', danger: true },
       { label: 'Fix tank sensor', ar: 'إصلاح حساس الخزان', target_type: 'sensor', target_id: 'sensor_tank_level', fault_type: 'clear' },
       { label: 'Drop comms 45 s', ar: 'قطع الاتصال 45 ث', target_type: 'comms', fault_type: 'drop', value: 45, danger: true },
+      { label: 'Well running low', ar: 'انخفاض مياه البئر', target_type: 'system', fault_type: 'well_low', danger: true },
+      { label: 'Well recovered', ar: 'تعافي البئر', target_type: 'system', fault_type: 'well_recover' },
+      { label: 'Clog the filter', ar: 'انسداد الفلتر', target_type: 'system', fault_type: 'filter_clog', danger: true },
+      { label: 'Clean the filter', ar: 'تنظيف الفلتر', target_type: 'system', fault_type: 'filter_clean' },
       { label: 'Repair everything', ar: 'إصلاح كل شيء', target_type: 'system', fault_type: 'clear_all' },
     ],
   },
@@ -108,6 +113,23 @@ export default function SimulatorPanel() {
     flash(res.ok ? `${t('sim.mode')} → ${t(`mode.${mode}` as MsgKey)}` : `${t('sim.failed')}: ${res.message}`);
   };
 
+  // G7: selector switches on the panel and mains power
+  const zones = zoneList({ enabledOnly: true });
+  const [panelZone, setPanelZone] = useState(zones[0]?.id ?? '');
+  const [panelPump, setPanelPump] = useState('pump_booster_01');
+  const setPanel = async (kind: 'zone' | 'pump', id: string, position: string) => {
+    const res = await sendCommand({ command_type: 'set_panel', target_type: 'simulator', target_id: id, payload: { kind, position } });
+    flash(res.ok ? `${t('sim.sent')}: ${id} → ${t(`panel.${position}` as MsgKey)}` : `${t('sim.failed')}: ${res.message}`);
+  };
+  const zonePanel = state?.zones.find((z) => z.zone_id === panelZone)?.panel_mode ?? 'auto';
+  const pumpPanel = state?.pumps.find((p) => p.pump_id === panelPump)?.panel_mode ?? 'auto';
+  const valveOf = (zid: string) =>
+    state?.valves.find((v) => (v as { zone_id?: string }).zone_id === zid)?.valve_id ?? `valve_${zid.replace('zone_', '')}`;
+  const seg = (on: boolean) =>
+    `flex-1 py-2 rounded border text-xs disabled:opacity-40 ${on ? 'border-[#ff9f43] text-[#ff9f43] bg-[#ff9f43]/10' : 'border-[#353534] text-[#bac9cc]'}`;
+  const danger = 'py-2 px-2 rounded border text-[11px] border-[#ffb4ab]/40 text-[#ffb4ab] hover:bg-[#ffb4ab]/10 disabled:opacity-40';
+  const safe = 'py-2 px-2 rounded border text-[11px] border-[#353534] text-[#7ee787] hover:bg-[#7ee787]/10 disabled:opacity-40';
+
   const [tank, setTank] = useState(50);
   const setTankLevel = () =>
     inject({ label: `Tank → ${tank}%`, ar: `الخزان ← ${tank}%`, target_type: 'tank', fault_type: 'set_level', value: tank });
@@ -148,6 +170,64 @@ export default function SimulatorPanel() {
           <pre className="text-xs text-[#bac9cc] font-mono max-h-40 overflow-y-auto whitespace-pre-wrap" dir="ltr">{run.log.slice(-12).join('\n')}</pre>
         </div>
       )}
+
+      {/* G7 field readiness: panel switches, power and hand-opened valves (owner: at the top) */}
+      <div className="panel p-4 space-y-3 border-[#ff9f43]/30" data-testid="sim-panel-box">
+        <h2 className="text-sm font-bold text-[#bac9cc] flex items-center gap-2">
+          <Wrench size={14} /> {t('sim.panel')}
+        </h2>
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <label className="block text-xs text-[#849396] space-y-1">
+              <span>{t('sim.panelZone')}</span>
+              <select id="sim-panel-zone" value={panelZone} onChange={(e) => setPanelZone(e.target.value)} className="w-full bg-[#0e0e0e] border border-[#353534] rounded px-2 py-1.5 text-sm text-[#e5e2e1]">
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {pickName(lang, z.name, z.name_ar)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex gap-2">
+              {(['auto', 'on', 'off'] as const).map((pos) => (
+                <button key={pos} disabled={!isAdmin || !panelZone} onClick={() => setPanel('zone', panelZone, pos)} className={seg(zonePanel === pos)} aria-pressed={zonePanel === pos}>
+                  {t(`panel.${pos}` as MsgKey)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-xs text-[#849396] space-y-1">
+              <span>{t('sim.panelPump')}</span>
+              <select id="sim-panel-pump" value={panelPump} onChange={(e) => setPanelPump(e.target.value)} className="w-full bg-[#0e0e0e] border border-[#353534] rounded px-2 py-1.5 text-sm text-[#e5e2e1]">
+                <option value="pump_booster_01">{t('map.booster')}</option>
+                <option value="pump_well_01">{t('map.well')}</option>
+              </select>
+            </label>
+            <div className="flex gap-2">
+              {(['auto', 'hand', 'off'] as const).map((pos) => (
+                <button key={pos} disabled={!isAdmin} onClick={() => setPanel('pump', panelPump, pos)} className={seg(pumpPanel === pos)} aria-pressed={pumpPanel === pos}>
+                  {t(`panel.${pos}` as MsgKey)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 content-end">
+            <button disabled={!isAdmin} className={danger} onClick={() => inject({ label: 'Cut mains power', ar: 'قطع الكهرباء', target_type: 'system', fault_type: 'power_cut' })}>
+              {t('sim.powerCut')}
+            </button>
+            <button disabled={!isAdmin} className={safe} onClick={() => inject({ label: 'Restore power', ar: 'إعادة الكهرباء', target_type: 'system', fault_type: 'power_restore' })}>
+              {t('sim.powerRestore')}
+            </button>
+            <button disabled={!isAdmin || !panelZone} className={danger} onClick={() => inject({ label: 'Valve opened by hand', ar: 'فتح صمام يدوياً', target_type: 'valve', target_id: valveOf(panelZone), fault_type: 'hand_open' })}>
+              {t('sim.handOpen')}
+            </button>
+            <button disabled={!isAdmin || !panelZone} className={safe} onClick={() => inject({ label: 'Close the valve', ar: 'إغلاق الصمام', target_type: 'valve', target_id: valveOf(panelZone), fault_type: 'clear' })}>
+              {t('sim.handClose')}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Scenarios */}

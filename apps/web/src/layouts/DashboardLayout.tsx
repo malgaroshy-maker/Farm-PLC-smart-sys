@@ -20,6 +20,7 @@ import { usePrefs } from '../lib/prefs';
 import { useAuth } from '../lib/auth';
 import { session } from '../lib/api';
 import { useFarmStore } from '../store/farm';
+import FieldBanner from '../components/FieldBanner';
 import type { LinkStatus } from '../store/farm';
 import { SEVERITY, topSeverity } from '../lib/alarms';
 import { useI18nStore, useT, type MsgKey } from '../lib/i18n';
@@ -269,6 +270,7 @@ export default function DashboardLayout() {
             )}
           </div>
         </header>
+        <FieldBanner />
 
         <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
           <Outlet />

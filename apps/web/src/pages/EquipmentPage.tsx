@@ -73,12 +73,24 @@ export default function EquipmentPage() {
                 <div className="flex-1 min-w-0 space-y-2 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-bold truncate">{pickName(lang, p.name, p.name_ar)}</div>
-                    <Badge text={t(`pump.${status}` as MsgKey)} status={status} />
+                    <span className="flex gap-1.5 shrink-0">
+                      {l?.panel_mode && l.panel_mode !== 'auto' && (
+                        <span className="px-2 py-0.5 rounded-md text-xs font-bold border border-[#ff9f43]/60 text-[#ff9f43] bg-[#ff9f43]/10">
+                          ✋ {t(`panel.pump.${l.panel_mode}` as MsgKey)}
+                        </span>
+                      )}
+                      <Badge text={t(`pump.${status}` as MsgKey)} status={status} />
+                    </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     <Stat label={t('eq.runtime')} value={fmtNum(hours, 1)} unit={t('eq.hours')} />
                     <Stat label={t('eq.service')} value={fmtNum(due)} unit={t('eq.hours')} />
                     <Stat label={t('eq.startsToday')} value={fmtNum(l?.starts_today ?? 0)} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <Stat label={t('eq.power')} value={fmtNum(l?.power_kw ?? 0, 1)} unit="kW" />
+                    <Stat label={t('eq.energyToday')} value={fmtNum(l?.energy_kwh_today ?? 0, 1)} unit="kWh" />
+                    <Stat label={t('eq.current')} value={fmtNum(l?.current_a ?? 0, 1)} unit="A" />
                   </div>
                   <div className="text-xs text-[#849396]">
                     {t('eq.feedback')}: <span className={l?.run_fb ? 'text-[#00e5ff]' : ''}>{t(l?.run_fb ? 'pump.running' : 'pump.stopped')}</span>
@@ -89,6 +101,26 @@ export default function EquipmentPage() {
           })}
         </div>
       </section>
+
+      {(state?.well_level_m != null || state?.filter_dp_bar != null) && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-bold text-[#bac9cc] flex items-center gap-2">
+            <PumpIcon size={18} /> {t('eq.headUnit')}
+          </h2>
+          <div className="panel p-4 grid grid-cols-2 gap-3 text-xs max-w-xl">
+            <div className="space-y-1">
+              <Stat label={t('eq.wellLevel')} value={fmtNum(state?.well_level_m, 1)} unit="m" />
+              {(state?.well_level_m ?? 99) < 3 && <div className="text-[#ff5449] font-bold">{t('eq.wellLow')}</div>}
+            </div>
+            <div className="space-y-1">
+              <Stat label={t('eq.filterDp')} value={fmtNum(state?.filter_dp_bar, 2)} unit="bar" />
+              <div className={(state?.filter_dp_bar ?? 0) > 0.5 ? 'text-[#ff9f43] font-bold' : 'text-[#7ee787]'}>
+                {t((state?.filter_dp_bar ?? 0) > 0.5 ? 'eq.filterDirty' : 'eq.filterOk')}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-sm font-bold text-[#bac9cc] flex items-center gap-2">

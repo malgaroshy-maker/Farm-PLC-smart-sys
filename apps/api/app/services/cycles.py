@@ -150,6 +150,49 @@ async def record_cycle_start(
     return cycle
 
 
+async def record_unattended_cycle_start(
+    db: AsyncSession, zone_id: str, run_source: str | None
+) -> None:
+    """G7: a run started by the controller itself (panel switch, fallback program) still gets
+    a cycle row, so water and history stay complete. No-op when a cycle is already open."""
+    open_cycle = (
+        (
+            await db.execute(
+                select(IrrigationCycle).where(
+                    IrrigationCycle.zone_id == zone_id, IrrigationCycle.actual_end_at.is_(None)
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if open_cycle is not None:
+        return
+    zone = await db.get(Zone, zone_id)
+    if zone is None:
+        return
+    now = clock.farm_now()
+    db.add(
+        IrrigationCycle(
+            id=f"cyc_{uuid4().hex[:12]}",
+            zone_id=zone_id,
+            source_mode="tank",
+            planned_start_at=now,
+            actual_start_at=now,
+            planned_duration_min=zone.default_duration_min,
+            initiated_by_type="plc",
+            initiated_by_id=run_source or "controller",
+            notes={
+                "panel": "Started with the switch on the panel",
+                "fallback": "Started by the PLC's fallback program (app unreachable)",
+            }.get(run_source or "", None),
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    await db.flush()
+
+
 async def record_cycle_end_for_zone(
     db: AsyncSession,
     zone_id: str,

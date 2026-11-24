@@ -12,6 +12,7 @@ Monitors sequentially executing program steps and handles:
 import json
 import logging
 from datetime import datetime, timedelta
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import desc, select
@@ -26,6 +27,7 @@ from app.deps import Actor
 from app.models.ai import ProgramOverride
 from app.models.command import Command
 from app.models.program import Program, ProgramStep, SchedulerState
+from app.models.zone import Zone
 from app.schemas.command import CommandCreate
 from app.services.commands import CommandRejected, submit_command
 from app.services.cycles import record_cycle_skipped
@@ -190,9 +192,123 @@ class SchedulerService:
         except Exception:
             log.exception("Error running the automatic weather advisor")
 
+        # 7. Soil logic (G7): stop a full zone early, suggest an extra run for a dry one
+        try:
+            from app.services import soil
+
+            if await soil.logic_on(db):
+                await self._soil_logic(db, snapshots)
+        except Exception:
+            log.exception("Error running soil logic")
+
         self._last_farm_time = now_farm
         await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
         await db.commit()
+
+    async def _soil_logic(self, db: AsyncSession, snapshots: dict[str, Snapshot]) -> None:
+        from app.models.ai import AISuggestion
+        from app.services import soil
+
+        status = await soil.soil_status(db, snapshots)
+        stopped = getattr(self, "_soil_stopped", set())
+        running = set()
+        for zid, zs in status.items():
+            live = snapshots.get(f"zone_{zid}")
+            if not live or live.state.get("state") != "running":
+                continue
+            running.add(zid)
+            # never fight a hand switch on the panel
+            if live.state.get("panel_mode", "auto") != "auto" or zid in stopped:
+                continue
+            if zs.confirmed and zs.state == "full":
+                try:
+                    await submit_command(
+                        db,
+                        CommandCreate(
+                            command_type="stop_zone",
+                            target_type="zone",
+                            target_id=zid,
+                            payload={
+                                "notes": f"Soil full: {zs.moisture:.0f}% (stop level {zs.stop:.0f}%)"
+                            },
+                        ),
+                        SCHEDULER_ACTOR,
+                    )
+                    await log_event(
+                        db,
+                        "soil.stopped_early",
+                        "zone",
+                        zid,
+                        actor_type="scheduler",
+                        payload={"moisture_pct": zs.moisture, "stop_pct": zs.stop},
+                    )
+                    stopped.add(zid)
+                except CommandRejected:
+                    pass
+        self._soil_stopped = stopped & running  # forget zones that have finished
+
+        now = clock.farm_now()
+        for zs in await soil.dry_without_run(db, status):
+            pending = (
+                (
+                    await db.execute(
+                        select(AISuggestion).where(
+                            AISuggestion.feature == "soil",
+                            AISuggestion.zone_id == zs.zone_id,
+                            AISuggestion.status == "pending",
+                        )
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if pending:
+                continue
+            zone = await db.get(Zone, zs.zone_id)
+            name, name_ar = (
+                (zone.name, zone.name_ar or zone.name) if zone else (zs.zone_id, zs.zone_id)
+            )
+            minutes = zone.default_duration_min if zone else 45
+            db.add(
+                AISuggestion(
+                    id=f"sug_{uuid4().hex[:12]}",
+                    feature="soil",
+                    priority="medium",
+                    status="pending",
+                    title=f"Extra run for {name}",
+                    title_ar=f"ري إضافي لمنطقة {name_ar}",
+                    description=f"Soil at {zs.moisture:.0f}% of available water, below the start level of {zs.start:.0f}%, "
+                    f"and no run is planned in the next 12 hours. Proposed: {minutes} min now.",
+                    description_ar=f"رطوبة التربة {zs.moisture:.0f}% من الماء المتاح، أقل من مستوى البدء {zs.start:.0f}%، "
+                    f"ولا يوجد ري مخطط خلال 12 ساعة. المقترح: {minutes} دقيقة الآن.",
+                    reasoning="Server rule: confirmed start level, measured moisture, no upcoming run.",
+                    reasoning_ar="قاعدة ثابتة: مستوى بدء مؤكد، رطوبة مقاسة، ولا ري قادم.",
+                    action_payload_json=json.dumps(
+                        {
+                            "action": "extra_run",
+                            "zone_id": zs.zone_id,
+                            "duration_min": minutes,
+                            "rule": "soil_dry_extra_run",
+                            "inputs": [
+                                {"key": "moisture_avg_pct", "value": zs.moisture, "unit": "%"},
+                                {"key": "start_pct", "value": zs.start, "unit": "%"},
+                            ],
+                        }
+                    ),
+                    zone_id=zs.zone_id,
+                    confidence=0.9,
+                    created_at=now,
+                    expires_at=now + timedelta(hours=12),
+                )
+            )
+            await log_event(
+                db,
+                "soil.extra_run_suggested",
+                "zone",
+                zs.zone_id,
+                actor_type="scheduler",
+                payload={"moisture_pct": zs.moisture, "start_pct": zs.start},
+            )
 
     async def _maybe_auto_advise(self, db, prev_farm, now_farm, farm_tz) -> None:
         """Once a day at 18:00 farm-local time, evaluate tomorrow's weather (Milestone G3)."""
@@ -437,6 +553,37 @@ class SchedulerService:
         step: ProgramStep = prog.steps[step_index]
         active_data["step_index"] = step_index
         active_data["active_zone_id"] = step.zone_id
+
+        # G7 soil: a zone whose soil is already at its stop level is skipped (confirmed levels only)
+        from app.services import soil
+        from app.services.live_state import load_snapshots
+
+        if await soil.logic_on(db):
+            zs = (await soil.soil_status(db, await load_snapshots(db))).get(step.zone_id)
+            if zs and zs.confirmed and zs.state == "full":
+                reason = f"soil_full: soil at {zs.moisture:.0f}% (stop level {zs.stop:.0f}%)"
+                await log_event(
+                    db,
+                    "schedule.skipped",
+                    "zone",
+                    step.zone_id,
+                    actor_type="scheduler",
+                    payload={"program_id": prog.id, "step_id": step.id, "reason": reason},
+                )
+                await manager.broadcast(
+                    "schedule.skipped",
+                    {
+                        "program_id": prog.id,
+                        "step_order": step.step_order,
+                        "zone_id": step.zone_id,
+                        "reason": reason,
+                    },
+                )
+                await record_cycle_skipped(
+                    db, prog.id, step.id, step.zone_id, step.duration_min, reason
+                )
+                await self._execute_program_step(db, prog, step_index + 1, active_data)
+                return
 
         duration_factor = float(active_data.get("duration_factor", 1.0))
         effective_duration = max(1, int(round(step.duration_min * duration_factor)))
