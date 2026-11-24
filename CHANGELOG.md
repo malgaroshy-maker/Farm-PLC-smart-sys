@@ -18,9 +18,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
   - testing in PLCSIM Advanced, with our simulator playing the farm.
 - **PLC program written** as TIA source files in `plc/src`: zones, pumps, interlocks, the command handshake, the link watchdog and fallback schedule, the 30-minute power-cut rule, hydraulics and trips, radio boxes and energy meters, the Modbus TCP server and alarms.
   - A static checker (`tools/tia/scl_lint.py`) checks it.
-  - Once the STEP 7 licence was active, TIA Portal compiled it with **0 errors and 0 warnings**: CPU 1512SP-1 PN at firmware V2.8 (no protection for now, owner's choice), all modules, the Farm_IO tag table, 32 blocks.
+  - Once the STEP 7 licence was active, TIA Portal compiled it with **0 errors and 0 warnings**: CPU 1512SP-1 PN 6ES7 512-1DM03-0AB0 at firmware V3.1. PLCSIM Advanced V6 refuses older firmware, and the older 6ES7 512-1DK01 stops at V2.9, all modules, the Farm_IO tag table, 32 blocks.
   - Three fixes the checker couldn't catch: FC `String` inputs take no length, a multi-instance FB needs a static member, `40000` overflows an `Int`.
   - The Openness helper gained `import-sources` and `delete-device`.
+  - **Runs in PLCSIM Advanced.**
+    - The production Modbus adapter talks to it: commands, refusal reasons, state and PLC alarms.
+    - The fallback schedule switches on after 120 s without the app and off again when the app returns.
+    - Fixed a bug only the real runtime showed: the 1-second tick never fired (`IN := NOT #tTick.Q`), which would have disabled the link watchdog and the fallback.
+    - Set-up lessons are in `plc/README.md`: an ET 200SP PLCSIM family, firmware 3.1, a one-time certificate trust, and the Siemens services.
 - **Gateway adapters speak the PLC design** (OPC UA and Modbus):
   - zone state and run source, runtime, faults;
   - PLC alarms;

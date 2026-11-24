@@ -2,13 +2,13 @@
 
 The design for the farm PLC program. It is built in TIA Portal V19, tested in PLCSIM Advanced V6 and connected to the app. It builds on [PLC_CONTROL_LOGIC.md](PLC_CONTROL_LOGIC.md) (rules), [IO_LIST.md](IO_LIST.md) (signals) and [CONTROLLER_ADAPTER.md](CONTROLLER_ADAPTER.md) (the link to the app).
 
-**Status:** approved 2026-11-24. The PLC code lives as TIA source files in [plc/](../plc/README.md). It **compiles in TIA Portal V19 with no errors or warnings** (CPU firmware V2.8, no protection for now). The PLCSIM Advanced tests are next.
+**Status:** approved 2026-11-24. The PLC code lives as TIA source files in [plc/](../plc/README.md). It **compiles in TIA Portal V19 with no errors or warnings** (CPU 6ES7 512-1DM03-0AB0 at firmware V3.1, the version PLCSIM Advanced V6 simulates). The PLCSIM Advanced tests are next.
 
 ## 1. Owner decisions (2026-11-24)
 
 | Topic | Decision |
 |---|---|
-| CPU | ET 200SP **CPU 1512SP-1 PN** (S7-1500 family) |
+| CPU | ET 200SP **CPU 1512SP-1 PN**, article **6ES7 512-1DM03-0AB0**, firmware V3.1 (S7-1500 family) |
 | Link to the app | **Both** OPC UA and Modbus TCP. Each installation picks one (`CONTROLLER_ADAPTER`). |
 | Language | **All SCL** |
 | Zone valves | **Both** wired outputs and radio boxes (Modbus RTU over RS-485/LoRa), chosen per zone in a config DB |

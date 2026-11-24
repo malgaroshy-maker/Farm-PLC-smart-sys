@@ -6,6 +6,7 @@ TITLE = 'Farm program: inputs -> link -> power -> fallback -> water -> zones -> 
 VERSION : 0.1
    VAR
       tTick : TON_TIME;
+      tickMem : Bool;                    // last scan's tick (restarts the 1 s timer)
       firstScan : Bool := TRUE;          // non-retain: TRUE again after every restart
       lastDay : USInt;
       link : "FB_Link";
@@ -29,8 +30,11 @@ VERSION : 0.1
    END_VAR
 BEGIN
    // one-cycle pulse every second
-   #tTick(IN := NOT #tTick.Q, PT := T#1S);
+   // NOT "IN := NOT #tTick.Q": on S7-1500 reading .Q updates the timer, so it resets in the
+   // same scan and the pulse is never seen (found in PLCSIM). Restart from last scan's pulse.
+   #tTick(IN := NOT #tickMem, PT := T#1S);
    #tick := #tTick.Q;
+   #tickMem := #tick;
    "DB_Farm".Tick1s := #tick;
    #reset := "DB_Cmd".ResetReq;
 
