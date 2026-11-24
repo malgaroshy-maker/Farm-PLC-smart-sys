@@ -1,0 +1,123 @@
+// Algaroshy Farm PLC (G5) - command handshake and the app link watchdog.
+
+FUNCTION_BLOCK "FB_CmdChannel"
+TITLE = 'One command channel: seq/ack handshake (app over OPC UA, app over Modbus, HMI)'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      RunSource : Int;          // 0 app, 4 hmi (stored on the zone run)
+   END_VAR
+   VAR_IN_OUT
+      Ch : "UDT_CmdChannel";
+   END_VAR
+   VAR
+      lastSeq : Int;
+      ready : Bool;
+   END_VAR
+   VAR_TEMP
+      z : Int;
+      i : Int;
+      reason : Int;
+      dur : Int;
+   END_VAR
+BEGIN
+   // after a (re)start never execute whatever command was left in the channel
+   IF NOT #ready THEN
+      #lastSeq := #Ch.Seq;
+      #Ch.AckSeq := #Ch.Seq;
+      #ready := TRUE;
+      RETURN;
+   END_IF;
+   IF #Ch.Seq = #lastSeq THEN
+      RETURN;
+   END_IF;
+   #lastSeq := #Ch.Seq;
+   #reason := 0;
+
+   #z := #Ch.Target;
+   IF #z = 0 THEN
+      #z := "FC_ZoneByName"(#Ch.TargetId);
+   END_IF;
+
+   CASE #Ch.CmdType OF
+      1:  // start_zone
+         #reason := "FC_CanStart"(#z);
+         IF #reason = 0 THEN
+            #dur := #Ch.DurationMin;
+            IF #dur <= 0 THEN
+               #reason := 9;
+            ELSE
+               IF #dur > "DB_Config".Zone[#z].MaxRuntimeMin THEN
+                  #dur := "DB_Config".Zone[#z].MaxRuntimeMin;
+               END_IF;
+               "DB_Zones".Zone[#z].ReqStart := TRUE;
+               "DB_Zones".Zone[#z].ReqSource := #RunSource;
+               "DB_Zones".Zone[#z].ReqDurationSec := INT_TO_DINT(#dur) * 60;
+            END_IF;
+         END_IF;
+      2:  // stop_zone
+         IF #z < 1 OR #z > "DB_Config".ZoneCount THEN
+            #reason := 8;
+         ELSIF "DB_Zones".Zone[#z].PanelMode <> 0 THEN
+            #reason := 2;                              // the panel switch owns this zone
+         ELSE
+            "DB_Zones".Zone[#z].ReqStop := TRUE;
+         END_IF;
+      3:  // stop_all (zones on a panel switch keep running: they are not the app's)
+         FOR #i := 1 TO 16 DO
+            "DB_Zones".Zone[#i].ReqStop := TRUE;
+         END_FOR;
+      4:  // reset_alarm
+         "DB_Cmd".ResetReq := TRUE;
+   ELSE
+      #reason := 9;
+   END_CASE;
+
+   IF #reason = 0 THEN
+      #Ch.AckStatus := 1;
+   ELSE
+      #Ch.AckStatus := 2;
+   END_IF;
+   #Ch.AckReason := #reason;
+   #Ch.AckReasonText := "FC_ReasonText"(#reason);
+   #Ch.AckSeq := #Ch.Seq;                             // last: the app waits for this
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK "FB_Link"
+TITLE = 'Command channels, app heartbeat watchdog, fallback switch-over'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Tick1s : Bool;
+   END_VAR
+   VAR
+      opc : "FB_CmdChannel";
+      mb : "FB_CmdChannel";
+      hmi : "FB_CmdChannel";
+      lastHbOpc : Int;
+      lastHbMb : Int;
+      silentSec : DInt;
+   END_VAR
+BEGIN
+   #opc(RunSource := 0, Ch := "DB_Cmd".Opc);
+   #mb(RunSource := 0, Ch := "DB_Cmd".Mb);
+   #hmi(RunSource := 4, Ch := "DB_Cmd".Hmi);
+
+   // the gateway changes Heartbeat on every push; silence -> run the stored schedule (G7)
+   IF "DB_Cmd".Opc.Heartbeat <> #lastHbOpc OR "DB_Cmd".Mb.Heartbeat <> #lastHbMb THEN
+      #silentSec := 0;
+   ELSIF #Tick1s AND #silentSec < 864000 THEN
+      #silentSec := #silentSec + 1;
+   END_IF;
+   #lastHbOpc := "DB_Cmd".Opc.Heartbeat;
+   #lastHbMb := "DB_Cmd".Mb.Heartbeat;
+
+   "DB_Farm".LinkOk := #silentSec < INT_TO_DINT("DB_Config".LinkTimeoutS);
+   "DB_Farm".FallbackActive := NOT "DB_Farm".LinkOk;
+   IF #Tick1s THEN
+      "DB_Farm".Heartbeat := "DB_Farm".Heartbeat + 1;
+      IF "DB_Farm".Heartbeat >= 30000 THEN
+         "DB_Farm".Heartbeat := 0;
+      END_IF;
+   END_IF;
+END_FUNCTION_BLOCK

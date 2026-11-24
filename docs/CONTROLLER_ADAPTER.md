@@ -36,7 +36,7 @@ Command types: `start_zone = 1`, `stop_zone = 2`, `stop_all = 3`, `reset_alarm =
 A zone without tags in the tag map is reported as `failed: no_tags_for:<zone>`. The gateway never pretends a command succeeded.
 
 ## Modbus TCP register map (G7)
-`modbus_map.example.json` lists one **16-bit holding register** per value, using the 0-based address sent on the wire. Reads are signed, and `value = register / scale`, so `{"hr": 4, "scale": 10}` holding 725 means 72.5. Each zone also has an `index`, the number the PLC uses as the command target.
+`modbus_map.example.json` lists one **16-bit holding register** per value (layout from the G5 PLC design: system 0–19, 16 zones at 100–259, pumps 270/280, command 300–307), using the 0-based address sent on the wire. Reads are signed, and `value = register / scale`, so `{"hr": 4, "scale": 10}` holding 725 means 72.5. Each zone also has an `index`, the number the PLC uses as the command target.
 
 The handshake is the same as OPC UA, with numbers instead of text:
 - `target` is the zone `index`; `stop_all` and `reset_alarm` send 0.

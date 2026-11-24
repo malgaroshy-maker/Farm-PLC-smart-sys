@@ -1,0 +1,169 @@
+// Algaroshy Farm PLC (G5) - global data blocks. Needs 01_Types.udt first.
+// All optimized: OPC UA is symbolic; Modbus reads only DB_Modbus.HR.
+
+DATA_BLOCK "DB_Config"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR RETAIN
+      Zone : Array[1..16] of "UDT_ZoneCfg";
+      ZoneCount : Int := 12;               // zones in use (1..ZoneCount)
+      MaxConcurrentZones : Int := 1;       // dual-zone stays off until commissioning
+      PumpStartTimeoutS : Int := 15;
+      ValveTravelS : Int := 10;
+      FlowValidateS : Int := 45;
+      BandTripS : Int := 20;               // out-of-band pressure/flow this long stops a zone
+      TankWarnPct : Real := 25.0;
+      TankCritPct : Real := 10.0;
+      RefillStartPct : Real := 40.0;
+      RefillStopPct : Real := 95.0;
+      WellDryM : Real := 1.5;
+      WellRecoverM : Real := 2.0;
+      FilterDpAlarmBar : Real := 0.5;
+      UnexpectedFlowM3h : Real := 0.8;
+      UnexpectedFlowS : Int := 30;
+      PowerResumeMaxMin : Int := 30;       // owner rule (G7)
+      LinkTimeoutS : Int := 120;           // app silent this long -> fallback program
+      RadioOnTimeS : Int := 90;            // radio box valve on-timer; refreshed every RadioRefreshS
+      RadioRefreshS : Int := 30;
+      RadioBaud : UDInt := 9600;
+      BoosterMeterAddr : Int := 20;        // Modbus RTU energy meters (0 = none)
+      WellMeterAddr : Int := 21;
+      // analog ranges (4-20 mA -> engineering units)
+      TankLevelMaxPct : Real := 100.0;
+      PressureMaxBar : Real := 10.0;
+      FlowMaxM3h : Real := 50.0;
+      WellLevelMaxM : Real := 30.0;
+      FilterDpMaxBar : Real := 2.5;
+   END_VAR
+BEGIN
+   Zone[1].Id := 'zone_rumman_1'; Zone[1].Enabled := TRUE; Zone[1].UsesWellDirect := FALSE; Zone[1].MaxRuntimeMin := 90;
+   Zone[2].Id := 'zone_rumman_2'; Zone[2].Enabled := TRUE; Zone[2].UsesWellDirect := FALSE; Zone[2].MaxRuntimeMin := 90;
+   Zone[3].Id := 'zone_rumman_3'; Zone[3].Enabled := TRUE; Zone[3].UsesWellDirect := FALSE; Zone[3].MaxRuntimeMin := 90;
+   Zone[4].Id := 'zone_rumman_4'; Zone[4].Enabled := TRUE; Zone[4].UsesWellDirect := TRUE; Zone[4].MaxRuntimeMin := 90;
+   Zone[5].Id := 'zone_rumman_5'; Zone[5].Enabled := TRUE; Zone[5].UsesWellDirect := FALSE; Zone[5].MaxRuntimeMin := 90;
+   Zone[6].Id := 'zone_rumman_6'; Zone[6].Enabled := TRUE; Zone[6].UsesWellDirect := FALSE; Zone[6].MaxRuntimeMin := 120;
+   Zone[7].Id := 'zone_rumman_ummahat'; Zone[7].Enabled := TRUE; Zone[7].UsesWellDirect := TRUE; Zone[7].MaxRuntimeMin := 60;
+   Zone[8].Id := 'zone_rumman_jadeed'; Zone[8].Enabled := TRUE; Zone[8].UsesWellDirect := TRUE; Zone[8].MaxRuntimeMin := 120;
+   Zone[9].Id := 'zone_zaytoun'; Zone[9].Enabled := TRUE; Zone[9].UsesWellDirect := FALSE; Zone[9].MaxRuntimeMin := 180;
+   Zone[10].Id := 'zone_zaytoun_2'; Zone[10].Enabled := TRUE; Zone[10].UsesWellDirect := TRUE; Zone[10].MaxRuntimeMin := 60;
+   Zone[11].Id := 'zone_enab'; Zone[11].Enabled := TRUE; Zone[11].UsesWellDirect := TRUE; Zone[11].MaxRuntimeMin := 45;
+   Zone[12].Id := 'zone_fruit_mix'; Zone[12].Enabled := TRUE; Zone[12].UsesWellDirect := TRUE; Zone[12].MaxRuntimeMin := 120;
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_Farm"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR
+      Mode : Int := 1;                     // 0 off, 1 auto, 2 manual, 3 maintenance
+      ModeText : String[16] := 'auto';     // for the OPC UA adapter
+      EStop : Bool;
+      PowerOk : Bool := TRUE;
+      FallbackActive : Bool;
+      LinkOk : Bool;
+      TankLevelPct : Real;
+      MainPressureBar : Real;
+      MainFlowM3h : Real;
+      WellLevelM : Real;
+      FilterDpBar : Real;
+      Refilling : Bool;
+      UnexpectedFlow : Bool;               // ALM-021: flow with no valve open
+      TankCritical : Bool;
+      ZonesActive : Int;
+      Heartbeat : Int;                     // PLC -> app, +1 per second
+      Tick1s : Bool;                       // one-cycle pulse each second
+      AnalogFault : Bool;
+   END_VAR
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_Zones"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR
+      Zone : Array[1..16] of "UDT_ZoneState";
+   END_VAR
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_Pumps"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR RETAIN
+      Booster : "UDT_Pump";
+      Well : "UDT_Pump";
+      DayOfYear : Int;                     // resets EnergyKwhToday / StartsToday at midnight
+   END_VAR
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_Cmd"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR
+      Opc : "UDT_CmdChannel";              // OPC UA adapter writes here
+      Mb : "UDT_CmdChannel";               // copied from Modbus registers 300-307
+      Hmi : "UDT_CmdChannel";              // the control-room panel
+      ResetReq : Bool;                     // alarm reset requested (any channel)
+   END_VAR
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_Fallback"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR RETAIN
+      Run : Array[1..48] of "UDT_Run";
+      Count : Int;
+      LoadSeq : Int;                       // the gateway increments it after writing a new list
+      LoadedSeq : Int;
+      LoadedAt : DTL;
+   END_VAR
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_Power"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR RETAIN
+      LastAlive : DTL;                     // updated every second; restart outage = now - LastAlive
+      OutageSec : DInt;
+      Remaining : Array[1..16] of DInt;    // seconds left on runs cut by a power loss
+      Interrupted : Array[1..16] of Bool;
+   END_VAR
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_Alarms"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR
+      Active : Array[1..48] of Bool;       // index = alarm number: Active[27] = ALM-027
+      Latched : Array[1..48] of Bool;      // stays until reset (critical alarms)
+      AnyActive : Bool;
+      Word0 : Word;                        // ALM 1-16 as bits (bit n-1), for Modbus / HMI
+      Word1 : Word;                        // ALM 17-32
+      Word2 : Word;                        // ALM 33-48
+   END_VAR
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_Modbus"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR
+      HR : Array[0..399] of Word;          // holding registers 0..399 (map: modbus_map.example.json)
+      ServerStatus : Word;
+      ServerError : Bool;
+      RtuStatus : Word;
+      RtuError : Bool;
+   END_VAR
+END_DATA_BLOCK
+
+DATA_BLOCK "DB_HMI"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR
+      Language : Int;                      // 0 Arabic, 1 English (HMI runtime language follows it)
+      SelectedZone : Int := 1;
+      StartDurationMin : Int := 30;
+   END_VAR
+END_DATA_BLOCK

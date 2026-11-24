@@ -1,0 +1,56 @@
+// Algaroshy Farm PLC (G5) - pump (booster and well).
+
+FUNCTION_BLOCK "FB_Pump"
+TITLE = 'Pump start, feedback, failed start, panel switch, runtime and energy'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      RunFbIn : Bool;
+      FaultIn : Bool;           // starter / overload / drive fault
+      HandIn : Bool;            // 3-position selector: HAND
+      OffIn : Bool;             //                      OFF  (neither = AUTO)
+      Tick1s : Bool;
+      Reset : Bool;             // alarm reset clears a failed start
+      PowerOk : Bool;           // no mains: never command (and never blame) the pump
+   END_VAR
+   VAR_IN_OUT
+      P : "UDT_Pump";
+   END_VAR
+   VAR
+      tStart : TON_TIME;
+   END_VAR
+BEGIN
+   IF #OffIn THEN
+      #P.PanelMode := 2;
+   ELSIF #HandIn THEN
+      #P.PanelMode := 1;
+   ELSE
+      #P.PanelMode := 0;
+   END_IF;
+
+   #P.RunFb := #RunFbIn;
+   #P.Fault := #FaultIn;
+   IF #Reset THEN
+      #P.FailedStart := FALSE;
+   END_IF;
+
+   // HAND runs the pump without the app, but every protection still stops it
+   #P.CmdStart := (#P.PanelMode = 1 OR (#P.PanelMode = 0 AND #P.Demand))
+                  AND NOT #P.Fault AND NOT #P.FailedStart AND NOT #P.Locked AND #PowerOk;
+
+   #tStart(IN := #P.CmdStart AND NOT #P.RunFb,
+           PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".PumpStartTimeoutS) * 1000));
+   IF #tStart.Q THEN
+      #P.FailedStart := TRUE;                 // latched until reset
+      #P.CmdStart := FALSE;
+   END_IF;
+
+   #P.Available := NOT #P.Fault AND NOT #P.FailedStart AND NOT #P.Locked AND #P.PanelMode <> 2;
+
+   IF #Tick1s THEN
+      IF #P.RunFb THEN
+         #P.RuntimeHours := #P.RuntimeHours + 1.0 / 3600.0;
+      END_IF;
+      #P.EnergyKwhToday := #P.EnergyKwhToday + #P.PowerKw / 3600.0;
+   END_IF;
+END_FUNCTION_BLOCK

@@ -64,7 +64,7 @@ def test_reads_state_with_scaling():
             1830,
         )  # auto, power ok, 72.5 %, 2.4 bar, 18.3 m
         r[100], r[101], r[102], r[104], r[105] = 1, 1, 310, 312, 1  # zone 1 running, panel 'on'
-        r[200], r[204], r[213] = 1, 375, 2  # booster runs at 3.75 kW; well pump panel 'off'
+        r[270], r[274], r[283] = 1, 375, 2  # booster runs at 3.75 kW; well pump panel 'off'
         adapter = ModbusAdapter(regmap)
         try:
             await adapter.start(Layout(zones=[{"id": "zone_rumman_1"}]))

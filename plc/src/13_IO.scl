@@ -1,0 +1,72 @@
+// Algaroshy Farm PLC (G5) - the only blocks that touch the I/O. Tag names: plc/tags.md.
+
+FUNCTION "FC_ReadInputs" : Void
+TITLE = 'Inputs -> DB_Farm / DB_Zones'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_TEMP
+      i : Int;
+      onB : Bool;
+      offB : Bool;
+      b1 : Bool;
+      b2 : Bool;
+      b3 : Bool;
+      b4 : Bool;
+      b5 : Bool;
+   END_VAR
+BEGIN
+   "DB_Farm".EStop := NOT "DI_EStopOk";                  // NC contact: open = E-stop pressed
+
+   "DB_Farm".TankLevelPct := "FC_Scale"(Raw := "AI_TankLevel", MaxEng := "DB_Config".TankLevelMaxPct, Bad => #b1);
+   "DB_Farm".MainPressureBar := "FC_Scale"(Raw := "AI_MainPressure", MaxEng := "DB_Config".PressureMaxBar, Bad => #b2);
+   "DB_Farm".MainFlowM3h := "FC_Scale"(Raw := "AI_MainFlow", MaxEng := "DB_Config".FlowMaxM3h, Bad => #b3);
+   "DB_Farm".WellLevelM := "FC_Scale"(Raw := "AI_WellLevel", MaxEng := "DB_Config".WellLevelMaxM, Bad => #b4);
+   "DB_Farm".FilterDpBar := "FC_Scale"(Raw := "AI_FilterDp", MaxEng := "DB_Config".FilterDpMaxBar, Bad => #b5);
+   "DB_Farm".AnalogFault := #b1 OR #b2 OR #b3 OR #b4 OR #b5;
+
+   // 3-position selectors: ON input, OFF input, neither = AUTO; both (wiring fault) = OFF (safe)
+   FOR #i := 1 TO 16 DO
+      #onB := "FC_BitOf"(Lo := "DI_ZoneOnLo", Hi := "DI_ZoneOnHi", BitNo := #i);
+      #offB := "FC_BitOf"(Lo := "DI_ZoneOffLo", Hi := "DI_ZoneOffHi", BitNo := #i);
+      IF #offB THEN
+         "DB_Zones".Zone[#i].PanelMode := 2;
+      ELSIF #onB THEN
+         "DB_Zones".Zone[#i].PanelMode := 1;
+      ELSE
+         "DB_Zones".Zone[#i].PanelMode := 0;
+      END_IF;
+   END_FOR;
+END_FUNCTION
+
+FUNCTION "FC_WriteOutputs" : Void
+TITLE = 'DB_Zones / DB_Pumps -> outputs'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_TEMP
+      i : Int;
+      lo : Byte;
+      hi : Byte;
+      critical : Bool;
+   END_VAR
+BEGIN
+   #lo := 16#00;
+   #hi := 16#00;
+   FOR #i := 1 TO 16 DO
+      IF "DB_Zones".Zone[#i].ValveCmd AND "DB_Config".Zone[#i].ValveKind = 0 THEN
+         IF #i <= 8 THEN
+            #lo := #lo OR SHL(IN := BYTE#16#01, N := INT_TO_USINT(#i - 1));
+         ELSE
+            #hi := #hi OR SHL(IN := BYTE#16#01, N := INT_TO_USINT(#i - 9));
+         END_IF;
+      END_IF;
+   END_FOR;
+   "DQ_ValveLo" := #lo;
+   "DQ_ValveHi" := #hi;
+   "DQ_BoosterStart" := "DB_Pumps".Booster.CmdStart;
+   "DQ_WellStart" := "DB_Pumps".Well.CmdStart;
+
+   #critical := "DB_Alarms".Active[2] OR "DB_Alarms".Active[4] OR "DB_Alarms".Active[5]
+                OR "DB_Alarms".Active[27] OR "DB_Alarms".Active[33] OR "DB_Alarms".Active[41];
+   "DQ_Beacon" := #critical OR "DB_Alarms".Latched[2] OR "DB_Alarms".Latched[27] OR "DB_Alarms".Latched[41];
+   "DQ_Horn" := FALSE;                                     // decided at commissioning
+END_FUNCTION
