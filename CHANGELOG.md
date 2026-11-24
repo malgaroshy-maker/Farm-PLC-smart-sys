@@ -33,7 +33,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
     - Scenario fixes: the prep waits for zones to finish stopping, comms loss waits for the link to return, and refusals are logged with their reason.
     - **Alarm reset reaches the PLC (owner):** every Alarm Center reset also sends `reset_alarm` to the controller. Alarms the PLC holds until reset (ALM-006/007 failed pump start, ALM-027 dry-run lock-out) can be reset while active; one click clears both.
     - PLC fix: a pump trip no longer holds ALM-005 for the zone's 30 s fault hold after the pump is repaired.
-    - 9 of the 15 scenarios pass in a row on the real PLC. Three points still need the owner: valve limit switches, per-zone flow limits, and the clock-speed scenarios (listed in `plc/README.md`).
+    - **Valve faults by flow (owner):** no limit switches. A valve that fails to close faults the zone with ALM-020 when it stops and water keeps flowing; a valve that fails to open shows as no flow (ALM-012).
+    - Scenario fixes: a failed clock scenario restores the clock speed (it left the farm at 60x and the real programs fired mid-scenario), and the prep waits for the PLC's 30 s zone fault to clear.
+    - 12 of the 15 scenarios pass on the real PLC. Two points still need the owner: per-zone flow limits (mainline leak) and the clock-speed scenarios (listed in `plc/README.md`).
 - **Gateway adapters speak the PLC design** (OPC UA and Modbus):
   - zone state and run source, runtime, faults;
   - PLC alarms;

@@ -41,6 +41,9 @@ log = logging.getLogger(__name__)
 SCENARIO_ACTOR = Actor(actor_type="system", actor_id=None, role="owner_admin", name="scenario")
 RUNNING = {"running"}
 DONE = {"completed", "faulted", "off"}
+# A valve stuck closed: the simulator models valve feedback (ALM-019); the farm PLC has no limit
+# switches (owner, 2026-11-24) and sees it as no flow (ALM-012). Either one passes.
+STUCK_CLOSED = "ALM-019 / ALM-012"
 ACTIVE = {"starting_pump", "opening_valve", "validating_flow", "running", "stopping"}
 
 PREP = [
@@ -147,12 +150,12 @@ SCENARIOS: dict[str, Scenario] = {
             "Valve fails to open",
             "فشل فتح الصمام",
             "Pomegranate 3 valve is stuck closed → start aborted.",
-            ["ALM-019"],
+            [STUCK_CLOSED],
             [
                 ("fault", "valve", "valve_rumman_3", "stuck_closed"),
                 ("wait", 3),
                 ("cmd", "start_zone", "zone", "zone_rumman_3"),
-                ("wait_alarm", "ALM-019", 60),
+                ("wait_alarm", STUCK_CLOSED, 90),
                 ("fault", "valve", "valve_rumman_3", "clear"),
             ],
         ),
@@ -239,7 +242,7 @@ SCENARIOS: dict[str, Scenario] = {
             "Repeated fault on one zone",
             "عطل متكرر في منطقة واحدة",
             "Three failed starts on New Pomegranate → maintenance advisory.",
-            ["ALM-019", "ALM-036"],
+            [STUCK_CLOSED, "ALM-036"],
             [
                 ("fault", "valve", "valve_rumman_jadeed", "stuck_closed"),
                 ("wait", 3),
@@ -248,7 +251,12 @@ SCENARIOS: dict[str, Scenario] = {
                     for _ in range(3)
                     for step in (
                         ("cmd", "start_zone", "zone", "zone_rumman_jadeed"),
-                        ("wait_zone", "zone_rumman_jadeed", {"faulted"}, 60),
+                        (
+                            "wait_zone",
+                            "zone_rumman_jadeed",
+                            {"faulted"},
+                            90,
+                        ),  # PLC: pump + valve travel + 45 s flow check
                         ("wait", 4),
                     )
                 ],
@@ -452,6 +460,7 @@ class ScenarioRunner:
         await manager.broadcast("scenario.updated", self.state.as_dict())
 
     async def _run(self, scenario: Scenario, steps: list[tuple]) -> None:
+        speed_before = clock.speed
         await self._publish(f"Started: {scenario.title}")
         try:
             for i, step in enumerate(steps, 1):
@@ -481,6 +490,20 @@ class ScenarioRunner:
                     await cleanup_scenario_programs(db)
             except Exception:
                 log.exception("Failed to clean up scenario programs")
+            if self.state.status != "passed" and clock.speed not in (speed_before, 0.0):
+                # a failed clock scenario must not leave the farm at 60x: the real programs
+                # would then fire every few minutes
+                clock.set_speed(speed_before)
+                try:
+                    async with async_session_factory() as db:
+                        await clock.save(db)
+                    await manager.broadcast(
+                        "clock.changed",
+                        {"speed": speed_before, "farm_now": clock.farm_now().isoformat()},
+                    )
+                except Exception:
+                    log.exception("Failed to restore the clock speed")
+                await self._publish(f"Clock speed restored to {speed_before}×")
             self.state.finished_at = utcnow().isoformat()
             await self._publish()
 
@@ -520,10 +543,22 @@ class ScenarioRunner:
                 await ensure_zone_baseline_runs(db, step[1])
             await self._publish(f"Baseline confirmed for {step[1]}")
         elif kind == "reset_alarms":
-            async with async_session_factory() as db:
-                n = await alarm_engine.reset_all_cleared(db, SCENARIO_ACTOR)
-            if n:
-                await self._publish(f"Reset {n} latched alarm(s)")
+            # a PLC holds a zone fault in its report for ~30 s: wait for the last critical alarm
+            # to clear (it cannot be reset while its condition is active), resetting as they do
+            from app.services.alarms import blocking_critical, open_alarms
+
+            total = 0
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 45
+            while True:
+                async with async_session_factory() as db:
+                    total += await alarm_engine.reset_all_cleared(db, SCENARIO_ACTOR)
+                    blocker = blocking_critical(await open_alarms(db))
+                if blocker is None or loop.time() >= deadline:
+                    break
+                await asyncio.sleep(self.poll_s)
+            if total:
+                await self._publish(f"Reset {total} latched alarm(s)")
         elif kind == "create_program":
             _, prog_name, start_time, weekday_mask, steps_list = step
             from uuid import uuid4
@@ -700,7 +735,7 @@ class ScenarioRunner:
                 found = (
                     await db.execute(
                         select(Alarm.id).where(
-                            Alarm.alarm_code == code,
+                            Alarm.alarm_code.in_(code.split(" / ")),
                             # raised during this run, or still genuinely active
                             # (e.g. ALM-036's 24 h window spans several runs)
                             or_(

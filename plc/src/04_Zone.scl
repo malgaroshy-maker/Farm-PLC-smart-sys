@@ -28,6 +28,8 @@ VERSION : 0.1
    VAR_TEMP
       entered : Bool;
       idle : Bool;
+      j : Int;
+      otherOpen : Bool;
       outBand : Bool;
    END_VAR
 BEGIN
@@ -123,7 +125,8 @@ BEGIN
                #s.State := 4;
             ELSIF #tValidate.Q THEN
                #s.State := 7;
-               #s.FaultCode := 12;                     // ALM-012 no flow
+               #s.FaultCode := 12;                     // ALM-012 no flow (also a valve that failed to open:
+                                                       // without limit switches the two look the same)
             END_IF;
 
          4:  // running
@@ -154,8 +157,21 @@ BEGIN
             #s.NeedPump := TRUE;
             #tValve(IN := NOT #entered, PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".ValveTravelS) * 1000));
             IF #tValve.Q THEN
+               // no limit switches (owner): a valve that failed to close shows as water still
+               // flowing with every valve commanded shut -> ALM-020, and the pump stops
+               #otherOpen := FALSE;
+               FOR #j := 1 TO 16 DO
+                  IF #j <> #ZoneIndex AND "DB_Zones".Zone[#j].ValveCmd THEN
+                     #otherOpen := TRUE;
+                  END_IF;
+               END_FOR;
                #s.NeedPump := FALSE;
-               #s.State := 6;
+               IF NOT #otherOpen AND "DB_Farm".MainFlowM3h > "DB_Config".UnexpectedFlowM3h THEN
+                  #s.State := 7;
+                  #s.FaultCode := 20;                  // ALM-020 valve failed to close
+               ELSE
+                  #s.State := 6;
+               END_IF;
             END_IF;
 
       ELSE  // 0 off, 6 completed, 7 faulted, 8 interrupted
