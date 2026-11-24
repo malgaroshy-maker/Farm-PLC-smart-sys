@@ -161,6 +161,21 @@ def test_simulator_picks_up_and_completes(client):
     assert r.status_code == 409
 
 
+def test_start_without_duration_carries_the_zone_default(client):
+    """G5: the PLC refuses an open-ended start, so the API always sends a duration."""
+    push_state(client)
+    headers = login(client, "operator")
+    start(client, headers)
+    zone = client.get("/api/v1/zones/zone_enab", headers=headers).json()
+    pending = client.get("/api/v1/commands/pending", headers=SIM).json()
+    payload = pending[0]["payload"]
+    if isinstance(payload, str):
+        import json
+
+        payload = json.loads(payload)
+    assert payload["duration_min"] == zone["default_duration_min"]
+
+
 def test_invalid_sync_status_rejected(client):
     push_state(client)
     cid = start(client, login(client, "operator")).json()["id"]

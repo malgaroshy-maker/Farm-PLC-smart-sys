@@ -117,6 +117,15 @@ class ModbusAdapter:
     def link_ok(self) -> bool:
         return self._ok
 
+    async def probe(self) -> None:
+        """Link down: try the PLC again (the gateway calls this every second until it answers)."""
+        try:
+            await self.client.read_holding(self._addr["command.seq"][0], 1)
+        except Exception:
+            return
+        print("[MODBUS] PLC answering again")
+        self._ok = True
+
     def on_clock(self, payload: dict) -> None:
         return None  # the PLC runs on real time
 

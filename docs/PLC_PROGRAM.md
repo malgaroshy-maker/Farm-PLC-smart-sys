@@ -195,7 +195,7 @@ PLCSIM Advanced has a .NET API (`Siemens.Simatic.Simulation.Runtime.Api`) that r
 - **Faults:** the Simulator page's faults (pump trip, well low, power cut, valve stuck…) act on the physics as they do today, so the PLC sees them as real input changes.
 - **The app:** it then talks to the **PLC** (OPC UA or Modbus), not to the simulator. That is the real setup.
 
-Reaching the .NET API from Python needs `pythonnet` (a new package). Ask before downloading it. The alternative is a small C# bridge.
+Built as a small C# bridge (`tools/plcsim/PlcsimBridge.cs`, no new Python package) and a farm model in `apps/simulator/src/plcsim_plant.py`. Run it with `run.bat demo plcsim`.
 
 The panel switches are simulated the same way: the Simulator page sets the two input bits per zone or pump.
 

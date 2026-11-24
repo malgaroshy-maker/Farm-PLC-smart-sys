@@ -11,6 +11,8 @@ Steps
   ("wait", seconds)
   ("wait_zone", zone_id, {states}, timeout_s)
   ("wait_alarm", alarm_code, timeout_s)
+  ("wait_idle", timeout_s)      no zone starting, running or stopping (a real PLC closes valves slowly)
+  ("wait_comms_back", timeout_s) the controller pushes state again
   ("note", message)
 """
 
@@ -39,11 +41,13 @@ log = logging.getLogger(__name__)
 SCENARIO_ACTOR = Actor(actor_type="system", actor_id=None, role="owner_admin", name="scenario")
 RUNNING = {"running"}
 DONE = {"completed", "faulted", "off"}
+ACTIVE = {"starting_pump", "opening_valve", "validating_flow", "running", "stopping"}
 
 PREP = [
     ("note", "Preparing: repairing faults, stopping zones, filling tank"),
     ("fault", "system", None, "clear_all"),
     ("cmd", "stop_all", "system", None),
+    ("wait_idle", 60),
     ("cmd", "set_mode", "system", None, {"mode": "auto"}),
     ("fault", "tank", None, "set_level", 80),
     ("wait", 6),
@@ -162,7 +166,7 @@ SCENARIOS: dict[str, Scenario] = {
                 ("fault", "zone", "zone_rumman_4", "blocked"),
                 ("wait", 3),
                 ("cmd", "start_zone", "zone", "zone_rumman_4"),
-                ("wait_alarm", "ALM-012", 60),
+                ("wait_alarm", "ALM-012", 90),  # PLC: pump + valve travel + 45 s flow check
                 ("fault", "zone", "zone_rumman_4", "clear"),
             ],
         ),
@@ -227,7 +231,7 @@ SCENARIOS: dict[str, Scenario] = {
                 ("wait_alarm", "ALM-044", 20),
                 ("wait_alarm", "ALM-029", 45),
                 ("note", "Waiting for comms to come back"),
-                ("wait", 20),
+                ("wait_comms_back", 90),
             ],
         ),
         Scenario(
@@ -502,6 +506,10 @@ class ScenarioRunner:
         elif kind == "wait_zone":
             _, zone_id, states, timeout = step
             await self._wait_zone(zone_id, states, timeout)
+        elif kind == "wait_idle":
+            await self._wait_idle(step[1])
+        elif kind == "wait_comms_back":
+            await self._wait_comms_back(step[1])
         elif kind == "wait_alarm":
             await self._wait_alarm(step[1], step[2])
             await self._publish(f"Alarm raised: {step[1]}")
@@ -627,6 +635,10 @@ class ScenarioRunner:
                 cmd = await db.get(Command, command_id)
             if cmd is None or cmd.status != "pending":
                 self._picked_up_at = utcnow()
+                if cmd is not None and cmd.status == "failed":
+                    await self._publish(
+                        f"Controller refused {cmd.command_type}: {cmd.failure_reason}"
+                    )
                 return
             await asyncio.sleep(self.poll_s / 2)
         raise ScenarioFailed("Controller did not pick up the command (is the simulator running?)")
@@ -642,6 +654,38 @@ class ScenarioRunner:
                 return
             await asyncio.sleep(self.poll_s)
         raise ScenarioFailed(f"{zone_id} did not reach {sorted(states)} within {timeout}s")
+
+    async def _wait_idle(self, timeout: float) -> None:
+        """No zone starting, running or stopping. A simulated zone stops at once; a PLC closes
+        the valve first (valve travel), and refuses a new start while the old zone is still active."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline:
+            async with async_session_factory() as db:
+                snaps = await load_snapshots(db)
+            busy = [
+                k
+                for k, snap in snaps.items()
+                if k.startswith("zone_") and snap.state.get("state") in ACTIVE
+            ]
+            if not busy:
+                return
+            await asyncio.sleep(self.poll_s)
+        raise ScenarioFailed(f"Zones still active after {timeout}s: {', '.join(sorted(busy))}")
+
+    async def _wait_comms_back(self, timeout: float) -> None:
+        """The controller pushes state again (a dropped link has no fixed length on a real PLC)."""
+        self._picked_up_at = utcnow()  # later waits trust only snapshots after the drop
+        since = self._picked_up_at
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline:
+            async with async_session_factory() as db:
+                snap = (await load_snapshots(db)).get("system_mode")
+            if snap is not None and as_utc(snap.updated_at) > since:
+                return
+            await asyncio.sleep(self.poll_s)
+        raise ScenarioFailed(f"The controller did not come back within {timeout}s")
 
     async def _wait_alarm(self, code: str, timeout: float) -> None:
         from sqlalchemy import and_, or_, select

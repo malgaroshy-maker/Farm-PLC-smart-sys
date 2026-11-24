@@ -36,10 +36,12 @@ BEGIN
    #tick := #tTick.Q;
    #tickMem := #tick;
    "DB_Farm".Tick1s := #tick;
-   #reset := "DB_Cmd".ResetReq;
 
    "FC_ReadInputs"();
    #link(Tick1s := #tick);
+   // read the reset AFTER the command channels set it (it is cleared at the end of this scan;
+   // read before, the pumps and the well lock-out never saw a reset - found in PLCSIM)
+   #reset := "DB_Cmd".ResetReq;
    #power(MainsOk := "DI_MainsOk", Tick1s := #tick, FirstScan := #firstScan);
    #fallback(Active := "DB_Farm".FallbackActive, Tick1s := #tick);
    #hyd(Reset := #reset);

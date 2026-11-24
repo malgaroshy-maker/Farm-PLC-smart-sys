@@ -56,7 +56,20 @@ async def run_simulator():
         if not map_path:
             raise SystemExit("CONTROLLER_ADAPTER=modbus needs MODBUS_MAP=<register map json>")
         regmap = load_map(map_path)
-        if os.getenv("VIRTUAL_PLC", "").strip() in ("1", "true", "yes"):
+        if os.getenv("MODBUS_HOST"):
+            regmap["host"] = os.environ["MODBUS_HOST"]
+        if os.getenv("PLCSIM_PLANT", "").strip() in ("1", "true", "yes"):
+            # G5: the REAL PLC program in PLCSIM Advanced; this process plays the farm around it
+            from .plcsim_plant import PlcsimGateway, plant_from_env
+
+            _plant, runner, _bridge = plant_from_env(regmap)
+            extra_tasks.append(runner.run())
+            adapter = PlcsimGateway(regmap, runner)
+            print(
+                f"[PLANT] PLC in PLCSIM at {regmap['host']}:{regmap.get('port', 502)} (Modbus TCP)"
+            )
+            run_engine = False
+        elif os.getenv("VIRTUAL_PLC", "").strip() in ("1", "true", "yes"):
             # G5: no PLC yet -> the simulator plays the PLC behind the same Modbus registers
             from .virtual_plc import VirtualPlantGateway, VirtualPlc
 

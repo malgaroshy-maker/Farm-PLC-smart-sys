@@ -26,6 +26,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
     - The fallback schedule switches on after 120 s without the app and off again when the app returns.
     - Fixed a bug only the real runtime showed: the 1-second tick never fired (`IN := NOT #tTick.Q`), which would have disabled the link watchdog and the fallback.
     - Set-up lessons are in `plc/README.md`: an ET 200SP PLCSIM family, firmware 3.1, a one-time certificate trust, and the Siemens services.
+  - **Plant bridge:** `run.bat demo plcsim` runs the app against the real PLC program, with our farm model driving the PLC's inputs through the PLCSIM Advanced API (`tools/plcsim/PlcsimBridge.cs`, `apps/simulator/src/plcsim_plant.py`).
+    - PLC fix: the alarm reset was read before the command channels set it, so pumps and the well lock-out never saw a reset.
+    - Gateway fix: one Modbus timeout stopped the gateway for good. It now reconnects, and a late reply can no longer leave the client one answer behind.
+    - API fix: a start without a duration now carries the zone's default duration (the PLC refuses open-ended starts).
+    - Scenario fixes: the prep waits for zones to finish stopping, comms loss waits for the link to return, and refusals are logged with their reason.
+    - The scenarios each pass on their own. Four points need the owner: an alarm reset to the PLC, valve limit switches, per-zone flow limits, and the clock-speed scenarios (listed in `plc/README.md`).
 - **Gateway adapters speak the PLC design** (OPC UA and Modbus):
   - zone state and run source, runtime, faults;
   - PLC alarms;

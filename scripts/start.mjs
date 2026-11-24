@@ -8,6 +8,8 @@
  *                                     part that stops is restarted. Run it from a service: docs/FARM_SERVER.md
  *   node scripts/start.mjs demo plc   (G5) the app drives a virtual PLC over Modbus TCP: the simulator
  *                                     plays the PLC behind the real register map (add to any mode)
+ *   node scripts/start.mjs demo plcsim (G5) the REAL PLC program in PLCSIM Advanced (instance running,
+ *                                     see plc/README.md); the simulator plays the farm around it
  *   node scripts/start.mjs --smoke    start everything, wait until healthy, then stop (self-test)
  *
  * First run sets itself up: Python venv + requirements, pnpm install, and a .env
@@ -35,6 +37,7 @@ const VENV_PY = IS_WIN ? path.join(API_DIR, '.venv', 'Scripts', 'python.exe') : 
 const args = process.argv.slice(2);
 const SERVER = args.includes('server');
 const VIRTUAL_PLC = args.includes('plc');
+const PLCSIM = args.includes('plcsim');
 const MODE = args.includes('demo') || SERVER ? 'demo' : 'dev';
 const SMOKE = args.includes('--smoke');
 const RESET = args.includes('reset');
@@ -433,10 +436,21 @@ async function main() {
   await waitFor(`${apiBase}/health`, 'API');
   log('api', `ready on ${apiBase}  (docs: ${apiBase}/docs)`);
 
-  const simEnv = VIRTUAL_PLC
-    ? { ...shared, CONTROLLER_ADAPTER: 'modbus', VIRTUAL_PLC: '1', MODBUS_MAP: path.join(SIM_DIR, 'modbus_map.example.json') }
-    : shared;
-  if (VIRTUAL_PLC) log('setup', 'Virtual PLC: the app talks Modbus TCP to the simulator playing the farm PLC.');
+  const modbusMap = path.join(SIM_DIR, 'modbus_map.example.json');
+  const simEnv = PLCSIM
+    ? {
+        ...shared,
+        CONTROLLER_ADAPTER: 'modbus',
+        PLCSIM_PLANT: '1',
+        MODBUS_MAP: modbusMap,
+        MODBUS_HOST: process.env.PLCSIM_HOST || env.PLCSIM_HOST || '192.168.0.1',
+        PLCSIM_INSTANCE: process.env.PLCSIM_INSTANCE || env.PLCSIM_INSTANCE || 'PLC',
+      }
+    : VIRTUAL_PLC
+      ? { ...shared, CONTROLLER_ADAPTER: 'modbus', VIRTUAL_PLC: '1', MODBUS_MAP: modbusMap }
+      : shared;
+  if (PLCSIM) log('setup', `PLCSIM: the app talks Modbus TCP to the real PLC program at ${simEnv.MODBUS_HOST}; the simulator plays the farm.`);
+  else if (VIRTUAL_PLC) log('setup', 'Virtual PLC: the app talks Modbus TCP to the simulator playing the farm PLC.');
   start('sim', VENV_PY, ['-m', 'src.main'], { cwd: SIM_DIR, env: simEnv });
 
   if (MODE === 'demo') {

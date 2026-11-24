@@ -89,6 +89,9 @@ async def _validate_structure(db: AsyncSession, req: CommandCreate) -> Zone | No
                 raise HTTPException(
                     422, f"payload.duration_min must be 1–{zone.max_runtime_min} minutes"
                 )
+        if ct == "start_zone" and duration is None:
+            # always send an explicit duration: the PLC refuses an open-ended start (G5)
+            req.payload = {**payload, "duration_min": zone.default_duration_min}
         return zone
     if ct in ("stop_all", "set_mode"):
         if req.target_type != "system" or req.target_id:

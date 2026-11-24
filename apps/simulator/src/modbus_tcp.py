@@ -46,13 +46,18 @@ class ModbusTcpClient:
             await self.connect()
         async with self._lock:
             self._tid = (self._tid + 1) & 0xFFFF
-            self._w.write(struct.pack(">HHHB", self._tid, 0, len(pdu) + 1, self.unit) + pdu)
-            await self._w.drain()
-            head = await asyncio.wait_for(self._r.readexactly(7), self.timeout)
-            tid, _pid, length, _unit = struct.unpack(">HHHB", head)
-            body = await asyncio.wait_for(self._r.readexactly(length - 1), self.timeout)
-        if tid != self._tid:
-            raise ModbusError(f"transaction mismatch {tid} != {self._tid}")
+            try:
+                self._w.write(struct.pack(">HHHB", self._tid, 0, len(pdu) + 1, self.unit) + pdu)
+                await self._w.drain()
+                head = await asyncio.wait_for(self._r.readexactly(7), self.timeout)
+                tid, _pid, length, _unit = struct.unpack(">HHHB", head)
+                body = await asyncio.wait_for(self._r.readexactly(length - 1), self.timeout)
+                if tid != self._tid:
+                    raise ModbusError(f"transaction mismatch {tid} != {self._tid}")
+            except BaseException:
+                # a late or lost reply leaves the stream out of step: drop it, reconnect next call
+                await self.close()
+                raise
         if body[0] & 0x80:
             raise ModbusError(f"exception code {body[1]} for function {body[0] & 0x7F}")
         return body

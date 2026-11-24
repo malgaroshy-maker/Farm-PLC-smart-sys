@@ -18,7 +18,23 @@ TIA Portal source files for the farm PLC: ET 200SP CPU 1512SP-1 PN, all SCL. Des
   - The first download from the TIA window, to trust the PLC's certificate (firmware 3.x secure communication). After that, TiaCommander downloads work.
   - Windows services `almservice`, `s7oiehsx64` (S7DOS) and `SIMATIC PnDiscovery Service` must be running.
 - **Found in PLCSIM and fixed:** the 1-second tick used `IN := NOT #tTick.Q`. On an S7-1500, reading `.Q` updates the timer, so it reset in the same scan and the tick never fired. Without the tick, the link watchdog and the fallback could never start.
-- **Next:** drive the inputs from our farm simulator (needs the PLCSIM API bridge), then the HMI.
+- **Found in PLCSIM and fixed:** `FB_Farm` read the alarm-reset request before the command channels set it, so the pumps and the well lock-out never saw a reset (ALM-027 stayed latched). The reset is now read after the link block.
+- **Plant bridge (our farm simulator around the real PLC):** `run.bat demo plcsim` (or `node scripts/start.mjs demo plcsim`).
+  - `tools/plcsim/PlcsimBridge.exe` attaches to the PLCSIM instance through the PLCSIM Advanced API and serves its tags on `127.0.0.1:1600`. Build it once with the .NET Framework `csc` (command at the top of `PlcsimBridge.cs`); the exe is not committed.
+  - `apps/simulator/src/plcsim_plant.py` reads the PLC's outputs (valve bytes, pump starts) every 200 ms, steps a farm model (pump feedback after 1.5 s, flow, pressure, tank, well, filter) and writes the inputs back, analogs as 4-20 mA raw values.
+  - The app talks to the PLC as on the farm: Modbus TCP to 192.168.0.1. The Simulator page's panel switches and faults go to the farm model, so the PLC sees them as input changes.
+  - Settings: `PLCSIM_HOST` (default 192.168.0.1), `PLCSIM_INSTANCE` (the instance name in PLCSIM, default `PLC`), `PLCSIM_BRIDGE_PORT` (default 1600).
+  - Time runs at 1x: the PLC's timers are real time, so the simulation speed buttons do not speed it up.
+- **Scenario suite on the real PLC (2026-11-24).** Normal cycle, direct-well cycle, tank critical, booster failed start, booster trip, emergency stop, comms loss and reset each pass on their own. Running the whole suite in a row found:
+  - **Fixed (app):** a start without a duration was refused by the PLC (`plc_rejected`; the simulator used the zone default). The API now always sends the zone's default duration.
+  - **Fixed (app):** one Modbus timeout stopped the gateway for good; it now reconnects (see `docs/CONTROLLER_ADAPTER.md`).
+  - **Fixed (scenarios):** the prep waits until no zone is starting, running or stopping, because a PLC zone takes the valve travel time (10 s) to stop and refuses a new start until then. The comms-loss scenario waits for the controller to come back, not a fixed 20 s. A refused command now shows its reason in the scenario log.
+  - **Open, needs the owner:**
+    - The app never sends an alarm reset to the controller (`reset_alarm` is not implemented), so the PLC's latched failed start (ALM-006/007) and well lock-out (ALM-027) can't be cleared from the app.
+    - Wired valves have no limit switch, so the PLC can't raise ALM-019/020 (valve failed to open or close). It sees a stuck valve only as no flow (ALM-012) or unexpected flow (ALM-021).
+    - The PLC's per-zone flow and pressure limits are still the 1-30 m3/h defaults, so a mainline leak can't trip ALM-013 until each zone's limits are set.
+    - The scheduled-day scenarios speed up the clock; a real PLC runs on real time, so they only run in simulator mode.
+- **Next:** the open points above, then the HMI.
 
 The first compile found three things the static checker can't catch, all fixed in the sources:
 - an FC input `String` takes no length;

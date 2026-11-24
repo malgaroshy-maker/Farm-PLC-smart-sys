@@ -176,6 +176,8 @@ class APIClient:
                     await self.push_state()
                     if ticks % 300 == 0:  # every ~5 min
                         await self.refresh_fallback()
+                elif hasattr(self.adapter, "probe"):
+                    await self.adapter.probe()  # a real link went down: keep knocking
                 ticks += 1
                 await asyncio.sleep(1.0)
         finally:

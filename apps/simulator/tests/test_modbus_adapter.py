@@ -237,6 +237,64 @@ def test_no_ack_and_lost_link():
     run(go())
 
 
+def test_a_late_reply_does_not_put_the_client_one_reply_behind():
+    async def go():
+        server = ModbusTcpServer()
+        port = await server.start()
+        server.regs[5] = 77
+        client = ModbusTcpClient("127.0.0.1", port, timeout=0.2)
+        slow = {"on": True}
+        real_handle = server._handle
+
+        async def handle(r, w):  # the first reply arrives after the client gave up
+            if slow["on"]:
+                slow["on"] = False
+                await asyncio.sleep(0.4)
+            await real_handle(r, w)
+
+        server._handle = handle
+        server._server.close()
+        await server._server.wait_closed()
+        server._server = await asyncio.start_server(handle, "127.0.0.1", port)
+        try:
+            try:
+                await client.read_holding(5, 1)
+                raise AssertionError("expected a timeout")
+            except TimeoutError:
+                pass
+            assert await client.read_holding(5, 1) == [77]  # fresh connection, in step
+        finally:
+            await client.close()
+            await server.stop()
+
+    run(go())
+
+
+def test_link_comes_back_after_the_plc_returns():
+    async def go():
+        server = ModbusTcpServer()
+        port = await server.start()
+        regmap = _regmap(port)
+        adapter = ModbusAdapter(regmap)
+        try:
+            await adapter.start(Layout())
+            await server.stop()
+            await adapter.client.close()
+            assert await adapter.read_state() == [] and not adapter.link_ok()
+            await adapter.probe()
+            assert not adapter.link_ok()  # still gone
+            server2 = ModbusTcpServer()
+            await server2.start("127.0.0.1", port)
+            await adapter.probe()
+            assert adapter.link_ok()  # the gateway polls again
+            assert await adapter.read_state() != []
+            await server2.stop()
+        finally:
+            await adapter.stop()
+
+    run(go())
+
+
 def test_plc_common_helpers():
     assert pc.alarm_bits([0b101, 0, 1]) == {1, 3, 33}
     assert pc.zone_state(8) == "interrupted" and pc.zone_state(99) == "off"
