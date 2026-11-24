@@ -61,7 +61,7 @@ static class Program
         try
         {
             inst = SimulationRuntimeManager.CreateInterface(name);
-            inst.UpdateTagList();
+            inst.UpdateTagList(ETagListDetails.IOMDB);
         }
         catch (Exception ex)
         {
@@ -97,7 +97,7 @@ static class Program
                     {
                         answer = "ERR " + ex.Message.Replace('\n', ' ');
                         // a new download changes the tag list: refresh it once and let the caller retry
-                        try { inst.UpdateTagList(); } catch { }
+                        try { inst.UpdateTagList(ETagListDetails.IOMDB); } catch { }
                     }
                 }
                 writer.WriteLine(answer);

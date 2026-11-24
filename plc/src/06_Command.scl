@@ -98,10 +98,53 @@ VERSION : 0.1
       lastHbMb : Int;
       silentSec : DInt;
    END_VAR
+   VAR_TEMP
+      cmd : Int;
+   END_VAR
 BEGIN
+   // HMI buttons -> one command on the HMI channel (the writer bumps Seq last)
+   #cmd := 0;
+   IF "DB_HMI".BtnStart THEN
+      #cmd := 1;
+   ELSIF "DB_HMI".BtnStop THEN
+      #cmd := 2;
+   ELSIF "DB_HMI".BtnStopAll THEN
+      #cmd := 3;
+   ELSIF "DB_HMI".BtnReset THEN
+      #cmd := 4;
+   END_IF;
+   "DB_HMI".BtnStart := FALSE;
+   "DB_HMI".BtnStop := FALSE;
+   "DB_HMI".BtnStopAll := FALSE;
+   "DB_HMI".BtnReset := FALSE;
+   IF #cmd <> 0 THEN
+      "DB_Cmd".Hmi.CmdType := #cmd;
+      "DB_Cmd".Hmi.Target := "DB_HMI".SelectedZone;
+      "DB_Cmd".Hmi.TargetId := '';
+      "DB_Cmd".Hmi.DurationMin := "DB_HMI".StartDurationMin;
+      "DB_Cmd".Hmi.Seq := "DB_Cmd".Hmi.Seq + 1;
+      IF "DB_Cmd".Hmi.Seq >= 30000 THEN
+         "DB_Cmd".Hmi.Seq := 1;
+      END_IF;
+   END_IF;
+
    #opc(RunSource := 0, Ch := "DB_Cmd".Opc);
    #mb(RunSource := 0, Ch := "DB_Cmd".Mb);
    #hmi(RunSource := 4, Ch := "DB_Cmd".Hmi);
+
+   // the answer to the last button, for the HMI to show
+   IF #cmd <> 0 AND "DB_Cmd".Hmi.AckSeq = "DB_Cmd".Hmi.Seq THEN
+      "DB_HMI".ResultOk := "DB_Cmd".Hmi.AckStatus = 1;
+      IF "DB_Cmd".Hmi.AckStatus = 1 THEN
+         "DB_HMI".ResultText := '';
+      ELSE
+         "DB_HMI".ResultText := "DB_Cmd".Hmi.AckReasonText;
+      END_IF;
+      "DB_HMI".ResultSeq := "DB_HMI".ResultSeq + 1;
+      IF "DB_HMI".ResultSeq >= 30000 THEN
+         "DB_HMI".ResultSeq := 0;
+      END_IF;
+   END_IF;
 
    // the gateway changes Heartbeat on every push; silence -> run the stored schedule (G7)
    IF "DB_Cmd".Opc.Heartbeat <> #lastHbOpc OR "DB_Cmd".Mb.Heartbeat <> #lastHbMb THEN

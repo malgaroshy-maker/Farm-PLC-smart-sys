@@ -35,6 +35,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
     - PLC fix: a pump trip no longer holds ALM-005 for the zone's 30 s fault hold after the pump is repaired.
     - **Valve faults by flow (owner):** no limit switches. A valve that fails to close faults the zone with ALM-020 when it stops and water keeps flowing; a valve that fails to open shows as no flow (ALM-012).
     - Scenario fixes: a failed clock scenario restores the clock speed (it left the farm at 60x and the real programs fired mid-scenario), and the prep waits for the PLC's 30 s zone fault to clear.
+    - **HMI:** the MTP1000 Unified Comfort panel is in the TIA project and [docs/HMI_BUILD_GUIDE.md](docs/HMI_BUILD_GUIDE.md) is the screen-by-screen spec (layout A, matching the app). The PLC side is ready: `DB_HMI` buttons become commands on the HMI channel with the app's checks, and the PLC answers with a result text.
     - 12 of the 15 scenarios pass on the real PLC. Two points still need the owner: per-zone flow limits (mainline leak) and the clock-speed scenarios (listed in `plc/README.md`).
 - **Gateway adapters speak the PLC design** (OPC UA and Modbus):
   - zone state and run source, runtime, faults;

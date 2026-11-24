@@ -166,5 +166,14 @@ NON_RETAIN
       Language : Int;                      // 0 Arabic, 1 English (HMI runtime language follows it)
       SelectedZone : Int := 1;
       StartDurationMin : Int := 30;
+      // buttons: the HMI sets one to TRUE (a Set-bit / SetBit on press); FB_Link turns it into a
+      // command on the HMI channel (same checks as the app) and clears it
+      BtnStart : Bool;                     // start SelectedZone for StartDurationMin
+      BtnStop : Bool;                      // stop SelectedZone
+      BtnStopAll : Bool;
+      BtnReset : Bool;                     // reset the PLC's latched alarms
+      ResultText : String[32];             // the PLC's answer to the last button ('' = accepted)
+      ResultOk : Bool;
+      ResultSeq : Int;                     // changes with every answer (HMI shows the text for a few seconds)
    END_VAR
 END_DATA_BLOCK

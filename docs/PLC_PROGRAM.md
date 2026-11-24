@@ -173,6 +173,7 @@ While `FallbackActive`, `FB_Fallback` starts each run in `DB_Fallback` at its ti
   - Style: **match the app**: the same dark theme and zone state colours, Arabic RTL by default with an EN switch.
   - Overview: **layout A, the zone grid**. A 4 x 3 grid of zone tiles (name, state, timer, flow, hand badge) with a status column beside it (tank, both pumps, pressure and flow, mains). Alarm count, link state, clock and the AR | EN switch sit in the top bar. A bottom bar switches screens: Overview, Zones, Pumps, Alarms, Schedule, Settings.
   - Panel: 1280 x 800 (MTP1000).
+- **Build guide:** [HMI_BUILD_GUIDE.md](HMI_BUILD_GUIDE.md). WinCC Unified Openness is not installed, so the owner builds the screens in TIA from that spec. The panel `FarmHMI` is in the project.
 - A language button switches Arabic ⇄ English; the colours match the app.
 - HMI commands go through `DB_Cmd`, so the PLC checks them exactly as it checks the app's.
 
