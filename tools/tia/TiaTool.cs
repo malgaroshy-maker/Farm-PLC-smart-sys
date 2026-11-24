@@ -23,6 +23,7 @@ using Siemens.Engineering.HW;
 using Siemens.Engineering.HW.Features;
 using Siemens.Engineering.SW;
 using Siemens.Engineering.SW.Blocks;
+using Siemens.Engineering.SW.ExternalSources;
 
 static class Cfg
 {
@@ -141,6 +142,8 @@ static class Program
                 case "block-set":  return CmdBlockSet(project, rest);
                 case "add-device": return CmdAddDevice(project, rest);
                 case "plug":       return CmdPlug(project, rest);
+                case "delete-device": return CmdDeleteDevice(project, rest);
+                case "import-sources": return CmdImportSources(project, rest);
                 case "project-dump": DumpAttributes((IEngineeringObject)project, rest.Length > 0 ? rest[0] : null, "  . "); return 0;
                 case "project-set":  return CmdProjectSet(project, rest);
                 default:
@@ -174,6 +177,8 @@ static class Program
   plug <slot> <OrderNumber> <Name> [fw...]  plug a module into the device's rack (try each fw; - = none)
   project-dump [filter]                     project attributes
   project-set <Attr> <val>                  set a project attribute (e.g. simulation support)
+  delete-device <Name>                      delete a station (e.g. to re-create it with other firmware)
+  import-sources <folder> [from-file]       add .udt/.db/.scl files as external sources and generate blocks
   --device <name>                           pick the device (default: the first one)
 
 Attribute values are typed from the attribute's current value, so pass them bare:
@@ -490,6 +495,53 @@ Attribute values are typed from the attribute's current value, so pass them bare
         }
         Console.WriteLine("no variant could be plugged");
         return 3;
+    }
+
+    // Add every .udt/.db/.scl in a folder as an external source (sorted by name) and generate
+    // its blocks, in order. Stops at the first file that does not generate.
+    static int CmdImportSources(Project project, string[] a)
+    {
+        if (a.Length < 1) { Console.WriteLine("usage: import-sources <folder> [first-file-prefix]"); return 1; }
+        var sw = FindSoftware(project);
+        if (sw == null) { Console.WriteLine("no PLC software in the project"); return 3; }
+        var files = Directory.GetFiles(a[0])
+            .Where(f => f.EndsWith(".udt") || f.EndsWith(".db") || f.EndsWith(".scl"))
+            .OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal).ToList();
+        if (a.Length > 1) files = files.Where(f => string.CompareOrdinal(Path.GetFileName(f), a[1]) >= 0).ToList();
+        var group = sw.ExternalSourceGroup;
+        foreach (var f in files)
+        {
+            string name = Path.GetFileName(f);
+            var old = group.ExternalSources.Find(name);
+            if (old != null) old.Delete();
+            Console.WriteLine("== " + name);
+            try
+            {
+                var src = group.ExternalSources.CreateFromFile(name, f);
+                src.GenerateBlocksFromSource(GenerateBlockOption.KeepOnError);
+                Console.WriteLine("   generated");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("   FAILED:" + Full(ex));
+                project.Save();
+                return 4;
+            }
+        }
+        project.Save();
+        Console.WriteLine("all sources generated; saved");
+        return 0;
+    }
+
+    static int CmdDeleteDevice(Project project, string[] a)
+    {
+        if (a.Length < 1) { Console.WriteLine("usage: delete-device <DeviceName>"); return 1; }
+        var dev = project.Devices.FirstOrDefault(d => d.Name == a[0]);
+        if (dev == null) { Console.WriteLine("device not found: " + a[0]); return 3; }
+        dev.Delete();
+        project.Save();
+        Console.WriteLine("deleted " + a[0] + "; saved");
+        return 0;
     }
 
     static string Full(Exception ex)

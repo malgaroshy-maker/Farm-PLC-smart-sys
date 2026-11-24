@@ -101,7 +101,7 @@ BEGIN
             #mbMaster(REQ := #req,
                       MB_ADDR := INT_TO_UINT("DB_Config".Zone[#job].RadioBox),
                       MODE := 1,                                           // write
-                      DATA_ADDR := INT_TO_UDINT(40000 + "DB_Config".Zone[#job].RadioCoil),
+                      DATA_ADDR := UDINT#40000 + INT_TO_UDINT("DB_Config".Zone[#job].RadioCoil),  // 32-bit: 40000 overflows Int
                       DATA_LEN := 1,
                       DATA_PTR := #buf);
          ELSE

@@ -2,7 +2,15 @@
 
 TIA Portal source files for the farm PLC: ET 200SP CPU 1512SP-1 PN, all SCL. Design: [docs/PLC_PROGRAM.md](../docs/PLC_PROGRAM.md).
 
-**Status:** written and statically checked, but **not compiled yet**. TIA Portal on the development PC has no active STEP 7 licence (`Necessary license 'STEP 7 Professional' is missing`). Import, compile and the PLCSIM tests come once the licence works.
+**Status (2026-11-24):** **compiles in TIA Portal V19 with 0 errors and 0 warnings.** The TIA project is `AlgaroshyFarm` (projects root of TiaCommander).
+- **Hardware:** CPU 1512SP-1 PN, firmware **V2.8**, with the modules from design §2 and a server module. The I/O addresses match `tags.md`.
+- **Protection:** none for now (owner's choice). V2.8 does not require the confidential-configuration password; set the protection before the real farm.
+- **Next:** download to PLCSIM Advanced and run the tests in design §8.
+
+The first compile found three things the static checker can't catch, all fixed in the sources:
+- an FC input `String` takes no length;
+- a multi-instance FB needs at least one static member;
+- `40000` overflows a 16-bit `Int` in a Modbus address.
 
 ## Files
 
@@ -26,9 +34,9 @@ TIA Portal source files for the farm PLC: ET 200SP CPU 1512SP-1 PN, all SCL. Des
 
 ## Import into TIA Portal (once licensed)
 
-1. Project `AlgaroshyFarm`: add the CPU 1512SP-1 PN and the modules (design §2). Set the configuration-protection password yourself. Enable **Project properties → Support simulation during block compilation** (needed for PLCSIM Advanced).
+1. Project `AlgaroshyFarm`: add the CPU 1512SP-1 PN and the modules (design §2): `TiaTool add-device` / `plug`. With firmware ≥ V2.9, TIA requires the configuration-protection password, which the owner sets. Enable **Project properties → Support simulation during block compilation** (needed for PLCSIM Advanced).
 2. Create the tag table **Farm_IO** from `tags.md`. Check that the system constants `Local~PROFINET_interface_1` and `Local~CM_PtP_1` exist under those names (PLC tags → System constants).
-3. **External source files → Add new external file:** add all files in `src/` in number order, then **Generate blocks from source** in the same order: 01 → 02 → 03 … → 14.
+3. **External source files → Add new external file:** add all files in `src/` in number order, then **Generate blocks from source** in the same order: 01 → 02 → 03 … → 14. Or run `TiaTool import-sources <plc/src> [from-file]`, which does both.
 4. Compile (hardware, then software). Fix what the compiler reports. The static checker below catches most mistakes, but not all of them.
 5. Activate the OPC UA server; the Modbus TCP server starts from `FB_ModbusMap`.
 6. Download to a PLCSIM Advanced instance in TCP/IP mode. Then follow the test plan in the design §8.

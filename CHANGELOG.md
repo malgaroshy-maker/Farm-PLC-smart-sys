@@ -17,7 +17,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
   - zone valves either wired or on radio boxes, chosen per zone;
   - testing in PLCSIM Advanced, with our simulator playing the farm.
 - **PLC program written** as TIA source files in `plc/src`: zones, pumps, interlocks, the command handshake, the link watchdog and fallback schedule, the 30-minute power-cut rule, hydraulics and trips, radio boxes and energy meters, the Modbus TCP server and alarms.
-  - A static checker (`tools/tia/scl_lint.py`) checks it. It is **not compiled yet**: TIA Portal on the development PC has no active STEP 7 licence (the licence service was stopped).
+  - A static checker (`tools/tia/scl_lint.py`) checks it.
+  - Once the STEP 7 licence was active, TIA Portal compiled it with **0 errors and 0 warnings**: CPU 1512SP-1 PN at firmware V2.8 (no protection for now, owner's choice), all modules, the Farm_IO tag table, 32 blocks.
+  - Three fixes the checker couldn't catch: FC `String` inputs take no length, a multi-instance FB needs a static member, `40000` overflows an `Int`.
+  - The Openness helper gained `import-sources` and `delete-device`.
 - **Gateway adapters speak the PLC design** (OPC UA and Modbus):
   - zone state and run source, runtime, faults;
   - PLC alarms;

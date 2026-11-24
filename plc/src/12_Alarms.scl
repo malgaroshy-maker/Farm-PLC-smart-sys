@@ -5,6 +5,9 @@ FUNCTION_BLOCK "FB_Alarms"
 TITLE = 'Set alarm bits, handle reset, pack bits for Modbus and the HMI'
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1
+   VAR
+      scans : UDInt;              // a multi-instance needs at least one static member (TIA)
+   END_VAR
    VAR_TEMP
       i : Int;
       code : Int;
@@ -14,6 +17,7 @@ VERSION : 0.1
       w2 : Word;
    END_VAR
 BEGIN
+   #scans := #scans + 1;
    FOR #i := 1 TO 48 DO
       "DB_Alarms".Active[#i] := FALSE;
    END_FOR;
