@@ -50,11 +50,11 @@ async def _plc(port: int):
         "p_run": await var("PRun", True, ua.VariantType.Boolean),
         "p_fault": await var("PFault", False, ua.VariantType.Boolean),
         "p_hours": await var("PHours", 812.0, ua.VariantType.Double),
-        "seq": await var("Seq", 0, ua.VariantType.Int32),
+        "seq": await var("Seq", 0, ua.VariantType.Int16),
         "type": await var("Type", 0, ua.VariantType.Int16),
         "target": await var("Target", "", ua.VariantType.String),
         "dur": await var("Dur", 0, ua.VariantType.Int16),
-        "ack_seq": await var("AckSeq", 0, ua.VariantType.Int32),
+        "ack_seq": await var("AckSeq", 0, ua.VariantType.Int16),
         "ack_status": await var("AckStatus", 0, ua.VariantType.Int16),
         "ack_reason": await var("AckReason", "", ua.VariantType.String),
     }
@@ -115,7 +115,7 @@ async def _plc(port: int):
                 await nodes["ack_reason"].write_value(
                     ua.Variant("" if ok else "interlock_pressure", ua.VariantType.String)
                 )
-                await nodes["ack_seq"].write_value(ua.Variant(seq, ua.VariantType.Int32))
+                await nodes["ack_seq"].write_value(ua.Variant(seq, ua.VariantType.Int16))
             await asyncio.sleep(0.05)
 
     return server, tagmap, plc_logic
@@ -167,10 +167,10 @@ def test_reads_state_and_runs_the_command_handshake():
                 assert by["c2"] == {
                     "command_id": "c2",
                     "status": "failed",
-                    "reason": "interlock_pressure",
+                    "failure_reason": "interlock_pressure",
                 }
-                assert by["c3"]["reason"] == "no_tags_for:zone_new"
-                assert by["c4"]["reason"].startswith("unsupported_command")
+                assert by["c3"]["failure_reason"] == "no_tags_for:zone_new"
+                assert by["c4"]["failure_reason"].startswith("unsupported_command")
             finally:
                 await adapter.stop()
                 logic.cancel()
@@ -189,7 +189,9 @@ def test_no_ack_is_reported_as_failed():
                 res = await adapter.execute(
                     [{"id": "c1", "command_type": "stop_all", "target_id": ""}]
                 )
-                assert res == [{"command_id": "c1", "status": "failed", "reason": "plc_no_ack"}]
+                assert res == [
+                    {"command_id": "c1", "status": "failed", "failure_reason": "plc_no_ack"}
+                ]
             finally:
                 await adapter.stop()
 

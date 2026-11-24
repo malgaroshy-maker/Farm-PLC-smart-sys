@@ -1,0 +1,111 @@
+// Algaroshy Farm PLC (G5) - the whole program in one FB, called from Main (OB1) with one instance DB.
+
+FUNCTION_BLOCK "FB_Farm"
+TITLE = 'Farm program: inputs -> link -> power -> fallback -> water -> zones -> pumps -> outputs'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR
+      tTick : TON_TIME;
+      firstScan : Bool := TRUE;          // non-retain: TRUE again after every restart
+      lastDay : USInt;
+      link : "FB_Link";
+      power : "FB_Power";
+      fallback : "FB_Fallback";
+      hyd : "FB_Hydraulics";
+      zone : Array[1..16] of "FB_Zone";
+      booster : "FB_Pump";
+      well : "FB_Pump";
+      radio : "FB_RadioBoxes";
+      alarms : "FB_Alarms";
+      mb : "FB_ModbusMap";
+   END_VAR
+   VAR_TEMP
+      i : Int;
+      tick : Bool;
+      reset : Bool;
+      useWell : Bool;
+      now : DTL;
+      ret : Int;
+   END_VAR
+BEGIN
+   // one-cycle pulse every second
+   #tTick(IN := NOT #tTick.Q, PT := T#1S);
+   #tick := #tTick.Q;
+   "DB_Farm".Tick1s := #tick;
+   #reset := "DB_Cmd".ResetReq;
+
+   "FC_ReadInputs"();
+   #link(Tick1s := #tick);
+   #power(MainsOk := "DI_MainsOk", Tick1s := #tick, FirstScan := #firstScan);
+   #fallback(Active := "DB_Farm".FallbackActive, Tick1s := #tick);
+   #hyd(Reset := #reset);
+
+   FOR #i := 1 TO 16 DO
+      #useWell := "DB_Zones".Zone[#i].UsesWell;
+      IF #useWell THEN
+         #zone[#i](ZoneIndex := #i, Tick1s := #tick,
+                   Trip := #hyd.Trip[#i], TripCode := #hyd.TripCode[#i],
+                   PumpRunning := "DB_Pumps".Well.RunFb,
+                   PumpFailed := "DB_Pumps".Well.FailedStart OR "DB_Pumps".Well.Fault,
+                   PumpFailCode := 7);
+      ELSE
+         #zone[#i](ZoneIndex := #i, Tick1s := #tick,
+                   Trip := #hyd.Trip[#i], TripCode := #hyd.TripCode[#i],
+                   PumpRunning := "DB_Pumps".Booster.RunFb,
+                   PumpFailed := "DB_Pumps".Booster.FailedStart OR "DB_Pumps".Booster.Fault,
+                   PumpFailCode := 6);
+      END_IF;
+   END_FOR;
+
+   #booster(RunFbIn := "DI_BoosterRun", FaultIn := "DI_BoosterFault",
+            HandIn := "DI_BoosterHand", OffIn := "DI_BoosterOff",
+            Tick1s := #tick, Reset := #reset, PowerOk := "DB_Farm".PowerOk, P := "DB_Pumps".Booster);
+   #well(RunFbIn := "DI_WellRun", FaultIn := "DI_WellFault",
+         HandIn := "DI_WellHand", OffIn := "DI_WellOff",
+         Tick1s := #tick, Reset := #reset, PowerOk := "DB_Farm".PowerOk, P := "DB_Pumps".Well);
+
+   #radio(Tick1s := #tick);
+   #alarms();
+   #mb();
+   "FC_WriteOutputs"();
+
+   // midnight: daily counters
+   #ret := RD_LOC_T(#now);
+   IF #ret = 0 THEN
+      IF #now.DAY <> #lastDay AND NOT #firstScan THEN
+         FOR #i := 1 TO 16 DO
+            "DB_Zones".Zone[#i].StartsToday := 0;
+         END_FOR;
+         "DB_Pumps".Booster.EnergyKwhToday := 0.0;
+         "DB_Pumps".Well.EnergyKwhToday := 0.0;
+      END_IF;
+      #lastDay := #now.DAY;
+   END_IF;
+
+   CASE "DB_Farm".Mode OF
+      0: "DB_Farm".ModeText := 'off';
+      2: "DB_Farm".ModeText := 'manual';
+      3: "DB_Farm".ModeText := 'maintenance';
+   ELSE
+      "DB_Farm".ModeText := 'auto';
+   END_CASE;
+
+   "DB_Cmd".ResetReq := FALSE;
+   #firstScan := FALSE;
+END_FUNCTION_BLOCK
+
+DATA_BLOCK "iFarm"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+NON_RETAIN
+"FB_Farm"
+BEGIN
+END_DATA_BLOCK
+
+ORGANIZATION_BLOCK "Main"
+TITLE = 'Main Program Sweep (Cycle)'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+BEGIN
+   "iFarm"();
+END_ORGANIZATION_BLOCK

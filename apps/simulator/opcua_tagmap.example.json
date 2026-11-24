@@ -1,43 +1,562 @@
 {
-  "_about": "EXAMPLE tag map for the OPC UA adapter (Milestone G3 skeleton). The real node ids come from the TIA Portal project in Milestone G5 and are validated with PLCSIM Advanced before any hardware. Node id style follows S7-1500 OPC UA: ns=3;s=\"DB\".\"Member\".",
+  "_about": "OPC UA tag map for the farm PLC (G5, docs/PLC_PROGRAM.md, plc/src). Node ids follow the S7-1500 OPC UA server: ns=3;s=\"DB\".\"Member\". Set 'endpoint' to the PLC's address. Validate in PLCSIM Advanced before hardware.",
   "endpoint": "opc.tcp://192.168.0.10:4840",
   "system": {
-    "mode": "ns=3;s=\"DB_Farm\".\"Mode\"",
+    "mode": "ns=3;s=\"DB_Farm\".\"ModeText\"",
     "estop": "ns=3;s=\"DB_Farm\".\"EStop\"",
     "tank_level_pct": "ns=3;s=\"DB_Farm\".\"TankLevelPct\"",
     "main_pressure_bar": "ns=3;s=\"DB_Farm\".\"MainPressureBar\"",
     "main_flow_m3h": "ns=3;s=\"DB_Farm\".\"MainFlowM3h\"",
-    "heartbeat": "ns=3;s=\"DB_Farm\".\"Heartbeat\""
+    "heartbeat": "ns=3;s=\"DB_Farm\".\"Heartbeat\"",
+    "power_ok": "ns=3;s=\"DB_Farm\".\"PowerOk\"",
+    "fallback_active": "ns=3;s=\"DB_Farm\".\"FallbackActive\"",
+    "well_level_m": "ns=3;s=\"DB_Farm\".\"WellLevelM\"",
+    "filter_dp_bar": "ns=3;s=\"DB_Farm\".\"FilterDpBar\"",
+    "refilling": "ns=3;s=\"DB_Farm\".\"Refilling\"",
+    "alarm_word0": "ns=3;s=\"DB_Alarms\".\"Word0\"",
+    "alarm_word1": "ns=3;s=\"DB_Alarms\".\"Word1\"",
+    "alarm_word2": "ns=3;s=\"DB_Alarms\".\"Word2\""
   },
   "zones": {
     "zone_rumman_1": {
+      "index": 1,
       "running": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"Running\"",
       "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"ValveOpenFb\"",
-      "valve_closed_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"ValveClosedFb\"",
       "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"FlowM3h\"",
       "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"PressureBar\"",
-      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"MoisturePct\""
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[1].\"AlarmCode\""
+    },
+    "zone_rumman_2": {
+      "index": 2,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[2].\"AlarmCode\""
+    },
+    "zone_rumman_3": {
+      "index": 3,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[3].\"AlarmCode\""
+    },
+    "zone_rumman_4": {
+      "index": 4,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[4].\"AlarmCode\""
+    },
+    "zone_rumman_5": {
+      "index": 5,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[5].\"AlarmCode\""
+    },
+    "zone_rumman_6": {
+      "index": 6,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[6].\"AlarmCode\""
+    },
+    "zone_rumman_ummahat": {
+      "index": 7,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[7].\"AlarmCode\""
+    },
+    "zone_rumman_jadeed": {
+      "index": 8,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[8].\"AlarmCode\""
+    },
+    "zone_zaytoun": {
+      "index": 9,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[9].\"AlarmCode\""
+    },
+    "zone_zaytoun_2": {
+      "index": 10,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[10].\"AlarmCode\""
+    },
+    "zone_enab": {
+      "index": 11,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[11].\"AlarmCode\""
+    },
+    "zone_fruit_mix": {
+      "index": 12,
+      "running": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"Running\"",
+      "valve_open_fb": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"ValveOpenFb\"",
+      "flow_m3h": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"FlowM3h\"",
+      "pressure_bar": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"PressureBar\"",
+      "moisture_pct": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"MoisturePct\"",
+      "state": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"State\"",
+      "run_source": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"RunSource\"",
+      "panel_mode": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"PanelMode\"",
+      "runtime_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"RuntimeSec\"",
+      "target_sec": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"TargetSec\"",
+      "fault": "ns=3;s=\"DB_Zones\".\"Zone\"[12].\"AlarmCode\""
     }
   },
   "pumps": {
     "pump_booster_01": {
       "run_fb": "ns=3;s=\"DB_Pumps\".\"Booster\".\"RunFb\"",
       "fault": "ns=3;s=\"DB_Pumps\".\"Booster\".\"Fault\"",
-      "runtime_hours": "ns=3;s=\"DB_Pumps\".\"Booster\".\"RuntimeHours\""
+      "runtime_hours": "ns=3;s=\"DB_Pumps\".\"Booster\".\"RuntimeHours\"",
+      "panel_mode": "ns=3;s=\"DB_Pumps\".\"Booster\".\"PanelMode\"",
+      "power_kw": "ns=3;s=\"DB_Pumps\".\"Booster\".\"PowerKw\"",
+      "current_a": "ns=3;s=\"DB_Pumps\".\"Booster\".\"CurrentA\"",
+      "energy_kwh_today": "ns=3;s=\"DB_Pumps\".\"Booster\".\"EnergyKwhToday\""
     },
     "pump_well_01": {
       "run_fb": "ns=3;s=\"DB_Pumps\".\"Well\".\"RunFb\"",
       "fault": "ns=3;s=\"DB_Pumps\".\"Well\".\"Fault\"",
-      "runtime_hours": "ns=3;s=\"DB_Pumps\".\"Well\".\"RuntimeHours\""
+      "runtime_hours": "ns=3;s=\"DB_Pumps\".\"Well\".\"RuntimeHours\"",
+      "panel_mode": "ns=3;s=\"DB_Pumps\".\"Well\".\"PanelMode\"",
+      "power_kw": "ns=3;s=\"DB_Pumps\".\"Well\".\"PowerKw\"",
+      "current_a": "ns=3;s=\"DB_Pumps\".\"Well\".\"CurrentA\"",
+      "energy_kwh_today": "ns=3;s=\"DB_Pumps\".\"Well\".\"EnergyKwhToday\""
     }
   },
   "command": {
-    "seq": "ns=3;s=\"DB_Cmd\".\"Seq\"",
-    "type": "ns=3;s=\"DB_Cmd\".\"Type\"",
-    "target": "ns=3;s=\"DB_Cmd\".\"Target\"",
-    "duration_min": "ns=3;s=\"DB_Cmd\".\"DurationMin\"",
-    "ack_seq": "ns=3;s=\"DB_Cmd\".\"AckSeq\"",
-    "ack_status": "ns=3;s=\"DB_Cmd\".\"AckStatus\"",
-    "ack_reason": "ns=3;s=\"DB_Cmd\".\"AckReason\""
+    "seq": "ns=3;s=\"DB_Cmd\".\"Opc\".\"Seq\"",
+    "type": "ns=3;s=\"DB_Cmd\".\"Opc\".\"CmdType\"",
+    "target": "ns=3;s=\"DB_Cmd\".\"Opc\".\"TargetId\"",
+    "duration_min": "ns=3;s=\"DB_Cmd\".\"Opc\".\"DurationMin\"",
+    "ack_seq": "ns=3;s=\"DB_Cmd\".\"Opc\".\"AckSeq\"",
+    "ack_status": "ns=3;s=\"DB_Cmd\".\"Opc\".\"AckStatus\"",
+    "ack_reason": "ns=3;s=\"DB_Cmd\".\"Opc\".\"AckReasonText\"",
+    "app_heartbeat": "ns=3;s=\"DB_Cmd\".\"Opc\".\"Heartbeat\""
+  },
+  "fallback": {
+    "count": "ns=3;s=\"DB_Fallback\".\"Count\"",
+    "load_seq": "ns=3;s=\"DB_Fallback\".\"LoadSeq\"",
+    "runs": [
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[1].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[1].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[1].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[1].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[1].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[2].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[2].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[2].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[2].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[2].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[3].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[3].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[3].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[3].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[3].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[4].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[4].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[4].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[4].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[4].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[5].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[5].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[5].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[5].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[5].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[6].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[6].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[6].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[6].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[6].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[7].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[7].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[7].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[7].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[7].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[8].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[8].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[8].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[8].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[8].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[9].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[9].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[9].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[9].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[9].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[10].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[10].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[10].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[10].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[10].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[11].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[11].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[11].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[11].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[11].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[12].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[12].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[12].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[12].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[12].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[13].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[13].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[13].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[13].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[13].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[14].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[14].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[14].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[14].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[14].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[15].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[15].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[15].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[15].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[15].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[16].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[16].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[16].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[16].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[16].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[17].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[17].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[17].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[17].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[17].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[18].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[18].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[18].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[18].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[18].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[19].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[19].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[19].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[19].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[19].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[20].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[20].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[20].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[20].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[20].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[21].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[21].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[21].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[21].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[21].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[22].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[22].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[22].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[22].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[22].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[23].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[23].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[23].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[23].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[23].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[24].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[24].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[24].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[24].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[24].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[25].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[25].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[25].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[25].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[25].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[26].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[26].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[26].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[26].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[26].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[27].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[27].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[27].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[27].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[27].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[28].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[28].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[28].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[28].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[28].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[29].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[29].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[29].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[29].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[29].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[30].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[30].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[30].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[30].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[30].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[31].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[31].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[31].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[31].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[31].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[32].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[32].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[32].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[32].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[32].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[33].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[33].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[33].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[33].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[33].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[34].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[34].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[34].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[34].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[34].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[35].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[35].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[35].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[35].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[35].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[36].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[36].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[36].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[36].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[36].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[37].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[37].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[37].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[37].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[37].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[38].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[38].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[38].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[38].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[38].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[39].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[39].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[39].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[39].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[39].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[40].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[40].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[40].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[40].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[40].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[41].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[41].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[41].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[41].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[41].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[42].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[42].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[42].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[42].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[42].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[43].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[43].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[43].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[43].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[43].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[44].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[44].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[44].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[44].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[44].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[45].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[45].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[45].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[45].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[45].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[46].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[46].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[46].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[46].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[46].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[47].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[47].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[47].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[47].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[47].\"Valid\""
+      },
+      {
+        "zone": "ns=3;s=\"DB_Fallback\".\"Run\"[48].\"ZoneIndex\"",
+        "start_min": "ns=3;s=\"DB_Fallback\".\"Run\"[48].\"StartMinOfDay\"",
+        "duration_min": "ns=3;s=\"DB_Fallback\".\"Run\"[48].\"DurationMin\"",
+        "weekday": "ns=3;s=\"DB_Fallback\".\"Run\"[48].\"Weekday\"",
+        "valid": "ns=3;s=\"DB_Fallback\".\"Run\"[48].\"Valid\""
+      }
+    ]
   }
 }

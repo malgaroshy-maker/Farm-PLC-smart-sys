@@ -1,0 +1,104 @@
+// Algaroshy Farm PLC (G5) - power cut and the owner's 30-minute resume rule (G7).
+// The UPS keeps the PLC running; a relay on the mains feeds "DI_MainsOk".
+
+FUNCTION_BLOCK "FB_Power"
+TITLE = 'Mains loss: interrupt runs; on return resume them only if the outage was short'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      MainsOk : Bool;
+      Tick1s : Bool;
+      FirstScan : Bool;
+   END_VAR
+   VAR
+      lastMains : Bool;
+   END_VAR
+   VAR_TEMP
+      i : Int;
+      st : Int;
+      now : DTL;
+      ret : Int;
+      downSec : DInt;
+      resume : Bool;
+   END_VAR
+BEGIN
+   #ret := RD_LOC_T(#now);
+
+   REGION PLC restart: the time it was off counts as an outage
+      IF #FirstScan THEN
+         IF "DB_Power".LastAlive.YEAR > 1970 THEN
+            #downSec := TIME_TO_DINT(T_DIFF(IN1 := #now, IN2 := "DB_Power".LastAlive)) / 1000;
+            IF #downSec < 0 THEN
+               #downSec := 0;
+            END_IF;
+            "DB_Power".OutageSec := "DB_Power".OutageSec + #downSec;
+         END_IF;
+         FOR #i := 1 TO 16 DO
+            IF "DB_Power".Interrupted[#i] THEN
+               "DB_Zones".Zone[#i].State := 8;
+            END_IF;
+         END_FOR;
+         #lastMains := FALSE;                        // so the "power back" edge below decides
+      END_IF;
+   END_REGION
+
+   REGION Mains lost
+      IF NOT #MainsOk AND #lastMains THEN
+         "DB_Farm".PowerOk := FALSE;
+         "DB_Power".OutageSec := 0;
+         FOR #i := 1 TO 16 DO
+            #st := "DB_Zones".Zone[#i].State;
+            IF #st >= 1 AND #st <= 5 THEN
+               "DB_Zones".Zone[#i].State := 8;      // interrupted (valves close: FB_Zone)
+            END_IF;
+         END_FOR;
+      END_IF;
+      IF NOT #MainsOk THEN
+         "DB_Farm".PowerOk := FALSE;
+         IF #Tick1s THEN
+            "DB_Power".OutageSec := "DB_Power".OutageSec + 1;
+         END_IF;
+      END_IF;
+   END_REGION
+
+   REGION Mains back
+      IF #MainsOk AND NOT #lastMains THEN
+         "DB_Farm".PowerOk := TRUE;
+         #resume := "DB_Power".OutageSec < INT_TO_DINT("DB_Config".PowerResumeMaxMin) * 60;
+         FOR #i := 1 TO 16 DO
+            IF "DB_Power".Interrupted[#i] AND "DB_Zones".Zone[#i].State = 8 THEN
+               IF #resume AND "DB_Power".Remaining[#i] > 0 THEN
+                  "DB_Zones".Zone[#i].ReqStart := TRUE;
+                  "DB_Zones".Zone[#i].ReqSource := 3;          // resume
+                  "DB_Zones".Zone[#i].ReqDurationSec := "DB_Power".Remaining[#i];
+               ELSE
+                  "DB_Zones".Zone[#i].State := 7;              // run skipped, owner alerted
+                  "DB_Zones".Zone[#i].FaultCode := 33;
+               END_IF;
+            END_IF;
+            "DB_Power".Interrupted[#i] := FALSE;
+         END_FOR;
+         "DB_Power".OutageSec := 0;
+      END_IF;
+   END_REGION
+
+   REGION Remember what is running (retained) while the mains is up
+      IF #MainsOk AND #Tick1s THEN
+         FOR #i := 1 TO 16 DO
+            #st := "DB_Zones".Zone[#i].State;
+            "DB_Power".Interrupted[#i] := #st >= 1 AND #st <= 5 AND "DB_Zones".Zone[#i].RunSource <> 1
+                                          AND "DB_Zones".Zone[#i].TargetSec > 0;
+            IF "DB_Power".Interrupted[#i] THEN
+               "DB_Power".Remaining[#i] := "DB_Zones".Zone[#i].TargetSec - "DB_Zones".Zone[#i].RuntimeSec;
+            ELSE
+               "DB_Power".Remaining[#i] := 0;
+            END_IF;
+         END_FOR;
+      END_IF;
+      IF #Tick1s AND #ret = 0 THEN
+         "DB_Power".LastAlive := #now;
+      END_IF;
+   END_REGION
+
+   #lastMains := #MainsOk;
+END_FUNCTION_BLOCK

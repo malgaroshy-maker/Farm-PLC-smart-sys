@@ -1,0 +1,130 @@
+// Algaroshy Farm PLC (G5) - helper functions.
+
+FUNCTION "FC_Scale" : Real
+TITLE = 'Analog 4-20 mA raw value to engineering units'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Raw : Int;          // 0..27648 = 4..20 mA (ET 200SP AI ST)
+      MaxEng : Real;      // value at 20 mA
+   END_VAR
+   VAR_OUTPUT
+      Bad : Bool;         // wire break / overflow (32767) or deep underflow
+   END_VAR
+BEGIN
+   #Bad := (#Raw > 32511) OR (#Raw < -4864);
+   IF #Raw <= 0 OR #Bad THEN
+      #FC_Scale := 0.0;
+   ELSE
+      #FC_Scale := INT_TO_REAL(#Raw) / 27648.0 * #MaxEng;
+   END_IF;
+END_FUNCTION
+
+FUNCTION "FC_BitOf" : Bool
+TITLE = 'Bit n (1..16) of two input bytes: Lo = 1..8, Hi = 9..16'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Lo : Byte;
+      Hi : Byte;
+      BitNo : Int;
+   END_VAR
+   VAR_TEMP
+      b : Byte;
+      n : Int;
+   END_VAR
+BEGIN
+   IF #BitNo <= 8 THEN
+      #b := #Lo;
+      #n := #BitNo - 1;
+   ELSE
+      #b := #Hi;
+      #n := #BitNo - 9;
+   END_IF;
+   #FC_BitOf := (SHR(IN := #b, N := INT_TO_USINT(#n)) AND 16#01) = 16#01;
+END_FUNCTION
+
+FUNCTION "FC_ZoneByName" : Int
+TITLE = 'Zone index (1..16) from its app id, 0 if unknown'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      ZoneId : String[24];
+   END_VAR
+   VAR_TEMP
+      i : Int;
+   END_VAR
+BEGIN
+   #FC_ZoneByName := 0;
+   FOR #i := 1 TO 16 DO
+      IF "DB_Config".Zone[#i].Id = #ZoneId AND LEN(#ZoneId) > 0 THEN
+         #FC_ZoneByName := #i;
+         RETURN;
+      END_IF;
+   END_FOR;
+END_FUNCTION
+
+FUNCTION "FC_ReasonText" : String[32]
+TITLE = 'Reason code -> the text the app shows'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Reason : Int;
+   END_VAR
+BEGIN
+   CASE #Reason OF
+      0: #FC_ReasonText := '';
+      1: #FC_ReasonText := 'interlock';
+      2: #FC_ReasonText := 'zone_in_manual';
+      3: #FC_ReasonText := 'no_power';
+      4: #FC_ReasonText := 'pump_unavailable';
+      5: #FC_ReasonText := 'tank_low';
+      6: #FC_ReasonText := 'estop_active';
+      7: #FC_ReasonText := 'already_running';
+      8: #FC_ReasonText := 'bad_target';
+   ELSE
+      #FC_ReasonText := 'plc_rejected';
+   END_CASE;
+END_FUNCTION
+
+FUNCTION "FC_CanStart" : Int
+TITLE = 'PLC interlocks for a new zone start: 0 = allowed, else the reason code'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Zone : Int;
+   END_VAR
+   VAR_TEMP
+      st : Int;
+   END_VAR
+BEGIN
+   IF #Zone < 1 OR #Zone > "DB_Config".ZoneCount THEN
+      #FC_CanStart := 8;                                   // bad_target
+      RETURN;
+   END_IF;
+   #st := "DB_Zones".Zone[#Zone].State;
+   IF "DB_Farm".EStop THEN
+      #FC_CanStart := 6;
+   ELSIF NOT "DB_Farm".PowerOk THEN
+      #FC_CanStart := 3;
+   ELSIF "DB_Zones".Zone[#Zone].PanelMode <> 0 THEN
+      #FC_CanStart := 2;
+   ELSIF "DB_Farm".Mode = 0 OR NOT "DB_Config".Zone[#Zone].Enabled THEN
+      #FC_CanStart := 1;
+   ELSIF #st >= 1 AND #st <= 5 THEN
+      #FC_CanStart := 7;
+   ELSIF "DB_Farm".ZonesActive >= "DB_Config".MaxConcurrentZones THEN
+      #FC_CanStart := 1;
+   ELSIF "DB_Farm".TankCritical THEN
+      // tank too low: only a zone allowed to run straight from the well may start
+      IF "DB_Config".Zone[#Zone].UsesWellDirect AND "DB_Pumps".Well.Available THEN
+         #FC_CanStart := 0;
+      ELSE
+         #FC_CanStart := 5;
+      END_IF;
+   ELSIF NOT "DB_Pumps".Booster.Available THEN
+      #FC_CanStart := 4;
+   ELSE
+      #FC_CanStart := 0;
+   END_IF;
+END_FUNCTION

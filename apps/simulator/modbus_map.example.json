@@ -1,64 +1,582 @@
 {
-  "_about": "EXAMPLE register map for the Modbus TCP adapter (Milestone G7). Every entry is one 16-bit holding register (hr = 0-based address, as sent on the wire); value = register / scale, signed. The real addresses come from the PLC program. Zone 'index' is the number the PLC uses as the command target. Panel modes: zones 0 auto, 1 on, 2 off; pumps 0 auto, 1 hand, 2 off. ack_status: 1 accepted, 2 rejected. ack_reason codes: 1 interlock, 2 zone_in_manual, 3 no_power, 4 pump_unavailable, 5 tank_low, 6 estop_active, 9 other.",
+  "_about": "Register map for the farm PLC's Modbus TCP server (G5, docs/PLC_PROGRAM.md, plc/src/11_ModbusMap.scl). One 16-bit holding register per value, 0-based address as sent on the wire; value = register / scale, signed. Layout: system 0-19, zone n at 100 + 10*(n-1) for up to 16 zones (100-259), pumps 270 and 280, command 300-307, fallback 318-399. Zone 'index' = the PLC's zone number (command target). Zone 'state' = state + 256 * run source. Panel modes: zones 0 auto, 1 on, 2 off; pumps 0 auto, 1 hand, 2 off. ack_status 1 accepted, 2 rejected; ack_reason codes in apps/simulator/src/adapters/plc_common.py.",
   "host": "192.168.0.10",
   "port": 502,
   "unit": 1,
   "system": {
-    "mode": { "hr": 0 },
-    "estop": { "hr": 1 },
-    "power_ok": { "hr": 2 },
-    "fallback_active": { "hr": 3 },
-    "tank_level_pct": { "hr": 4, "scale": 10 },
-    "main_pressure_bar": { "hr": 5, "scale": 100 },
-    "main_flow_m3h": { "hr": 6, "scale": 100 },
-    "well_level_m": { "hr": 7, "scale": 100 },
-    "filter_dp_bar": { "hr": 8, "scale": 100 }
+    "mode": {
+      "hr": 0
+    },
+    "estop": {
+      "hr": 1
+    },
+    "power_ok": {
+      "hr": 2
+    },
+    "fallback_active": {
+      "hr": 3
+    },
+    "tank_level_pct": {
+      "hr": 4,
+      "scale": 10
+    },
+    "main_pressure_bar": {
+      "hr": 5,
+      "scale": 100
+    },
+    "main_flow_m3h": {
+      "hr": 6,
+      "scale": 100
+    },
+    "well_level_m": {
+      "hr": 7,
+      "scale": 100
+    },
+    "filter_dp_bar": {
+      "hr": 8,
+      "scale": 100
+    },
+    "plc_heartbeat": {
+      "hr": 9
+    },
+    "alarm_word0": {
+      "hr": 10
+    },
+    "alarm_word1": {
+      "hr": 11
+    },
+    "alarm_word2": {
+      "hr": 12
+    },
+    "link_ok": {
+      "hr": 13
+    },
+    "refilling": {
+      "hr": 14
+    }
   },
   "zones": {
     "zone_rumman_1": {
       "index": 1,
-      "running": { "hr": 100 },
-      "valve_open_fb": { "hr": 101 },
-      "flow_m3h": { "hr": 102, "scale": 100 },
-      "pressure_bar": { "hr": 103, "scale": 100 },
-      "moisture_pct": { "hr": 104, "scale": 10 },
-      "panel_mode": { "hr": 105 }
+      "running": {
+        "hr": 100
+      },
+      "valve_open_fb": {
+        "hr": 101
+      },
+      "flow_m3h": {
+        "hr": 102,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 103,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 104,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 105
+      },
+      "state": {
+        "hr": 106
+      },
+      "runtime_sec": {
+        "hr": 107
+      },
+      "target_sec": {
+        "hr": 108
+      },
+      "fault": {
+        "hr": 109
+      }
     },
     "zone_rumman_2": {
       "index": 2,
-      "running": { "hr": 110 },
-      "valve_open_fb": { "hr": 111 },
-      "flow_m3h": { "hr": 112, "scale": 100 },
-      "pressure_bar": { "hr": 113, "scale": 100 },
-      "moisture_pct": { "hr": 114, "scale": 10 },
-      "panel_mode": { "hr": 115 }
+      "running": {
+        "hr": 110
+      },
+      "valve_open_fb": {
+        "hr": 111
+      },
+      "flow_m3h": {
+        "hr": 112,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 113,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 114,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 115
+      },
+      "state": {
+        "hr": 116
+      },
+      "runtime_sec": {
+        "hr": 117
+      },
+      "target_sec": {
+        "hr": 118
+      },
+      "fault": {
+        "hr": 119
+      }
+    },
+    "zone_rumman_3": {
+      "index": 3,
+      "running": {
+        "hr": 120
+      },
+      "valve_open_fb": {
+        "hr": 121
+      },
+      "flow_m3h": {
+        "hr": 122,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 123,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 124,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 125
+      },
+      "state": {
+        "hr": 126
+      },
+      "runtime_sec": {
+        "hr": 127
+      },
+      "target_sec": {
+        "hr": 128
+      },
+      "fault": {
+        "hr": 129
+      }
+    },
+    "zone_rumman_4": {
+      "index": 4,
+      "running": {
+        "hr": 130
+      },
+      "valve_open_fb": {
+        "hr": 131
+      },
+      "flow_m3h": {
+        "hr": 132,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 133,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 134,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 135
+      },
+      "state": {
+        "hr": 136
+      },
+      "runtime_sec": {
+        "hr": 137
+      },
+      "target_sec": {
+        "hr": 138
+      },
+      "fault": {
+        "hr": 139
+      }
+    },
+    "zone_rumman_5": {
+      "index": 5,
+      "running": {
+        "hr": 140
+      },
+      "valve_open_fb": {
+        "hr": 141
+      },
+      "flow_m3h": {
+        "hr": 142,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 143,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 144,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 145
+      },
+      "state": {
+        "hr": 146
+      },
+      "runtime_sec": {
+        "hr": 147
+      },
+      "target_sec": {
+        "hr": 148
+      },
+      "fault": {
+        "hr": 149
+      }
+    },
+    "zone_rumman_6": {
+      "index": 6,
+      "running": {
+        "hr": 150
+      },
+      "valve_open_fb": {
+        "hr": 151
+      },
+      "flow_m3h": {
+        "hr": 152,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 153,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 154,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 155
+      },
+      "state": {
+        "hr": 156
+      },
+      "runtime_sec": {
+        "hr": 157
+      },
+      "target_sec": {
+        "hr": 158
+      },
+      "fault": {
+        "hr": 159
+      }
+    },
+    "zone_rumman_ummahat": {
+      "index": 7,
+      "running": {
+        "hr": 160
+      },
+      "valve_open_fb": {
+        "hr": 161
+      },
+      "flow_m3h": {
+        "hr": 162,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 163,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 164,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 165
+      },
+      "state": {
+        "hr": 166
+      },
+      "runtime_sec": {
+        "hr": 167
+      },
+      "target_sec": {
+        "hr": 168
+      },
+      "fault": {
+        "hr": 169
+      }
+    },
+    "zone_rumman_jadeed": {
+      "index": 8,
+      "running": {
+        "hr": 170
+      },
+      "valve_open_fb": {
+        "hr": 171
+      },
+      "flow_m3h": {
+        "hr": 172,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 173,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 174,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 175
+      },
+      "state": {
+        "hr": 176
+      },
+      "runtime_sec": {
+        "hr": 177
+      },
+      "target_sec": {
+        "hr": 178
+      },
+      "fault": {
+        "hr": 179
+      }
+    },
+    "zone_zaytoun": {
+      "index": 9,
+      "running": {
+        "hr": 180
+      },
+      "valve_open_fb": {
+        "hr": 181
+      },
+      "flow_m3h": {
+        "hr": 182,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 183,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 184,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 185
+      },
+      "state": {
+        "hr": 186
+      },
+      "runtime_sec": {
+        "hr": 187
+      },
+      "target_sec": {
+        "hr": 188
+      },
+      "fault": {
+        "hr": 189
+      }
+    },
+    "zone_zaytoun_2": {
+      "index": 10,
+      "running": {
+        "hr": 190
+      },
+      "valve_open_fb": {
+        "hr": 191
+      },
+      "flow_m3h": {
+        "hr": 192,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 193,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 194,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 195
+      },
+      "state": {
+        "hr": 196
+      },
+      "runtime_sec": {
+        "hr": 197
+      },
+      "target_sec": {
+        "hr": 198
+      },
+      "fault": {
+        "hr": 199
+      }
+    },
+    "zone_enab": {
+      "index": 11,
+      "running": {
+        "hr": 200
+      },
+      "valve_open_fb": {
+        "hr": 201
+      },
+      "flow_m3h": {
+        "hr": 202,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 203,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 204,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 205
+      },
+      "state": {
+        "hr": 206
+      },
+      "runtime_sec": {
+        "hr": 207
+      },
+      "target_sec": {
+        "hr": 208
+      },
+      "fault": {
+        "hr": 209
+      }
+    },
+    "zone_fruit_mix": {
+      "index": 12,
+      "running": {
+        "hr": 210
+      },
+      "valve_open_fb": {
+        "hr": 211
+      },
+      "flow_m3h": {
+        "hr": 212,
+        "scale": 100
+      },
+      "pressure_bar": {
+        "hr": 213,
+        "scale": 100
+      },
+      "moisture_pct": {
+        "hr": 214,
+        "scale": 10
+      },
+      "panel_mode": {
+        "hr": 215
+      },
+      "state": {
+        "hr": 216
+      },
+      "runtime_sec": {
+        "hr": 217
+      },
+      "target_sec": {
+        "hr": 218
+      },
+      "fault": {
+        "hr": 219
+      }
     }
   },
   "pumps": {
     "pump_booster_01": {
-      "run_fb": { "hr": 200 },
-      "fault": { "hr": 201 },
-      "runtime_hours": { "hr": 202 },
-      "panel_mode": { "hr": 203 },
-      "power_kw": { "hr": 204, "scale": 100 },
-      "current_a": { "hr": 205, "scale": 10 }
+      "run_fb": {
+        "hr": 270
+      },
+      "fault": {
+        "hr": 271
+      },
+      "runtime_hours": {
+        "hr": 272
+      },
+      "panel_mode": {
+        "hr": 273
+      },
+      "power_kw": {
+        "hr": 274,
+        "scale": 100
+      },
+      "current_a": {
+        "hr": 275,
+        "scale": 10
+      },
+      "energy_kwh_today": {
+        "hr": 276,
+        "scale": 10
+      }
     },
     "pump_well_01": {
-      "run_fb": { "hr": 210 },
-      "fault": { "hr": 211 },
-      "runtime_hours": { "hr": 212 },
-      "panel_mode": { "hr": 213 },
-      "power_kw": { "hr": 214, "scale": 100 },
-      "current_a": { "hr": 215, "scale": 10 }
+      "run_fb": {
+        "hr": 280
+      },
+      "fault": {
+        "hr": 281
+      },
+      "runtime_hours": {
+        "hr": 282
+      },
+      "panel_mode": {
+        "hr": 283
+      },
+      "power_kw": {
+        "hr": 284,
+        "scale": 100
+      },
+      "current_a": {
+        "hr": 285,
+        "scale": 10
+      },
+      "energy_kwh_today": {
+        "hr": 286,
+        "scale": 10
+      }
     }
   },
   "command": {
-    "seq": { "hr": 300 },
-    "type": { "hr": 301 },
-    "target": { "hr": 302 },
-    "duration_min": { "hr": 303 },
-    "ack_seq": { "hr": 304 },
-    "ack_status": { "hr": 305 },
-    "ack_reason": { "hr": 306 }
+    "seq": {
+      "hr": 300
+    },
+    "type": {
+      "hr": 301
+    },
+    "target": {
+      "hr": 302
+    },
+    "duration_min": {
+      "hr": 303
+    },
+    "ack_seq": {
+      "hr": 304
+    },
+    "ack_status": {
+      "hr": 305
+    },
+    "ack_reason": {
+      "hr": 306
+    },
+    "app_heartbeat": {
+      "hr": 307
+    }
+  },
+  "fallback": {
+    "seq": {
+      "hr": 318
+    },
+    "count": {
+      "hr": 319
+    },
+    "base": 320,
+    "max_runs": 20
   }
 }

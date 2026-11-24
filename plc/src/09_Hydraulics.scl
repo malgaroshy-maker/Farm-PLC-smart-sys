@@ -1,0 +1,121 @@
+// Algaroshy Farm PLC (G5) - water: pump demand, tank refill, zone flow share, protections.
+
+FUNCTION_BLOCK "FB_Hydraulics"
+TITLE = 'Source choice, pump demand, trips, unexpected flow, well dry-run lock-out'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Reset : Bool;
+   END_VAR
+   VAR_OUTPUT
+      Trip : Array[1..16] of Bool;
+      TripCode : Array[1..16] of Int;
+   END_VAR
+   VAR
+      tUnexpected : TON_TIME;
+   END_VAR
+   VAR_TEMP
+      i : Int;
+      st : Int;
+      running : Int;
+      active : Int;
+      anyValve : Bool;
+      boosterDemand : Bool;
+      wellDemand : Bool;
+   END_VAR
+BEGIN
+   REGION Tank
+      "DB_Farm".TankCritical := "DB_Farm".TankLevelPct < "DB_Config".TankCritPct;
+      IF "DB_Farm".TankLevelPct < "DB_Config".RefillStartPct THEN
+         "DB_Farm".Refilling := TRUE;
+      ELSIF "DB_Farm".TankLevelPct >= "DB_Config".RefillStopPct THEN
+         "DB_Farm".Refilling := FALSE;
+      END_IF;
+   END_REGION
+
+   REGION Well dry-run lock-out (ALM-027)
+      IF "DB_Config".WellLevelMaxM > 0.0 AND NOT "DB_Farm".AnalogFault THEN
+         IF "DB_Farm".WellLevelM < "DB_Config".WellDryM THEN
+            "DB_Pumps".Well.Locked := TRUE;
+         ELSIF #Reset AND "DB_Farm".WellLevelM >= "DB_Config".WellRecoverM THEN
+            "DB_Pumps".Well.Locked := FALSE;
+         END_IF;
+      END_IF;
+   END_REGION
+
+   #running := 0;
+   #active := 0;
+   #anyValve := FALSE;
+   #boosterDemand := FALSE;
+   #wellDemand := "DB_Farm".Refilling;
+   FOR #i := 1 TO 16 DO
+      #st := "DB_Zones".Zone[#i].State;
+      IF #st >= 1 AND #st <= 5 THEN
+         #active := #active + 1;
+      END_IF;
+      IF "DB_Zones".Zone[#i].Running THEN
+         #running := #running + 1;
+      END_IF;
+      IF "DB_Zones".Zone[#i].ValveCmd THEN
+         #anyValve := TRUE;
+      END_IF;
+      IF "DB_Zones".Zone[#i].NeedPump THEN
+         IF "DB_Zones".Zone[#i].UsesWell THEN
+            #wellDemand := TRUE;
+         ELSE
+            #boosterDemand := TRUE;
+         END_IF;
+      END_IF;
+   END_FOR;
+   "DB_Farm".ZonesActive := #active;
+   "DB_Pumps".Booster.Demand := #boosterDemand;
+   "DB_Pumps".Well.Demand := #wellDemand;
+
+   REGION Zone flow and pressure (one mainline meter, shared by the open zones)
+      FOR #i := 1 TO 16 DO
+         IF "DB_Zones".Zone[#i].Running AND #running > 0 THEN
+            "DB_Zones".Zone[#i].FlowM3h := "DB_Farm".MainFlowM3h / INT_TO_REAL(#running);
+         ELSE
+            "DB_Zones".Zone[#i].FlowM3h := 0.0;
+         END_IF;
+         IF "DB_Zones".Zone[#i].ValveCmd THEN
+            "DB_Zones".Zone[#i].PressureBar := "DB_Farm".MainPressureBar;
+         ELSE
+            "DB_Zones".Zone[#i].PressureBar := 0.0;
+         END_IF;
+      END_FOR;
+   END_REGION
+
+   REGION Trips per zone
+      FOR #i := 1 TO 16 DO
+         #Trip[#i] := FALSE;
+         #TripCode[#i] := 0;
+         IF "DB_Farm".EStop THEN
+            #Trip[#i] := TRUE;
+            #TripCode[#i] := 41;
+         ELSIF "DB_Zones".Zone[#i].UsesWell THEN
+            IF "DB_Pumps".Well.Locked THEN
+               #Trip[#i] := TRUE;
+               #TripCode[#i] := 27;
+            ELSIF "DB_Pumps".Well.Fault THEN
+               #Trip[#i] := TRUE;
+               #TripCode[#i] := 4;
+            END_IF;
+         ELSE
+            IF "DB_Farm".TankCritical AND "DB_Zones".Zone[#i].RunSource <> 1 THEN
+               #Trip[#i] := TRUE;
+               #TripCode[#i] := 2;
+            ELSIF "DB_Pumps".Booster.Fault THEN
+               #Trip[#i] := TRUE;
+               #TripCode[#i] := 5;
+            END_IF;
+         END_IF;
+      END_FOR;
+   END_REGION
+
+   REGION Unexpected flow (ALM-021): water moving with no valve open (leak or a valve opened by hand)
+      #tUnexpected(IN := NOT #anyValve AND "DB_Farm".MainFlowM3h > "DB_Config".UnexpectedFlowM3h,
+                   PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".UnexpectedFlowS) * 1000));
+      "DB_Farm".UnexpectedFlow := #tUnexpected.Q;
+   END_REGION
+END_FUNCTION_BLOCK

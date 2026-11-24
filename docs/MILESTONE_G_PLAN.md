@@ -58,11 +58,19 @@ Still open: the owner confirms the per-crop soil levels (proposed values are not
 - **Modbus TCP adapter** for cheaper controllers (S7-200 SMART, LOGO!, Delta) and the radio boxes' timed valve commands.
 - Not chosen for now: OPC UA security (certificates and user login), on-farm weather station.
 
-## G5: PLC preparation (design only)
-Owner decisions (2026-11-23): an S7-1500 for now (the hardware research report picks the final CPU); TIA Portal V19 + PLCSIM Advanced, driven through TiaCommander.
-- **OPC UA tag map.** Zones, valves, pumps, tank, flow, pressure, alarms, heartbeat.
-- **PLC data blocks and command handshake.** The cloud/app can never bypass PLC interlocks.
-- **Test plan with PLCSIM Advanced.** See the `tia-portal-openness` skill.
+## G5: PLC program (next)
+Owner decisions (2026-11-23): TIA Portal V19 + PLCSIM Advanced, driven through TiaCommander.
+Owner decisions (2026-11-24):
+- **CPU:** ET 200SP CPU 1512SP-1 PN (the hardware report's pick).
+- **Link to the app:** the PLC serves **both** OPC UA and Modbus TCP; each installation picks one (`CONTROLLER_ADAPTER=opcua|modbus`).
+- **Scope:**
+  - tags, data blocks and the command handshake (the app can never bypass PLC interlocks);
+  - zone and pump logic: sequencing, interlocks, timers, faults and alarms;
+  - G7 field rules in the PLC: panel switches, 30-minute power-cut resume, fallback schedule, well dry-run trip;
+  - a local HMI screen in the control room: **MTP1000 Unified Comfort** (10"), Arabic + English switch.
+- **PLC language:** all SCL.
+- **Zone valves:** designed for both wired outputs and radio boxes over Modbus, chosen per zone in a config DB.
+- **Test:** in PLCSIM Advanced with the app connected through both adapters. See the `tia-portal-openness` skill.
 
 ## G6: Docs refresh ✅ done 2026-11-23 (details in CHANGELOG)
 - `PROJECT_STATUS.md`: the map is now the satellite trace.

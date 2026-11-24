@@ -1,0 +1,164 @@
+// Algaroshy Farm PLC (G5) - Modbus TCP server for the app (CONTROLLER_ADAPTER=modbus).
+// Register layout = apps/simulator/modbus_map.example.json:
+//   0-19 system, zone n at 100 + 10*(n-1) (16 zones: 100-259), pumps 270 and 280,
+//   command 300-307, fallback list 318-319 + runs at 320 + 4*(k-1).
+
+FUNCTION "FC_W" : Word
+TITLE = 'Real x scale -> signed 16-bit register'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Value : Real;
+      Scale : Real;
+   END_VAR
+   VAR_TEMP
+      r : Real;
+   END_VAR
+BEGIN
+   #r := #Value * #Scale;
+   IF #r > 32767.0 THEN
+      #r := 32767.0;
+   ELSIF #r < -32768.0 THEN
+      #r := -32768.0;
+   END_IF;
+   #FC_W := INT_TO_WORD(REAL_TO_INT(#r));
+END_FUNCTION
+
+FUNCTION "FC_B" : Word
+TITLE = 'Bool -> 0/1 register'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Value : Bool;
+   END_VAR
+BEGIN
+   IF #Value THEN
+      #FC_B := 16#0001;
+   ELSE
+      #FC_B := 16#0000;
+   END_IF;
+END_FUNCTION
+
+FUNCTION_BLOCK "FB_ModbusMap"
+TITLE = 'MB_SERVER on port 502 and the register image'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR
+      server : MB_SERVER;
+      conn : TCON_IP_v4;
+      lastFallbackSeq : Word;
+   END_VAR
+   VAR_TEMP
+      i : Int;
+      k : Int;
+      b : Int;
+      n : Int;
+   END_VAR
+BEGIN
+   REGION Server
+      #conn.InterfaceId := "Local~PROFINET_interface_1";   // SET to the CPU's PROFINET interface id
+      #conn.ID := 16#0001;
+      #conn.ConnectionType := 16#0B;                        // TCP
+      #conn.ActiveEstablished := FALSE;                     // passive: the app connects to us
+      #conn.RemotePort := 0;
+      #conn.LocalPort := 502;
+      #server(DISCONNECT := FALSE,
+              MB_HOLD_REG := "DB_Modbus".HR,
+              CONNECT := #conn);
+      IF #server.ERROR THEN
+         "DB_Modbus".ServerError := TRUE;
+         "DB_Modbus".ServerStatus := #server.STATUS;
+      END_IF;
+   END_REGION
+
+   REGION Commands in (from the app) - copied every cycle; the handshake reacts to Seq
+      "DB_Cmd".Mb.Seq := WORD_TO_INT("DB_Modbus".HR[300]);
+      "DB_Cmd".Mb.CmdType := WORD_TO_INT("DB_Modbus".HR[301]);
+      "DB_Cmd".Mb.Target := WORD_TO_INT("DB_Modbus".HR[302]);
+      "DB_Cmd".Mb.DurationMin := WORD_TO_INT("DB_Modbus".HR[303]);
+      "DB_Cmd".Mb.Heartbeat := WORD_TO_INT("DB_Modbus".HR[307]);
+   END_REGION
+
+   REGION Fallback list in: the gateway writes the runs, then bumps register 318
+      IF "DB_Modbus".HR[318] <> #lastFallbackSeq THEN
+         #lastFallbackSeq := "DB_Modbus".HR[318];
+         #n := WORD_TO_INT("DB_Modbus".HR[319]);
+         IF #n > 20 THEN
+            #n := 20;                                       // registers 320-399 hold 20 runs
+         END_IF;
+         FOR #k := 1 TO 48 DO
+            #b := 320 + 4 * (#k - 1);
+            IF #k <= #n THEN
+               "DB_Fallback".Run[#k].ZoneIndex := WORD_TO_INT("DB_Modbus".HR[#b]);
+               "DB_Fallback".Run[#k].StartMinOfDay := WORD_TO_INT("DB_Modbus".HR[#b + 1]);
+               "DB_Fallback".Run[#k].DurationMin := WORD_TO_INT("DB_Modbus".HR[#b + 2]);
+               "DB_Fallback".Run[#k].Weekday := WORD_TO_INT("DB_Modbus".HR[#b + 3]);
+               "DB_Fallback".Run[#k].Valid := "DB_Fallback".Run[#k].ZoneIndex >= 1
+                                              AND "DB_Fallback".Run[#k].ZoneIndex <= 16;
+            ELSE
+               "DB_Fallback".Run[#k].Valid := FALSE;
+            END_IF;
+         END_FOR;
+         "DB_Fallback".Count := #n;
+         "DB_Fallback".LoadSeq := "DB_Fallback".LoadSeq + 1;
+      END_IF;
+   END_REGION
+
+   REGION System 0-19
+      "DB_Modbus".HR[0] := INT_TO_WORD("DB_Farm".Mode);
+      "DB_Modbus".HR[1] := "FC_B"("DB_Farm".EStop);
+      "DB_Modbus".HR[2] := "FC_B"("DB_Farm".PowerOk);
+      "DB_Modbus".HR[3] := "FC_B"("DB_Farm".FallbackActive);
+      "DB_Modbus".HR[4] := "FC_W"(Value := "DB_Farm".TankLevelPct, Scale := 10.0);
+      "DB_Modbus".HR[5] := "FC_W"(Value := "DB_Farm".MainPressureBar, Scale := 100.0);
+      "DB_Modbus".HR[6] := "FC_W"(Value := "DB_Farm".MainFlowM3h, Scale := 100.0);
+      "DB_Modbus".HR[7] := "FC_W"(Value := "DB_Farm".WellLevelM, Scale := 100.0);
+      "DB_Modbus".HR[8] := "FC_W"(Value := "DB_Farm".FilterDpBar, Scale := 100.0);
+      "DB_Modbus".HR[9] := INT_TO_WORD("DB_Farm".Heartbeat);
+      "DB_Modbus".HR[10] := "DB_Alarms".Word0;
+      "DB_Modbus".HR[11] := "DB_Alarms".Word1;
+      "DB_Modbus".HR[12] := "DB_Alarms".Word2;
+      "DB_Modbus".HR[13] := "FC_B"("DB_Farm".LinkOk);
+      "DB_Modbus".HR[14] := "FC_B"("DB_Farm".Refilling);
+   END_REGION
+
+   REGION Zones 100-259
+      FOR #i := 1 TO 16 DO
+         #b := 100 + 10 * (#i - 1);
+         "DB_Modbus".HR[#b] := "FC_B"("DB_Zones".Zone[#i].Running);
+         "DB_Modbus".HR[#b + 1] := "FC_B"("DB_Zones".Zone[#i].ValveOpenFb);
+         "DB_Modbus".HR[#b + 2] := "FC_W"(Value := "DB_Zones".Zone[#i].FlowM3h, Scale := 100.0);
+         "DB_Modbus".HR[#b + 3] := "FC_W"(Value := "DB_Zones".Zone[#i].PressureBar, Scale := 100.0);
+         "DB_Modbus".HR[#b + 4] := "FC_W"(Value := "DB_Zones".Zone[#i].MoisturePct, Scale := 10.0);
+         "DB_Modbus".HR[#b + 5] := INT_TO_WORD("DB_Zones".Zone[#i].PanelMode);
+         "DB_Modbus".HR[#b + 6] := INT_TO_WORD("DB_Zones".Zone[#i].State + 256 * "DB_Zones".Zone[#i].RunSource);
+         "DB_Modbus".HR[#b + 7] := "FC_W"(Value := DINT_TO_REAL("DB_Zones".Zone[#i].RuntimeSec), Scale := 1.0);  // seconds
+         "DB_Modbus".HR[#b + 8] := "FC_W"(Value := DINT_TO_REAL("DB_Zones".Zone[#i].TargetSec), Scale := 1.0);
+         "DB_Modbus".HR[#b + 9] := INT_TO_WORD("DB_Zones".Zone[#i].AlarmCode);  // reported fault (0 = none)
+      END_FOR;
+   END_REGION
+
+   REGION Pumps 270 (booster) and 280 (well)
+      "DB_Modbus".HR[270] := "FC_B"("DB_Pumps".Booster.RunFb);
+      "DB_Modbus".HR[271] := "FC_B"("DB_Pumps".Booster.Fault OR "DB_Pumps".Booster.FailedStart);
+      "DB_Modbus".HR[272] := "FC_W"(Value := "DB_Pumps".Booster.RuntimeHours, Scale := 1.0);
+      "DB_Modbus".HR[273] := INT_TO_WORD("DB_Pumps".Booster.PanelMode);
+      "DB_Modbus".HR[274] := "FC_W"(Value := "DB_Pumps".Booster.PowerKw, Scale := 100.0);
+      "DB_Modbus".HR[275] := "FC_W"(Value := "DB_Pumps".Booster.CurrentA, Scale := 10.0);
+      "DB_Modbus".HR[276] := "FC_W"(Value := "DB_Pumps".Booster.EnergyKwhToday, Scale := 10.0);
+      "DB_Modbus".HR[280] := "FC_B"("DB_Pumps".Well.RunFb);
+      "DB_Modbus".HR[281] := "FC_B"("DB_Pumps".Well.Fault OR "DB_Pumps".Well.FailedStart);
+      "DB_Modbus".HR[282] := "FC_W"(Value := "DB_Pumps".Well.RuntimeHours, Scale := 1.0);
+      "DB_Modbus".HR[283] := INT_TO_WORD("DB_Pumps".Well.PanelMode);
+      "DB_Modbus".HR[284] := "FC_W"(Value := "DB_Pumps".Well.PowerKw, Scale := 100.0);
+      "DB_Modbus".HR[285] := "FC_W"(Value := "DB_Pumps".Well.CurrentA, Scale := 10.0);
+      "DB_Modbus".HR[286] := "FC_W"(Value := "DB_Pumps".Well.EnergyKwhToday, Scale := 10.0);
+      "DB_Modbus".HR[287] := "FC_B"("DB_Pumps".Well.Locked);
+   END_REGION
+
+   REGION Acknowledgement out (AckSeq last, as the adapter waits for it)
+      "DB_Modbus".HR[305] := INT_TO_WORD("DB_Cmd".Mb.AckStatus);
+      "DB_Modbus".HR[306] := INT_TO_WORD("DB_Cmd".Mb.AckReason);
+      "DB_Modbus".HR[304] := INT_TO_WORD("DB_Cmd".Mb.AckSeq);
+   END_REGION
+END_FUNCTION_BLOCK

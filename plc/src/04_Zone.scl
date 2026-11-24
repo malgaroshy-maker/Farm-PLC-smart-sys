@@ -1,0 +1,189 @@
+// Algaroshy Farm PLC (G5) - one irrigation zone (used 16 times as a multi-instance).
+// States follow the app: 0 off, 1 starting_pump, 2 opening_valve, 3 validating_flow, 4 running,
+// 5 stopping, 6 completed, 7 faulted, 8 interrupted.
+
+FUNCTION_BLOCK "FB_Zone"
+TITLE = 'Zone state machine'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      ZoneIndex : Int;
+      Tick1s : Bool;
+      Trip : Bool;              // a protection stops this zone now
+      TripCode : Int;           // alarm number for the fault
+      PumpRunning : Bool;       // the pump this run needs is running
+      PumpFailed : Bool;        // ... failed to start or tripped
+      PumpFailCode : Int;
+   END_VAR
+   VAR
+      s : "UDT_ZoneState";
+      c : "UDT_ZoneCfg";
+      lastState : Int;
+      lastPanel : Int;
+      tValve : TON_TIME;
+      tValidate : TON_TIME;
+      tBand : TON_TIME;
+      tFault : TON_TIME;
+   END_VAR
+   VAR_TEMP
+      entered : Bool;
+      idle : Bool;
+      outBand : Bool;
+   END_VAR
+BEGIN
+   #s := "DB_Zones".Zone[#ZoneIndex];
+   #c := "DB_Config".Zone[#ZoneIndex];
+
+   IF #ZoneIndex > "DB_Config".ZoneCount THEN
+      #s.State := 0;
+      #s.ValveCmd := FALSE;
+      #s.NeedPump := FALSE;
+      #s.Running := FALSE;
+      #s.ReqStart := FALSE;
+      #s.ReqStop := FALSE;
+      "DB_Zones".Zone[#ZoneIndex] := #s;
+      RETURN;
+   END_IF;
+
+   REGION Protection trips
+      IF #Trip AND #s.State >= 1 AND #s.State <= 5 THEN
+         #s.State := 7;
+         #s.FaultCode := #TripCode;
+      END_IF;
+   END_REGION
+
+   REGION Panel switch (G7)
+      #idle := #s.State = 0 OR #s.State >= 6;
+      // OFF holds the valve closed
+      IF #s.PanelMode = 2 AND #s.State >= 1 AND #s.State <= 4 THEN
+         #s.State := 5;
+      END_IF;
+      // ON runs the zone with no time limit; after a fault it restarts only when the switch is moved again
+      IF #s.PanelMode = 1 AND #idle AND NOT #Trip AND (#s.State <> 7 OR #lastPanel <> 1) THEN
+         #s.ReqStart := TRUE;
+         #s.ReqSource := 1;
+         #s.ReqDurationSec := 0;
+      END_IF;
+      // back to AUTO ends a panel run
+      IF #s.RunSource = 1 AND #s.PanelMode = 0 AND #s.State >= 1 AND #s.State <= 4 THEN
+         #s.State := 5;
+      END_IF;
+   END_REGION
+
+   REGION Requests
+      IF #s.ReqStop THEN
+         IF #s.RunSource <> 1 AND #s.State >= 1 AND #s.State <= 4 THEN
+            #s.State := 5;
+         END_IF;
+         #s.ReqStop := FALSE;
+      END_IF;
+      IF #s.ReqStart THEN
+         #idle := #s.State = 0 OR #s.State >= 6;
+         IF #idle AND NOT #Trip AND #c.Enabled THEN
+            #s.TargetSec := #s.ReqDurationSec;
+            #s.RuntimeSec := 0;
+            #s.RunSource := #s.ReqSource;
+            #s.FaultCode := 0;
+            #s.UsesWell := "DB_Farm".TankCritical AND #c.UsesWellDirect;
+            #s.StartsToday := #s.StartsToday + 1;
+            #s.State := 1;
+         END_IF;
+         #s.ReqStart := FALSE;
+      END_IF;
+   END_REGION
+
+   #entered := #s.State <> #lastState;
+   #lastState := #s.State;
+
+   REGION State machine
+      CASE #s.State OF
+         1:  // starting_pump
+            #s.NeedPump := TRUE;
+            #s.ValveCmd := FALSE;
+            IF #PumpFailed THEN
+               #s.State := 7;
+               #s.FaultCode := #PumpFailCode;
+            ELSIF #PumpRunning THEN
+               #s.State := 2;
+            END_IF;
+
+         2:  // opening_valve
+            #s.NeedPump := TRUE;
+            #s.ValveCmd := TRUE;
+            #tValve(IN := NOT #entered, PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".ValveTravelS) * 1000));
+            IF #tValve.Q THEN
+               #s.State := 3;
+            END_IF;
+
+         3:  // validating_flow
+            #s.NeedPump := TRUE;
+            #s.ValveCmd := TRUE;
+            #tValidate(IN := NOT #entered, PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".FlowValidateS) * 1000));
+            IF #s.FlowM3h >= #c.FlowMinM3h AND #s.PressureBar >= #c.PressMinBar THEN
+               #s.State := 4;
+            ELSIF #tValidate.Q THEN
+               #s.State := 7;
+               #s.FaultCode := 12;                     // ALM-012 no flow
+            END_IF;
+
+         4:  // running
+            #s.NeedPump := TRUE;
+            #s.ValveCmd := TRUE;
+            #outBand := #s.FlowM3h < #c.FlowMinM3h OR #s.FlowM3h > #c.FlowMaxM3h
+                        OR #s.PressureBar < #c.PressMinBar OR #s.PressureBar > #c.PressMaxBar;
+            #tBand(IN := #outBand AND NOT #entered, PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".BandTripS) * 1000));
+            IF #tBand.Q THEN
+               #s.State := 7;
+               IF #s.FlowM3h < #c.FlowMinM3h THEN
+                  #s.FaultCode := 12;                  // no flow
+               ELSIF #s.FlowM3h > #c.FlowMaxM3h THEN
+                  #s.FaultCode := 13;                  // high flow / leak
+               ELSIF #s.PressureBar < #c.PressMinBar THEN
+                  #s.FaultCode := 8;                   // low pressure
+               ELSE
+                  #s.FaultCode := 10;                  // high pressure
+               END_IF;
+            ELSIF #s.TargetSec > 0 AND #s.RuntimeSec >= #s.TargetSec THEN
+               #s.State := 5;                          // done
+            ELSIF #s.RunSource <> 1 AND #s.RuntimeSec >= INT_TO_DINT(#c.MaxRuntimeMin) * 60 THEN
+               #s.State := 5;                          // max runtime guard
+            END_IF;
+
+         5:  // stopping: close the valve, wait for travel, release the pump
+            #s.ValveCmd := FALSE;
+            #s.NeedPump := TRUE;
+            #tValve(IN := NOT #entered, PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".ValveTravelS) * 1000));
+            IF #tValve.Q THEN
+               #s.NeedPump := FALSE;
+               #s.State := 6;
+            END_IF;
+
+      ELSE  // 0 off, 6 completed, 7 faulted, 8 interrupted
+         #s.ValveCmd := FALSE;
+         #s.NeedPump := FALSE;
+      END_CASE;
+   END_REGION
+
+   // runtime counts while water flows (validating + running)
+   #s.Running := #s.State = 3 OR #s.State = 4;
+   IF #s.Running AND #Tick1s THEN
+      #s.RuntimeSec := #s.RuntimeSec + 1;
+   END_IF;
+   IF #s.State = 7 THEN
+      #s.ValveCmd := FALSE;
+      #s.NeedPump := FALSE;
+   END_IF;
+   // report the fault to the app for FaultHoldS (it latches the alarm), then stop reporting it
+   #tFault(IN := #s.State = 7 AND NOT #entered, PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".FaultHoldS) * 1000));
+   IF #s.State = 7 AND NOT #tFault.Q THEN
+      #s.AlarmCode := #s.FaultCode;
+   ELSE
+      #s.AlarmCode := 0;
+   END_IF;
+   IF #c.ValveKind = 0 THEN
+      #s.ValveOpenFb := #s.ValveCmd;                    // no limit switch on wired valves
+   END_IF;
+
+   #lastPanel := #s.PanelMode;
+   "DB_Zones".Zone[#ZoneIndex] := #s;
+END_FUNCTION_BLOCK

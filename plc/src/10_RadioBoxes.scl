@@ -1,0 +1,146 @@
+// Algaroshy Farm PLC (G5) - radio valve boxes and energy meters on RS-485 (Modbus RTU master).
+// The radio boxes are LoRa-to-RS-485 relay boards (hardware report). Each zone valve on a box gets a
+// holding register "on-time in seconds" (register = coil number). The PLC refreshes it every
+// RadioRefreshS while the valve should be open, so if the radio or the PLC stops, the box closes
+// the valve by itself after RadioOnTimeS. ADAPT the register layout to the board that is bought.
+
+FUNCTION_BLOCK "FB_RadioBoxes"
+TITLE = 'Modbus RTU round robin: radio valve commands, energy meter reads'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Tick1s : Bool;
+   END_VAR
+   VAR
+      mbLoad : Modbus_Comm_Load;
+      mbMaster : Modbus_Master;
+      loaded : Bool;
+      loadReq : Bool;
+      busy : Bool;
+      req : Bool;
+      job : Int;                         // 1..16 zones, 17 booster meter, 18 well meter
+      jobIsValve : Bool;
+      lastCmd : Array[1..16] of Bool;    // valve command last sent
+      ageSec : Array[1..16] of Int;      // seconds since that zone's box was refreshed
+      buf : Array[1..2] of Word;
+      errors : DInt;
+   END_VAR
+   VAR_TEMP
+      i : Int;
+      n : Int;
+      found : Bool;
+      addr : Int;
+   END_VAR
+BEGIN
+   REGION Port set-up (once; again after an error)
+      IF NOT #loaded THEN
+         #mbLoad(REQ := #loadReq,
+                 PORT := "Local~CM_PtP_1",              // SET to the CM PtP hardware identifier
+                 BAUD := "DB_Config".RadioBaud,
+                 PARITY := 0,
+                 RESP_TO := 2000,                       // LoRa hops are slow
+                 MB_DB := #mbMaster.MB_DB);
+         #loadReq := NOT #loadReq;
+         IF #mbLoad.DONE THEN
+            #loaded := TRUE;
+         END_IF;
+         RETURN;
+      END_IF;
+   END_REGION
+
+   IF #Tick1s THEN
+      FOR #i := 1 TO 16 DO
+         IF #ageSec[#i] < 30000 THEN
+            #ageSec[#i] := #ageSec[#i] + 1;
+         END_IF;
+      END_FOR;
+   END_IF;
+
+   REGION Pick the next job when idle
+      IF NOT #busy THEN
+         #found := FALSE;
+         FOR #n := 1 TO 18 DO
+            #job := #job + 1;
+            IF #job > 18 THEN
+               #job := 1;
+            END_IF;
+            IF #job <= 16 THEN
+               IF "DB_Config".Zone[#job].ValveKind = 1 AND "DB_Config".Zone[#job].RadioBox > 0 THEN
+                  // send on a change, or refresh an open valve before its on-timer runs out
+                  IF "DB_Zones".Zone[#job].ValveCmd <> #lastCmd[#job]
+                     OR ("DB_Zones".Zone[#job].ValveCmd AND #ageSec[#job] >= "DB_Config".RadioRefreshS) THEN
+                     #found := TRUE;
+                  END_IF;
+               END_IF;
+            ELSIF #Tick1s THEN
+               #found := (#job = 17 AND "DB_Config".BoosterMeterAddr > 0)
+                         OR (#job = 18 AND "DB_Config".WellMeterAddr > 0);
+            END_IF;
+            IF #found THEN
+               EXIT;
+            END_IF;
+         END_FOR;
+         IF #found THEN
+            #busy := TRUE;
+            #req := TRUE;
+            #jobIsValve := #job <= 16;
+            IF #jobIsValve THEN
+               IF "DB_Zones".Zone[#job].ValveCmd THEN
+                  #buf[1] := INT_TO_WORD("DB_Config".RadioOnTimeS);
+               ELSE
+                  #buf[1] := 16#0000;
+               END_IF;
+            END_IF;
+         END_IF;
+      END_IF;
+   END_REGION
+
+   REGION Run the job
+      IF #busy THEN
+         IF #jobIsValve THEN
+            #mbMaster(REQ := #req,
+                      MB_ADDR := INT_TO_UINT("DB_Config".Zone[#job].RadioBox),
+                      MODE := 1,                                           // write
+                      DATA_ADDR := INT_TO_UDINT(40000 + "DB_Config".Zone[#job].RadioCoil),
+                      DATA_LEN := 1,
+                      DATA_PTR := #buf);
+         ELSE
+            IF #job = 17 THEN
+               #addr := "DB_Config".BoosterMeterAddr;
+            ELSE
+               #addr := "DB_Config".WellMeterAddr;
+            END_IF;
+            #mbMaster(REQ := #req,
+                      MB_ADDR := INT_TO_UINT(#addr),
+                      MODE := 0,                                           // read kW x100, A x10
+                      DATA_ADDR := 40001,
+                      DATA_LEN := 2,
+                      DATA_PTR := #buf);
+         END_IF;
+         #req := FALSE;
+
+         IF #mbMaster.DONE THEN
+            IF #jobIsValve THEN
+               #lastCmd[#job] := "DB_Zones".Zone[#job].ValveCmd;
+               #ageSec[#job] := 0;
+               "DB_Zones".Zone[#job].ValveOpenFb := #lastCmd[#job];
+            ELSIF #job = 17 THEN
+               "DB_Pumps".Booster.PowerKw := INT_TO_REAL(WORD_TO_INT(#buf[1])) / 100.0;
+               "DB_Pumps".Booster.CurrentA := INT_TO_REAL(WORD_TO_INT(#buf[2])) / 10.0;
+            ELSE
+               "DB_Pumps".Well.PowerKw := INT_TO_REAL(WORD_TO_INT(#buf[1])) / 100.0;
+               "DB_Pumps".Well.CurrentA := INT_TO_REAL(WORD_TO_INT(#buf[2])) / 10.0;
+            END_IF;
+            #busy := FALSE;
+         ELSIF #mbMaster.ERROR THEN
+            #errors := #errors + 1;
+            "DB_Modbus".RtuError := TRUE;
+            "DB_Modbus".RtuStatus := #mbMaster.STATUS;
+            IF #jobIsValve THEN
+               "DB_Zones".Zone[#job].ValveOpenFb := FALSE;  // unconfirmed: no flow -> zone faults on its own
+            END_IF;
+            #busy := FALSE;
+         END_IF;
+      END_IF;
+   END_REGION
+END_FUNCTION_BLOCK

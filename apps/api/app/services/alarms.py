@@ -348,6 +348,18 @@ class AlarmEngine:
         ):
             if after_cutoff(zone_id, at):
                 failed[zone_id] = failed.get(zone_id, 0) + 1
+        # A PLC accepts a start and reports the fault later (the command itself completes), so
+        # also count the zone's runs that ended faulted (G5: same rule for every controller).
+        from app.models.irrigation_cycle import IrrigationCycle
+
+        for zone_id, at in await db.execute(
+            select(IrrigationCycle.zone_id, IrrigationCycle.actual_start_at).where(
+                IrrigationCycle.outcome == "faulted",
+                IrrigationCycle.actual_start_at >= since,
+            )
+        ):
+            if after_cutoff(zone_id, at):
+                failed[zone_id] = failed.get(zone_id, 0) + 1
         for zone_id, n in failed.items():
             counts[zone_id] = max(counts.get(zone_id, 0), n)
         for zone_id, count in counts.items():

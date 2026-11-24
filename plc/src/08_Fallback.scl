@@ -1,0 +1,64 @@
+// Algaroshy Farm PLC (G5) - fallback program (G7): the next 24 h of runs, written by the gateway,
+// started by the PLC itself while the app is unreachable.
+
+FUNCTION_BLOCK "FB_Fallback"
+TITLE = 'Run the stored schedule while the app link is down'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Active : Bool;            // "DB_Farm".FallbackActive
+      Tick1s : Bool;
+   END_VAR
+   VAR_TEMP
+      k : Int;
+      z : Int;
+      now : DTL;
+      ret : Int;
+      minOfDay : Int;
+      endMin : Int;
+      inWindow : Bool;
+   END_VAR
+BEGIN
+   #ret := RD_LOC_T(#now);
+
+   // a new list from the gateway: forget which runs were started
+   IF "DB_Fallback".LoadSeq <> "DB_Fallback".LoadedSeq THEN
+      "DB_Fallback".LoadedSeq := "DB_Fallback".LoadSeq;
+      FOR #k := 1 TO 48 DO
+         "DB_Fallback".Run[#k].Done := FALSE;
+      END_FOR;
+      IF #ret = 0 THEN
+         "DB_Fallback".LoadedAt := #now;
+      END_IF;
+   END_IF;
+
+   IF NOT #Tick1s OR #ret <> 0 THEN
+      RETURN;
+   END_IF;
+   #minOfDay := USINT_TO_INT(#now.HOUR) * 60 + USINT_TO_INT(#now.MINUTE);
+
+   FOR #k := 1 TO 48 DO
+      IF #k > "DB_Fallback".Count THEN
+         EXIT;
+      END_IF;
+      IF "DB_Fallback".Run[#k].Valid AND NOT "DB_Fallback".Run[#k].Done
+         AND USINT_TO_INT(#now.WEEKDAY) = "DB_Fallback".Run[#k].Weekday THEN
+         #endMin := "DB_Fallback".Run[#k].StartMinOfDay + "DB_Fallback".Run[#k].DurationMin;
+         #inWindow := #minOfDay >= "DB_Fallback".Run[#k].StartMinOfDay AND #minOfDay < #endMin;
+         IF #inWindow THEN
+            IF NOT #Active THEN
+               // the app is alive and runs its own schedule: never double-run this one
+               "DB_Fallback".Run[#k].Done := TRUE;
+            ELSE
+               #z := "DB_Fallback".Run[#k].ZoneIndex;
+               IF "FC_CanStart"(#z) = 0 THEN
+                  "DB_Zones".Zone[#z].ReqStart := TRUE;
+                  "DB_Zones".Zone[#z].ReqSource := 2;          // fallback
+                  "DB_Zones".Zone[#z].ReqDurationSec := INT_TO_DINT(#endMin - #minOfDay) * 60;
+                  "DB_Fallback".Run[#k].Done := TRUE;
+               END_IF;                                         // else try again next second
+            END_IF;
+         END_IF;
+      END_IF;
+   END_FOR;
+END_FUNCTION_BLOCK

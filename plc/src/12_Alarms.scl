@@ -1,0 +1,97 @@
+// Algaroshy Farm PLC (G5) - alarm bits. Numbers = the app's catalog (ALM-0nn), so the app, the HMI
+// and the PLC name every alarm the same way.
+
+FUNCTION_BLOCK "FB_Alarms"
+TITLE = 'Set alarm bits, handle reset, pack bits for Modbus and the HMI'
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_TEMP
+      i : Int;
+      code : Int;
+      manual : Bool;
+      w0 : Word;
+      w1 : Word;
+      w2 : Word;
+   END_VAR
+BEGIN
+   FOR #i := 1 TO 48 DO
+      "DB_Alarms".Active[#i] := FALSE;
+   END_FOR;
+
+   REGION Reset (from any command channel)
+      IF "DB_Cmd".ResetReq THEN
+         FOR #i := 1 TO 48 DO
+            "DB_Alarms".Latched[#i] := FALSE;
+         END_FOR;
+         FOR #i := 1 TO 16 DO
+            IF "DB_Zones".Zone[#i].State = 7 THEN
+               "DB_Zones".Zone[#i].State := 0;
+               "DB_Zones".Zone[#i].FaultCode := 0;
+            END_IF;
+         END_FOR;
+      END_IF;
+   END_REGION
+
+   REGION Conditions
+      "DB_Alarms".Active[1] := "DB_Farm".TankLevelPct < "DB_Config".TankWarnPct AND NOT "DB_Farm".TankCritical;
+      "DB_Alarms".Active[2] := "DB_Farm".TankCritical;
+      "DB_Alarms".Active[3] := "DB_Farm".AnalogFault;
+      "DB_Alarms".Active[4] := "DB_Pumps".Well.Fault;
+      "DB_Alarms".Active[5] := "DB_Pumps".Booster.Fault;
+      "DB_Alarms".Active[6] := "DB_Pumps".Booster.FailedStart;
+      "DB_Alarms".Active[7] := "DB_Pumps".Well.FailedStart;
+      "DB_Alarms".Active[21] := "DB_Farm".UnexpectedFlow;
+      "DB_Alarms".Active[27] := "DB_Pumps".Well.Locked;
+      "DB_Alarms".Active[29] := NOT "DB_Farm".LinkOk;
+      "DB_Alarms".Active[33] := NOT "DB_Farm".PowerOk;
+      "DB_Alarms".Active[39] := "DB_Farm".FilterDpBar > "DB_Config".FilterDpAlarmBar;
+      "DB_Alarms".Active[41] := "DB_Farm".EStop;
+      "DB_Alarms".Active[43] := "DB_Farm".Mode = 3;
+      #manual := "DB_Pumps".Booster.PanelMode <> 0 OR "DB_Pumps".Well.PanelMode <> 0;
+      FOR #i := 1 TO 16 DO
+         IF "DB_Zones".Zone[#i].PanelMode <> 0 AND #i <= "DB_Config".ZoneCount THEN
+            #manual := TRUE;
+         END_IF;
+         // a zone fault is reported while AlarmCode holds it (FB_Zone); the app latches it
+         #code := "DB_Zones".Zone[#i].AlarmCode;
+         IF #code >= 1 AND #code <= 48 THEN
+            "DB_Alarms".Active[#code] := TRUE;
+         END_IF;
+      END_FOR;
+      "DB_Alarms".Active[42] := #manual;
+   END_REGION
+
+   REGION Latch the critical ones (E-stop, dry run, tank critical, pump trips)
+      FOR #i := 1 TO 48 DO
+         IF "DB_Alarms".Active[#i] AND (#i = 2 OR #i = 4 OR #i = 5 OR #i = 27 OR #i = 41) THEN
+            "DB_Alarms".Latched[#i] := TRUE;
+         END_IF;
+      END_FOR;
+   END_REGION
+
+   REGION Pack bits: Word0 = ALM 1-16, Word1 = 17-32, Word2 = 33-48 (bit 0 = lowest number)
+      // Only LIVE conditions go to the app: it latches alarms itself and lets an admin reset them
+      // once the cause is gone. The PLC's own latch is for the beacon and the HMI.
+      #w0 := 16#0000;
+      #w1 := 16#0000;
+      #w2 := 16#0000;
+      "DB_Alarms".AnyActive := FALSE;
+      FOR #i := 1 TO 48 DO
+         IF "DB_Alarms".Active[#i] OR "DB_Alarms".Latched[#i] THEN
+            "DB_Alarms".AnyActive := TRUE;
+         END_IF;
+         IF "DB_Alarms".Active[#i] THEN
+            IF #i <= 16 THEN
+               #w0 := #w0 OR SHL(IN := WORD#16#0001, N := INT_TO_USINT(#i - 1));
+            ELSIF #i <= 32 THEN
+               #w1 := #w1 OR SHL(IN := WORD#16#0001, N := INT_TO_USINT(#i - 17));
+            ELSE
+               #w2 := #w2 OR SHL(IN := WORD#16#0001, N := INT_TO_USINT(#i - 33));
+            END_IF;
+         END_IF;
+      END_FOR;
+      "DB_Alarms".Word0 := #w0;
+      "DB_Alarms".Word1 := #w1;
+      "DB_Alarms".Word2 := #w2;
+   END_REGION
+END_FUNCTION_BLOCK

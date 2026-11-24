@@ -1,0 +1,96 @@
+// Algaroshy Farm PLC (G5) - PLC data types. Import: External source files -> Generate blocks.
+// Design: docs/PLC_PROGRAM.md. Order of import: 01_Types, 02_Data, then the .scl files.
+
+TYPE "UDT_ZoneCfg"
+VERSION : 0.1
+   STRUCT
+      Id : String[24];               // app zone id, e.g. 'zone_rumman_1' (OPC UA commands name zones by id)
+      Enabled : Bool;
+      ValveKind : Int;               // 0 = wired output, 1 = radio box (Modbus RTU)
+      RadioBox : Int;                // radio box Modbus address (ValveKind = 1)
+      RadioCoil : Int;               // relay / coil number inside the box (1..)
+      UsesWellDirect : Bool;         // may run straight from the well when the tank is critical
+      MaxRuntimeMin : Int := 120;
+      FlowMinM3h : Real := 1.0;
+      FlowMaxM3h : Real := 30.0;
+      PressMinBar : Real := 0.8;
+      PressMaxBar : Real := 4.5;
+   END_STRUCT;
+END_TYPE
+
+TYPE "UDT_ZoneState"
+VERSION : 0.1
+   STRUCT
+      State : Int;                   // 0 off, 1 starting_pump, 2 opening_valve, 3 validating_flow, 4 running,
+                                     // 5 stopping, 6 completed, 7 faulted, 8 interrupted (same names as the app)
+      RunSource : Int;               // 0 app, 1 panel, 2 fallback, 3 resume, 4 hmi
+      TargetSec : DInt;              // 0 = no limit (panel switch ON)
+      RuntimeSec : DInt;
+      StartsToday : Int;
+      FlowM3h : Real;
+      PressureBar : Real;
+      MoisturePct : Real;            // soil probes reach the app directly (G7); kept for the map
+      PanelMode : Int;               // 0 auto, 1 on, 2 off (3-position selector)
+      FaultCode : Int;               // alarm number that faulted the zone (e.g. 12 = ALM-012); kept for display
+      AlarmCode : Int;               // = FaultCode while the fault is reported to the app (FaultHoldS), else 0.
+                                     // The app latches alarms itself and lets an admin reset them only once the
+                                     // controller stops reporting the cause, so the PLC must not hold it forever.
+      ValveCmd : Bool;               // valve should be open (wired DQ or radio box)
+      ValveOpenFb : Bool;
+      NeedPump : Bool;
+      UsesWell : Bool;               // this run is fed straight from the well
+      Running : Bool;                // watering now (validating_flow or running)
+      // requests from the command channels / fallback / power logic (handled by FB_Zone)
+      ReqStart : Bool;
+      ReqStop : Bool;
+      ReqDurationSec : DInt;
+      ReqSource : Int;
+   END_STRUCT;
+END_TYPE
+
+TYPE "UDT_Pump"
+VERSION : 0.1
+   STRUCT
+      Demand : Bool;                 // logic wants the pump on
+      CmdStart : Bool;               // output to the starter / drive
+      RunFb : Bool;
+      Fault : Bool;                  // starter / overload / drive fault input
+      FailedStart : Bool;            // no run feedback in time (latched until alarm reset)
+      Locked : Bool;                 // e.g. well dry-run lock-out
+      PanelMode : Int;               // 0 auto, 1 hand, 2 off
+      Available : Bool;              // can be used for a new start
+      RuntimeHours : Real;
+      PowerKw : Real;                // from the energy meter (Modbus RTU)
+      CurrentA : Real;
+      EnergyKwhToday : Real;
+   END_STRUCT;
+END_TYPE
+
+TYPE "UDT_Run"
+VERSION : 0.1
+   STRUCT
+      ZoneIndex : Int;               // 1..16
+      StartMinOfDay : Int;           // 0..1439, PLC local time
+      DurationMin : Int;
+      Weekday : Int;                 // 1 = Sunday .. 7 = Saturday (DTL convention)
+      Valid : Bool;
+      Done : Bool;                   // started once (cleared on each new load)
+   END_STRUCT;
+END_TYPE
+
+TYPE "UDT_CmdChannel"
+VERSION : 0.1
+   STRUCT
+      Seq : Int;                     // writer increments it LAST
+      CmdType : Int;                    // 1 start_zone, 2 stop_zone, 3 stop_all, 4 reset_alarm
+      Target : Int;                  // zone index 1..16 (Modbus, HMI)
+      TargetId : String[24];         // or the zone id (OPC UA adapter); used when Target = 0
+      DurationMin : Int;
+      AckSeq : Int;                  // = Seq once the PLC has decided
+      AckStatus : Int;               // 1 accepted, 2 rejected
+      AckReason : Int;               // 0 none, 1 interlock, 2 zone_in_manual, 3 no_power, 4 pump_unavailable,
+                                     // 5 tank_low, 6 estop_active, 7 already_running, 8 bad_target, 9 other
+      AckReasonText : String[32];
+      Heartbeat : Int;               // the app changes it on every push (link watchdog)
+   END_STRUCT;
+END_TYPE

@@ -112,3 +112,5 @@ design/satellite/*.tif
 # Farm server (G7): launcher logs and database backups
 logs/
 apps/api/backups/
+tools/tia/*.exe
+!plc/src/*.db

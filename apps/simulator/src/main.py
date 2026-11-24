@@ -39,6 +39,7 @@ async def run_simulator():
 
     # Which controller is on the farm side (Milestone G3): simulator (default), opcua or modbus (G7)
     kind = os.getenv("CONTROLLER_ADAPTER", "simulator").strip().lower()
+    extra_tasks = []
     if kind == "opcua":
         from .adapters.opcua_adapter import OpcUaAdapter, load_tagmap
 
@@ -54,9 +55,31 @@ async def run_simulator():
         map_path = os.getenv("MODBUS_MAP", "")
         if not map_path:
             raise SystemExit("CONTROLLER_ADAPTER=modbus needs MODBUS_MAP=<register map json>")
-        adapter = ModbusAdapter(load_map(map_path))
+        regmap = load_map(map_path)
+        if os.getenv("VIRTUAL_PLC", "").strip() in ("1", "true", "yes"):
+            # G5: no PLC yet -> the simulator plays the PLC behind the same Modbus registers
+            from .virtual_plc import VirtualPlantGateway, VirtualPlc
+
+            vplc = VirtualPlc(engine, regmap)
+            port = await vplc.start("127.0.0.1", int(os.getenv("VIRTUAL_PLC_PORT", "1502")))
+            regmap["host"], regmap["port"] = "127.0.0.1", port
+            plant = APIClient(engine, base_url=api_url, token=token, initial_timescale=time_scale)
+
+            async def plant_loop():
+                while not await plant.fetch_initial_layout():  # the farm's layout and clock
+                    await asyncio.sleep(2.0)
+                await plant.sync_clock()
+                plant.running = True  # ws_loop only listens while running: speed/pause/jump follow
+                await asyncio.gather(plant.ws_loop(), vplc.run_loop())
+
+            extra_tasks.append(plant_loop())
+            adapter = VirtualPlantGateway(regmap, engine)
+            print(f"[VPLC] Virtual PLC on 127.0.0.1:{port} (Modbus TCP)")
+            run_engine = True
+        else:
+            adapter = ModbusAdapter(regmap)
+            run_engine = False
         client = APIClient(adapter, base_url=api_url, token=token)
-        run_engine = False
     else:
         client = APIClient(engine, base_url=api_url, token=token, initial_timescale=time_scale)
         run_engine = True
@@ -67,6 +90,7 @@ async def run_simulator():
     tasks = [loop.create_task(client.run_loop())]
     if run_engine:
         tasks.append(loop.create_task(engine.run_loop()))
+    tasks += [loop.create_task(t) for t in extra_tasks]
 
     def shutdown_signal(sig):
         print(f"Received exit signal {sig}...")
