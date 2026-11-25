@@ -112,7 +112,8 @@ def field(name, left, top, width, height, tag, fmt=None, color=TEXT, size=22, al
     h("set", f"{path}.ProcessValue", "0")  # design-time text only; the value comes from the tag
     dyn_tag(path, "ProcessValue", tag)
     if fmt:
-        h("set", f"{path}.OutputFormat", fmt)
+        # Unified syntax (read from a field formatted in TIA): {F0} whole numbers, {F1} one decimal, ...
+        h("set", f"{path}.OutputFormat", "{F%d}" % (len(fmt.split(".")[1]) if "." in fmt else 0))
     return path
 
 
