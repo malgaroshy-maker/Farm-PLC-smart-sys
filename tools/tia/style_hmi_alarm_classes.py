@@ -8,13 +8,13 @@ import sys
 import build_hmi as b
 
 CRIT = {  # state -> (back, text, flashing)
-    "RaisedState": ("#472D35", "#FFACAC", "true"),
+    "RaisedState": ("#472D35", "#FFACAC", "false"),
     "ClearedState": ("#3A2630", "#FFACAC", "false"),
     "AcknowledgedState": ("#33262D", "#FFACAC", "false"),
     "AcknowledgedClearedState": (b.CARD, b.MUTED, "false"),
 }
 WARN = {
-    "RaisedState": ("#4A3B1E", "#F1C784", "true"),
+    "RaisedState": ("#4A3B1E", "#F1C784", "false"),
     "ClearedState": ("#3A3020", "#F1C784", "false"),
     "AcknowledgedState": ("#31291C", "#F1C784", "false"),
     "AcknowledgedClearedState": (b.CARD, b.MUTED, "false"),
