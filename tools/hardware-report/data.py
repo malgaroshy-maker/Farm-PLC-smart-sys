@@ -8,7 +8,7 @@ alternative the owner can pick in the page's "build your own list".
 """
 
 USD_TO_LYD = 11
-RESEARCHED_ON = "2026-11-24"
+RESEARCHED_ON = "2026-11-25"
 PRESETS = ("lowest", "minimum", "basic", "recommended", "premium")
 PRESET_LABEL = {
     "lowest": {"en": "Lowest cost", "ar": "أقل تكلفة"},
@@ -49,6 +49,8 @@ SOURCES = {
     "s71511": ("Steiner Electric: S7-1500 CPU 1511-1 PN ($1,590)", "https://www.steinerelectric.com/Product/Siemens-6ES75111AL030AB0-Siemens-S7-1500CPU-1511-1PNMemory-300KB-Prog-1-5MB-Data-1355197"),
     "plc_budget": ("Budget PLC comparison (Delta, Unitronics, S7-1200)", "https://industrialmonitordirect.com/blogs/knowledgebase/budget-plcs-with-remote-io-s7-1200-vs-alternatives"),
     "unistream": ("Unitronics UniStream: OPC UA and Modbus TCP built in", "https://unitronicsplc.com/programmable-controllers-unistream-series/"),
+    "mtp1000": ("RS Components UK: MTP1000 Unified Comfort 10.1 in (£2,184 ex VAT)", "https://uk.rs-online.com/web/p/hmi-displays/2823478"),
+    "et200sp_io": ("Farnell: ET 200SP DI16 6ES7131-6BH01 (€90 ex VAT), DQ16 6ES7132-6BH01 ($142)", "https://be.farnell.com/en-BE/siemens/6es7131-6bh01-0ba0/digital-input-module-16-input/dp/3994094"),
     "ktp700": ("RS Components: KTP700 Basic (£850 ex VAT)", "https://uk.rs-online.com/web/p/hmi-displays/8643961"),
     "rut241": ("Bechtle: Teltonika RUT241 (€140–€183)", "https://www.bechtle.com/fr-en/shop/teltonika-rut241-industrial-4g-router--4831521--p"),
     "starlink": ("Space in Africa: Starlink's Libya entry on hold (Sep 2026)", "https://spaceinafrica.com/2026/09/13/starlinks-libya-market-entry-remains-on-hold-as-negotiations-continue/"),
@@ -165,7 +167,11 @@ ITEMS = [
              opt("used", ("lowest",), "Used SM 1222 DQ8 relay", "SM 1222 مستعمل بثماني مخارج ريليه", 1, 70, "est"),
              opt("min", ("minimum",), "SM 1222 DQ8 relay (4-20 mA read on the CPU's inputs)", "SM 1222 ثماني مخارج ريليه (قراءة 4-20 مللي أمبير على مداخل الوحدة)", 1, 180, "est"),
              opt("basic", ("basic",), "SM 1222 DQ16 relay + SM 1231 AI4", "SM 1222 ست عشرة مخرج ريليه + SM 1231 أربع مداخل تناظرية", 1, 450, "est"),
-             opt("rec", ("recommended",), "ET 200SP: DI16, 2× DQ8 relay, 2× AI4, base units", "ET 200SP: مداخل رقمية 16، مخارج ريليه 2×8، مداخل تناظرية 2×4", 1, 1300, "est"),
+             opt("rec", ("recommended",), "ET 200SP as built: 3× DI16 (panel switches, zone ON/OFF), DQ16 + DQ8 (24 V DC valves and pumps), AI8 (tank, pressure, flow, well, filter), server module, base units",
+                 "ET 200SP كما بُني: 3× مداخل رقمية 16 (مفاتيح اللوحة)، مخارج 16 + 8 (صمامات ومضخات 24 فولت)، مداخل تناظرية 8 (الخزان والضغط والتدفق والبئر والفلتر)، وحدة الخادم، قواعد التركيب",
+                 1, 1250, "et200sp_io",
+                 "The design in TIA (G5) uses 3× 6ES7131-6BH01, 6ES7132-6BH01, 6ES7132-6BF01, 6ES7134-6GF00 and a server module. The outputs are 24 V DC transistor outputs, so each valve and pump starter needs an interposing relay (in the cabinet item).",
+                 "التصميم في TIA (G5) يستخدم 3× 6ES7131-6BH01 و6ES7132-6BH01 و6ES7132-6BF01 و6ES7134-6GF00 ووحدة خادم. المخارج ترانزستورية 24 فولت، لذا يحتاج كل صمام ومشغّل مضخة إلى ريليه وسيط (ضمن بند الخزانة)."),
              opt("prem", ("premium",), "S7-1500: DI32, DQ32 relay, AI8", "S7-1500: مداخل 32، مخارج ريليه 32، تناظري 8", 1, 1800, "est"),
          ]),
     item("opcua", "control", "control", 1, True,
@@ -219,7 +225,10 @@ ITEMS = [
     item("hmi", "control", "control", 3, False,
          "Touch screen on the panel", "شاشة لمس على اللوحة",
          "The app already works on any phone or computer.", "التطبيق يعمل أصلاً على أي هاتف أو حاسوب.", [
-             opt("ktp700", ("premium",), "KTP700 Basic 7\"", "KTP700 Basic مقاس 7 بوصة", 1, 1050, "ktp700"),
+             opt("mtp1000", ("recommended", "premium"), "MTP1000 Unified Comfort 10\" (as designed in G5, Arabic and English)", "MTP1000 Unified Comfort مقاس 10 بوصة (كما صُمّم في G5، عربي وإنجليزي)", 1, 2600, "mtp1000",
+                 "The HMI is built and tested in the simulator: six screens in Arabic. Needs a WinCC Unified licence (engineering is included in your TIA).",
+                 "الشاشة مبنية ومجرّبة في المحاكي: ست شاشات بالعربية. تحتاج ترخيص WinCC Unified (الهندسة متضمنة في TIA لديك)."),
+             opt("ktp700", (), "KTP700 Basic 7\" (cheaper, not Unified: the screens would need rebuilding)", "KTP700 Basic مقاس 7 بوصة (أرخص وليست Unified: تلزم إعادة بناء الشاشات)", 1, 1050, "ktp700"),
          ]),
     item("cabinet", "control", "control", 1, True,
          "Cabinet with DIN rails, breakers, terminals and wiring", "خزانة كهربائية مع قضبان التثبيت والقواطع والأطراف والتمديدات",
