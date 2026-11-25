@@ -115,3 +115,4 @@ apps/api/backups/
 tools/tia/*.exe
 !plc/src/*.db
 tools/plcsim/*.exe
+hmi/assets/raw/

@@ -42,6 +42,7 @@ def tags() -> list[tuple[str, str, str, str]]:
             (f"{z}_PanelMode", f"{p}.PanelMode", "Int", f"zone {n} panel switch 0 auto 1 on 2 off"),
             (f"{z}_RunSource", f"{p}.RunSource", "Int", f"zone {n} run source"),
             (f"{z}_FaultCode", f"{p}.FaultCode", "Int", f"zone {n} fault = alarm number"),
+            (f"{z}_RemainingMin", f"DB_HMI.RemainingMin[{n}]", "Int", f"zone {n} minutes left (0 = no limit)"),
         ]
     for name, sym, typ, c in [
         ("Farm_Mode", "Mode", "Int", "0 off 1 auto 2 manual 3 maintenance"),
@@ -77,6 +78,14 @@ def tags() -> list[tuple[str, str, str, str]]:
         ("Hmi_BtnReset", "DB_HMI.BtnReset", "Bool", "SetBit on press (admin)"),
         ("Hmi_ResultOk", "DB_HMI.ResultOk", "Bool", "PLC answer to the last button"),
         ("Hmi_ResultSeq", "DB_HMI.ResultSeq", "Int", "changes with every answer"),
+        ("Hmi_SelState", "DB_HMI.SelState", "Int", "selected zone: state"),
+        ("Hmi_SelRunSource", "DB_HMI.SelRunSource", "Int", "selected zone: run source"),
+        ("Hmi_SelPanelMode", "DB_HMI.SelPanelMode", "Int", "selected zone: panel switch"),
+        ("Hmi_SelFaultCode", "DB_HMI.SelFaultCode", "Int", "selected zone: fault = alarm number"),
+        ("Hmi_SelRuntimeMin", "DB_HMI.SelRuntimeMin", "Int", "selected zone: minutes run"),
+        ("Hmi_SelRemainingMin", "DB_HMI.SelRemainingMin", "Int", "selected zone: minutes left"),
+        ("Hmi_SelFlow", "DB_HMI.SelFlow", "Real", "selected zone: flow"),
+        ("Hmi_SelPressure", "DB_HMI.SelPressure", "Real", "selected zone: pressure"),
     ]
     return out
 

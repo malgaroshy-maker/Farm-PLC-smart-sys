@@ -1,8 +1,16 @@
 # HMI build guide: MTP1000 Unified Comfort (G5)
 
+**Status (2026-11-25): the six screens are built by script and tested live.** Overview, Zone, Pumps and water, Alarms, Schedule and Settings come from `tools/tia/build_hmi.py` (it drives the local `HmiUnified.exe` Openness helper, which can create screens, items, tag-driven colours, events and alarms). The sections below stay as the spec. What the live runtime taught us:
+- **Screen change:** `HMIRuntime.UI.SysFct.ChangeScreen("Zone", "//")`. A `null` or `"~"` second argument compiles but does nothing; `"//"` is the root window.
+- **Number format:** the output-format string is `{F1}` (one decimal), `{F2}`, and so on. `{F0}` still shows a decimal, so Int tags are left without a format.
+- **Text:** text from the PLC needs a `WString` HMI tag (`String` is refused). Arabic text in a PLC source file needs a UTF-8 byte-order mark.
+- **Graphics:** TIA has no API to add them: drop the PNGs on a screen once and use each from the Toolbox (section 9). Importing a name that exists keeps the old image and adds `<name>_1`.
+- **Simulation:** start it with **Online > Simulation > Start** (not Download), after the panel compiles with 0 errors. The runtime page is `https://<pc-name>/WebRH`.
+- **Compile:** the panel's two network ports must be in different subnets, and Runtime settings needs a password that meets the rules (set by the owner).
+
 You build the screens in TIA Portal; this guide is the spec. The panel device `FarmHMI` (MTP1000 Unified Comfort, 1280 x 800) is already in the project `AlgaroshyFarm`. The PLC side is done and tested in PLCSIM (the HMI buttons, section 5). Design decisions are in [PLC_PROGRAM.md](PLC_PROGRAM.md) section 7: **match the app** (dark theme, Arabic RTL default, EN switch) and **overview layout A** (zone grid).
 
-WinCC Unified Openness is not installed here, so none of this can be generated from code.
+(Earlier note, no longer true: the WinCC Unified Openness helper was found and now builds the screens.)
 
 ## 1. Connect the panel to the PLC
 1. **Devices & networks**: draw a PROFINET line from the panel's interface to the PLC's X1 (192.168.0.1). Give the panel 192.168.0.2 / 255.255.255.0.
@@ -144,3 +152,10 @@ The app also derives alarms from live data; the HMI shows only what the PLC itse
 3. Switch AR | EN: every text changes and the layout mirrors.
 4. Trip the booster from the app's Simulator page: ALM-005 appears on the Alarms screen with its Arabic text. Press Reset alarms as admin once the pump is repaired.
 5. Send me screenshots and I'll check them against layout A.
+
+## 9. Icons and images
+The icons, logo, textures and drawings are in `hmi/assets/ready` (made with Codex by `tools/tia/gen_hmi_assets.sh`).
+- **Import once:** TIA has no API to add graphics. Drag the PNG files from Explorer onto any screen, then **drag each graphic from the Toolbox Graphics panel onto a screen once**. Until a graphic has been used on a screen it is not part of the project and shows blank. Delete the test views afterwards; the graphics stay.
+- **Use by name:** a graphic view or button refers to a graphic by its plain name, e.g. `hmi_icon_bell` (what TIA itself stores).
+- `python tools/tia/add_hmi_icons.py --save` puts the logo, navigation, card and tile icons on the built screens.
+- **Duplicate names:** importing a file whose name already exists makes TIA keep the old image and add the new one as `<name>_1`. In this project the square concrete reservoir is `hmi_icon_tank_1` and `hmi_illu_tank_1` (the older round-tank images `hmi_icon_tank` and `hmi_illu_tank` stay unused in the library). The build scripts use the `_1` names.

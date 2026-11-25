@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-23
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → **Milestone G** in progress (G1 performance & reliability ✅ · G2 AI ✅ · G3 extensibility ✅ · G4 UI polish ✅ · G6 docs ✅ · hardware research ✅ · G7 field readiness ✅ (owner review pending) · G5 PLC design next): hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → **Milestone G** in progress (G1 performance & reliability ✅ · G2 AI ✅ · G3 extensibility ✅ · G4 UI polish ✅ · G6 docs ✅ · hardware research ✅ · G7 field readiness ✅ (owner review pending) · G5 PLC + HMI built and tested in PLCSIM, Arabic HMI texts and the remaining scenarios open): hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -70,7 +70,7 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 
 | Gap | Planned in |
 |-----|-----------|
-| PLC program and PLCSIM Advanced test (the adapter skeleton exists) | G5 |
+| PLC program and PLCSIM Advanced test | G5 ✅ (12 of 15 scenarios pass; HMI with six screens tested live) |
 | Phone push on phones needs HTTPS: Tailscale `serve` is documented but not set up yet | Farm PC setup |
 | PostgreSQL in production, SMS/escalation | Production track |
 | Per-crop soil levels are proposed values; soil logic waits for the owner to confirm them | Owner input |
