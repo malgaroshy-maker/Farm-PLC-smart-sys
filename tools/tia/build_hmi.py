@@ -34,7 +34,7 @@ STATE_DOT = [(0, 0, NEUTRAL), (1, 3, ACCENT), (4, 4, GREEN), (5, 5, AMBER), (6, 
 STATE_COLORS = STATE_FILL
 # bottom bar, right to left: label, screen to open (None = not built yet)
 NAV = [("نظرة عامة", "Overview", "hmi_icon_overview"), ("المناطق", "Zone", "hmi_icon_zones"),
-       ("المضخات", None, "hmi_icon_pump"), ("الإنذارات", "Alarms", "hmi_icon_bell"),
+       ("المضخات", "Pumps", "hmi_icon_pump"), ("الإنذارات", "Alarms", "hmi_icon_bell"),
        ("الجدول", None, "hmi_icon_calendar"), ("الإعدادات", None, "hmi_icon_settings")]
 # icons on the equipment cards: title item name, graphic
 CARD_ICONS = [("E_Tank_T", "hmi_icon_tank"), ("E_Pumps_T", "hmi_icon_pump"), ("E_Line_T", "hmi_icon_gauge"),
@@ -236,7 +236,8 @@ def overview() -> None:
     text("E_Tank_T", ex + 15, 166, ew - 62, 26, "مستوى الخزان", size=18, bold=True)
     field("E_Tank_Val", ex + 167, 204, 130, 72, "Farm_TankLevelPct", fmt="0", size=53)
     text("E_Tank_Unit", ex + 130, 222, 36, 36, "%", color=MUTED, size=21, align="Left")
-    tank = item("HmiRectangle", "E_Tank_Draw", ex + 15, 206, 95, 92, BackColor="#2B8F80", BorderColor=NEUTRAL,
+    picture("E_Tank_Illu", "hmi_illu_tank", ex + 15, 202, 100, 91)
+    tank = item("HmiRectangle", "E_Tank_Draw", ex + 120, 206, 14, 86, BackColor="#2B8F80", BorderColor=NEUTRAL,
                 BorderWidth="2", AlternateBackColor=BG, ShowFillLevel="true", FillDirection="BottomToTop")
     dyn_tag(tank, "FillLevel", "Farm_TankLevelPct")
     # pumps
@@ -314,6 +315,88 @@ def zone() -> None:
     text("Z_Hint", 48, 556, 572, 60, "الأوامر تمر عبر وحدة التحكم بنفس فحوصات التطبيق", color=MUTED, size=15)
 
 
+
+# ── Pumps and water ─────────────────────────────────────────
+def metric(key: str, label: str, tag: str, fmt: str, unit: str, x: int, y: int, w: int, size: int = 28) -> None:
+    text(f"{key}_L", x, y, w, 22, label, color=MUTED, size=14)
+    field(f"{key}_V", x + 44, y + 24, w - 44, 38, tag, fmt=fmt, size=size)
+    text(f"{key}_U", x, y + 32, 44, 24, unit, color=MUTED, size=12, align="Left")
+
+
+def pump_card(key: str, title: str, tagp: str, x: int, y: int, w: int, h_: int, extra: tuple) -> None:
+    card(f"{key}_Card", x, y, w, h_)
+    text(f"{key}_Title", x + 15, y + 12, w - 62, 32, title, size=22, bold=True)
+    picture(f"{key}_Icon", "hmi_icon_pump", x + w - 15 - 30, y + 12, 30, 30)
+    picture(f"{key}_Illu", "hmi_illu_pump", x + 14, y + 58, 170, 85)
+    on_t = text(f"{key}_On", x + 196, y + 56, w - 211, 38, "تعمل", color=GREEN, size=24, bold=True)
+    dyn_tag(on_t, "Visible", f"{tagp}_RunFb", [(0, 0, "false"), (1, 1, "true")])
+    off_t = text(f"{key}_Off", x + 196, y + 56, w - 211, 38, "متوقفة", color=NEUTRAL, size=24, bold=True)
+    dyn_tag(off_t, "Visible", f"{tagp}_RunFb", [(0, 0, "true"), (1, 1, "false")])
+    bad = item("HmiRectangle", f"{key}_FaultBox", x + w - 15 - 110, y + 56, 110, 38, BackColor=FAULT_BG, BorderColor=FAULT_LINE, BorderWidth="1")
+    bad_t = text(f"{key}_FaultTxt", x + w - 15 - 110, y + 56, 110, 38, "عطل", color=FAULT_TXT, size=22, bold=True, align="Center")
+    for pth in (bad, bad_t):
+        dyn_tag(pth, "Visible", f"{tagp}_Fault", [(0, 0, "false"), (1, 1, "true")])
+    fs = text(f"{key}_FailStart", x + 196, y + 96, w - 211, 28, "فشل البدء", color=FAULT_TXT, size=16, bold=True)
+    dyn_tag(fs, "Visible", f"{tagp}_FailedStart", [(0, 0, "false"), (1, 1, "true")])
+    lk = text(f"{key}_Locked", x + 196, y + 96, w - 211, 28, "مقفلة (جفاف)", color=AMBER, size=16, bold=True)
+    dyn_tag(lk, "Visible", f"{tagp}_Locked", [(0, 0, "false"), (1, 1, "true")])
+    text(f"{key}_ModeL", x + 196, y + 124, 90, 24, "المفتاح", color=MUTED, size=14)
+    mode = text(f"{key}_Mode", x + 15, y + 150, 170, 24, "-", color=SOFT, size=16, bold=True, align="Left")
+    text_from_list(mode, "PumpMode", f"{tagp}_PanelMode")
+    hline(f"{key}_Sep", x + 15, y + 178, w - 30)
+    cw = (w - 45) // 2
+    metric(f"{key}_Kw", "القدرة", f"{tagp}_PowerKw", "0.0", "kW", x + 15 + cw + 15, y + 188, cw)
+    metric(f"{key}_A", "التيار", f"{tagp}_CurrentA", "0.0", "A", x + 15, y + 188, cw)
+    metric(f"{key}_H", "ساعات التشغيل", f"{tagp}_RuntimeHours", "0", "س", x + 15 + cw + 15, y + 250, cw)
+    label, tag, fmt, unit = extra
+    metric(f"{key}_X", label, tag, fmt, unit, x + 15, y + 250, cw)
+
+
+def pumps() -> None:
+    new_screen("Pumps")
+    chrome("Pumps", "المضخات والمياه")
+    w, gap, y0, hh = 378, 40, 111, 322
+    xs = (1248 - w, 1248 - 2 * w - gap, 1248 - 3 * w - 2 * gap)  # well, tank, booster (right to left)
+    pump_card("P_Well", "مضخة البئر", "Well", xs[0], y0, w, hh, ("مستوى البئر", "Farm_WellLevelM", "0.0", "م"))
+    pump_card("P_Boost", "مضخة التعزيز", "Booster", xs[2], y0, w, hh, ("فرق ضغط الفلتر", "Farm_FilterDpBar", "0.00", "بار"))
+    for k, xa in enumerate((xs[0] - gap, xs[1] - gap)):
+        text(f"P_Arrow{k}", xa, y0 + 120, gap, 50, "◀", color=ACCENT, size=28, align="Center")
+
+    # tank in the middle
+    tx = xs[1]
+    card("P_Tank", tx, y0, w, hh)
+    text("P_Tank_T", tx + 15, y0 + 12, w - 62, 32, "الخزان", size=22, bold=True)
+    picture("P_Tank_Icon", "hmi_icon_tank", tx + w - 15 - 30, y0 + 12, 30, 30)
+    picture("P_Tank_Illu", "hmi_illu_tank", tx + 14, y0 + 58, 190, 174)
+    bar = item("HmiRectangle", "P_Tank_Bar", tx + 212, y0 + 66, 16, 158, BackColor="#2B8F80", BorderColor=NEUTRAL,
+               BorderWidth="2", AlternateBackColor=BG, ShowFillLevel="true", FillDirection="BottomToTop")
+    dyn_tag(bar, "FillLevel", "Farm_TankLevelPct")
+    field("P_Tank_Val", tx + 232, y0 + 80, 100, 62, "Farm_TankLevelPct", fmt="0", size=44)
+    text("P_Tank_Unit", tx + 332, y0 + 92, 36, 40, "%", color=MUTED, size=20, align="Left")
+    text("P_Tank_L", tx + 222, y0 + 52, w - 237, 24, "مستوى الماء", color=MUTED, size=14)
+    dyn_tag(lamp("P_Fill_Dot", tx + w - 15 - 14, y0 + 164, 14), "BackColor", "Farm_Refilling", [(0, 0, NEUTRAL), (1, 1, ACCENT)])
+    text("P_Fill_T", tx + 222, y0 + 156, w - 262, 30, "تعبئة الخزان", color=MUTED, size=15)
+    hline("P_Tank_Sep", tx + 15, y0 + 250, w - 30)
+    text("P_Tank_Note", tx + 15, y0 + 256, w - 30, 56, "خزان خرساني: عند الانخفاض الحرج تتوقف مناطق التعزيز وتعمل مناطق البئر المباشر", color=MUTED, size=13)
+
+    # mainline and system status
+    y1 = y0 + hh + 16
+    card("P_Line", 32, y1, 1216, 716 - y1)
+    text("P_Line_T", 47, y1 + 12, 1000, 32, "الشبكة الرئيسية وحالة النظام", size=22, bold=True)
+    picture("P_Line_Icon", "hmi_icon_gauge", 1248 - 15 - 30, y1 + 12, 30, 30)
+    metric("P_Press", "الضغط", "Farm_MainPressureBar", "0.0", "بار", 900, y1 + 60, 330, size=40)
+    metric("P_Flow", "التدفق", "Farm_MainFlowM3h", "0.0", "م³/س", 520, y1 + 60, 330, size=40)
+    for k, (label, tag, ranges) in enumerate((
+            ("الكهرباء", "Farm_PowerOk", [(0, 0, RED), (1, 1, GREEN)]),
+            ("اتصال التطبيق", "Farm_LinkOk", [(0, 0, AMBER), (1, 1, GREEN)]),
+            ("إيقاف الطوارئ", "Farm_EStop", [(0, 0, NEUTRAL), (1, 1, RED)]),
+            ("جدول احتياطي", "Farm_FallbackActive", [(0, 0, NEUTRAL), (1, 1, AMBER)]))):
+        x = 1248 - 296 * (k + 1) - 8 * k + 8
+        yy = y1 + 140
+        item("HmiRectangle", f"P_St{k}_Box", x, yy, 288, 52, BackColor=CARD, BorderColor=BORDER, BorderWidth="1")
+        dyn_tag(lamp(f"P_St{k}_Dot", x + 288 - 30, yy + 15, 20), "BackColor", tag, ranges)
+        text(f"P_St{k}_T", x + 10, yy + 8, 288 - 50, 36, label, color=SOFT, size=18)
+
 # ── Alarms ──────────────────────────────────────────────────
 def alarms() -> None:
     new_screen("Alarms")
@@ -322,7 +405,7 @@ def alarms() -> None:
     item("HmiAlarmControl", "A_Control", 32, 163, 1216, 553)
 
 
-BUILDERS = {"overview": overview, "zone": zone, "alarms": alarms}
+BUILDERS = {"overview": overview, "zone": zone, "alarms": alarms, "pumps": pumps}
 
 
 def main() -> None:
