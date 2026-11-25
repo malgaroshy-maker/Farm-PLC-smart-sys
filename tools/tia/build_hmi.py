@@ -227,7 +227,7 @@ def overview() -> None:
         lab = text(f"{z}_RemLbl", x + tile_w - 13 - 120 - 46, y + 144, 120, 24, "د متبقية", color=MUTED, size=13, align="Left")
         rem = field(f"{z}_Rem", x + tile_w - 13 - 46, y + 144, 46, 24, f"{zz}_RemainingMin", fmt="0", color=SOFT, size=16)
         for p in (lab, rem):
-            dyn_tag(p, "Visible", f"{zz}_RemainingMin", [(0, 0, "false"), (1, 100000, "true")])
+            dyn_tag(p, "Visible", f"{zz}_RemainingMin", [(0, 0, "false"), (1, 32767, "true")])
 
     ex, ew = 32, 312
     text("Equip_Title", ex, 111, ew, 42, "معدات الري", size=23, bold=True)
