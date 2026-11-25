@@ -33,8 +33,12 @@ STATE_FILL = [(0, 0, CARD), (1, 3, "#1D3D43"), (4, 4, "#1B4A3C"), (5, 5, "#4A3B1
 STATE_DOT = [(0, 0, NEUTRAL), (1, 3, ACCENT), (4, 4, GREEN), (5, 5, AMBER), (6, 6, NEUTRAL), (7, 7, RED), (8, 8, "#FB923C")]
 STATE_COLORS = STATE_FILL
 # bottom bar, right to left: label, screen to open (None = not built yet)
-NAV = [("نظرة عامة", "Overview"), ("المناطق", "Zone"), ("المضخات", None), ("الإنذارات", "Alarms"),
-       ("الجدول", None), ("الإعدادات", None)]
+NAV = [("نظرة عامة", "Overview", "hmi_icon_overview"), ("المناطق", "Zone", "hmi_icon_zones"),
+       ("المضخات", None, "hmi_icon_pump"), ("الإنذارات", "Alarms", "hmi_icon_bell"),
+       ("الجدول", None, "hmi_icon_calendar"), ("الإعدادات", None, "hmi_icon_settings")]
+# icons on the equipment cards: title item name, graphic
+CARD_ICONS = [("E_Tank_T", "hmi_icon_tank"), ("E_Pumps_T", "hmi_icon_pump"), ("E_Line_T", "hmi_icon_gauge"),
+              ("E_Power_T", "hmi_icon_bolt")]
 
 calls = 0
 screen = ""
@@ -145,8 +149,9 @@ def new_screen(name: str) -> None:
 def chrome(active: str, subtitle: str) -> None:
     """Header (identity, link and alarm indicators) and the bottom navigation bar."""
     item("HmiRectangle", "Top_Bar", 0, 0, 1280, 91, BackColor=CARD, BorderColor=BORDER, BorderWidth="1")
-    text("Top_Title", 700, 12, 548, 44, "مزرعة الجروشي", size=31, bold=True)
-    text("Top_Sub", 700, 56, 548, 26, subtitle, color=MUTED, size=15)
+    text("Top_Title", 700, 12, 488, 44, "مزرعة الجروشي", size=31, bold=True)
+    text("Top_Sub", 700, 56, 488, 26, subtitle, color=MUTED, size=15)
+    picture("Top_Logo", "hmi_logo_mark", 1196, 20, 52, 52)
     for k, (label, tag, ranges) in enumerate((
             ("اتصال التطبيق", "Farm_LinkOk", [(0, 0, AMBER), (1, 1, GREEN)]),
             ("إنذارات نشطة", "Alarm_AnyActive", [(0, 0, NEUTRAL), (1, 1, RED)]))):
@@ -155,14 +160,20 @@ def chrome(active: str, subtitle: str) -> None:
         dyn_tag(lamp(f"Ind_{k}_Dot", x + 176 - 24, 40, 12), "BackColor", tag, ranges)
         text(f"Ind_{k}_Text", x + 8, 29, 176 - 40, 34, label, color=MUTED, size=14)
     item("HmiRectangle", "Nav_Bar", 0, 728, 1280, 72, BackColor=CARD, BorderColor=BORDER, BorderWidth="1")
-    for k, (label, target) in enumerate(NAV):
+    for k, (label, target, icon) in enumerate(NAV):
         now = target == active
         path = item("HmiButton", f"Nav_{k + 1}", 1248 - 196 * (k + 1) - 7 * k, 741, 196, 45, Text=label,
                     BackColor=ACCENT_BG if now else CARD, ForeColor=ACCENT if now else MUTED,
                     BorderColor=BORDER if now else CARD, BorderWidth="1", Font__Size="18",
+                    Graphic=icon, Content__TextPosition="Left", Content__Spacing="8",
                     **({"Font__Weight": "Bold"} if now else {}))
         if target and not now:
             on_event(path, "Tapped", goto(target))
+
+
+def picture(name: str, graphic: str, x: int, y: int, w: int, h_: int) -> str:
+    """A graphic from the project (imported from hmi/assets/ready), transparent background."""
+    return item("HmiGraphicView", name, x, y, w, h_, Graphic=graphic, GraphicStretchMode="Uniform")
 
 
 def card(name, x, y, w, h, fill=CARD) -> str:
@@ -207,8 +218,11 @@ def overview() -> None:
         text(f"{z}_PressLbl", x + 13, y + 82, half - 19, 20, "الضغط", color=MUTED, size=14)
         field(f"{z}_Press", x + 13 + 32, y + 102, half - 19 - 32, 34, f"{zz}_PressureBar", fmt="0.0", size=26)
         text(f"{z}_PressUnit", x + 13, y + 108, 32, 24, "بار", color=MUTED, size=11, align="Left")
-        hand = text(f"{z}_Hand", x + 13, y + 144, 90, 24, "يدوي", color=MANUAL, size=14, bold=True)
-        dyn_tag(hand, "Visible", f"{zz}_PanelMode", [(0, 0, "false"), (1, 2, "true")])
+        picture(f"{z}_Chev", "hmi_icon_chevron", x + 13, y + 12, 18, 18)
+        hand_icon = picture(f"{z}_HandIcon", "hmi_icon_hand", x + 13, y + 146, 20, 20)
+        hand = text(f"{z}_Hand", x + 37, y + 144, 66, 24, "يدوي", color=MANUAL, size=14, bold=True, align="Left")
+        for p in (hand_icon, hand):
+            dyn_tag(p, "Visible", f"{zz}_PanelMode", [(0, 0, "false"), (1, 2, "true")])
         lab = text(f"{z}_RemLbl", x + tile_w - 13 - 120 - 46, y + 144, 120, 24, "د متبقية", color=MUTED, size=13, align="Left")
         rem = field(f"{z}_Rem", x + tile_w - 13 - 46, y + 144, 46, 24, f"{zz}_RemainingMin", fmt="0", color=SOFT, size=16)
         for p in (lab, rem):
@@ -218,7 +232,7 @@ def overview() -> None:
     text("Equip_Title", ex, 111, ew, 42, "معدات الري", size=23, bold=True)
     # tank
     card("E_Tank", ex, 153, ew, 161)
-    text("E_Tank_T", ex + 15, 166, ew - 30, 26, "مستوى الخزان", size=18, bold=True)
+    text("E_Tank_T", ex + 15, 166, ew - 62, 26, "مستوى الخزان", size=18, bold=True)
     field("E_Tank_Val", ex + 167, 204, 130, 72, "Farm_TankLevelPct", fmt="0", size=53)
     text("E_Tank_Unit", ex + 130, 222, 36, 36, "%", color=MUTED, size=21, align="Left")
     tank = item("HmiRectangle", "E_Tank_Draw", ex + 15, 206, 95, 92, BackColor="#2B8F80", BorderColor=NEUTRAL,
@@ -226,7 +240,7 @@ def overview() -> None:
     dyn_tag(tank, "FillLevel", "Farm_TankLevelPct")
     # pumps
     card("E_Pumps", ex, 326, ew, 139)
-    text("E_Pumps_T", ex + 15, 339, ew - 30, 26, "المضخات", size=18, bold=True)
+    text("E_Pumps_T", ex + 15, 339, ew - 62, 26, "المضخات", size=18, bold=True)
     for j, (nm, label) in enumerate((("Booster", "مضخة التعزيز"), ("Well", "مضخة البئر"))):
         y = 376 + j * 44
         if j:
@@ -242,7 +256,7 @@ def overview() -> None:
             dyn_tag(p, "Visible", f"{nm}_Fault", [(0, 0, "false"), (1, 1, "true")])
     # pressure and flow
     card("E_Line", ex, 477, ew, 120)
-    text("E_Line_T", ex + 15, 490, ew - 30, 26, "الضغط والتدفق", size=18, bold=True)
+    text("E_Line_T", ex + 15, 490, ew - 62, 26, "الضغط والتدفق", size=18, bold=True)
     vline("E_Line_Div", ex + ew // 2, 526, 56)
     text("E_P_Lbl", ex + 170, 524, 130, 20, "الضغط", color=MUTED, size=14)
     field("E_P_Val", ex + 170 + 40, 544, 130 - 40, 42, "Farm_MainPressureBar", fmt="0.0", size=32)
@@ -252,9 +266,11 @@ def overview() -> None:
     text("E_F_Unit", ex + 15, 556, 44, 24, "م³/س", color=MUTED, size=12, align="Left")
     # power
     card("E_Power", ex, 609, ew, 90)
-    text("E_Power_T", ex + 15, 622, ew - 30, 26, "الكهرباء", size=18, bold=True)
+    text("E_Power_T", ex + 15, 622, ew - 62, 26, "الكهرباء", size=18, bold=True)
     dyn_tag(lamp("E_Power_Dot", ex + ew - 29, 664, 14), "BackColor", "Farm_PowerOk", [(0, 0, RED), (1, 1, GREEN)])
     text("E_Power_Txt", ex + 15, 658, ew - 50, 26, "الشبكة الكهربائية", color=MUTED, size=15)
+    for (key, icon), ty in zip(CARD_ICONS, (166, 339, 490, 622)):
+        picture(f"{key}_Icon", icon, ex + ew - 15 - 28, ty - 1, 28, 28)
 
 
 # ── Zone ────────────────────────────────────────────────────
