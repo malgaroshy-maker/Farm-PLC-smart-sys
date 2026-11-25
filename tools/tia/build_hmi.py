@@ -173,7 +173,8 @@ def chrome(active: str, subtitle: str) -> None:
 
 def picture(name: str, graphic: str, x: int, y: int, w: int, h_: int) -> str:
     """A graphic from the project (imported from hmi/assets/ready), transparent background."""
-    return item("HmiGraphicView", name, x, y, w, h_, Graphic=graphic, GraphicStretchMode="Uniform")
+    return item("HmiGraphicView", name, x, y, w, h_, Graphic=graphic, GraphicStretchMode="Uniform",
+                BackFillPattern="Transparent")
 
 
 def card(name, x, y, w, h, fill=CARD) -> str:
