@@ -116,3 +116,18 @@ tools/tia/*.exe
 !plc/src/*.db
 tools/plcsim/*.exe
 hmi/assets/raw/
+video/assets/raw/
+video/frames/
+video/*.webm
+tools/video/.profile/
+video/.state/
+video/*.mp4
+video/_pv/
+video/_render.log
+video/music/
+
+# demo video working files (personal photos, downloads)
+video/refs/
+video/_dl/
+video/_chk/
+video/_render.log
