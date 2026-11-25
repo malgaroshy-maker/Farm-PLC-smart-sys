@@ -125,3 +125,9 @@ video/*.mp4
 video/_pv/
 video/_render.log
 video/music/
+
+# demo video working files (personal photos, downloads)
+video/refs/
+video/_dl/
+video/_chk/
+video/_render.log

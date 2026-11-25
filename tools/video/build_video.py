@@ -28,11 +28,11 @@ BG = (11, 20, 26)
 FADE = 0.45  # seconds, to and from black at every scene boundary
 
 # ── captions: HTML rendered by Chrome into transparent PNGs ──────────────────
-_CAPTIONS: dict[str, Image.Image] = {}
+_CAPTIONS: dict = {}
 _browser = None
 
 
-def caption_png(text: str, big: bool = False) -> Image.Image:
+def caption_png(text: str, big: bool = False):
     key = f"{big}|{text}"
     if key in _CAPTIONS:
         return _CAPTIONS[key]
@@ -41,18 +41,46 @@ def caption_png(text: str, big: bool = False) -> Image.Image:
         _pw = sync_playwright().start()
         _browser = _pw.chromium.launch(channel="chrome", headless=True)
     page = _browser.new_page(viewport={"width": 1920, "height": 1080})
-    size, pad, bottom = (96, "26px 64px", "42%") if big else (50, "16px 40px", "56px")
+    size, pad, bottom = (110, "26px 64px", "42%") if big else (68, "18px 48px", "64px")
     page.set_content(f"""<html dir="rtl"><body style="margin:0;background:transparent;width:1920px;height:1080px;position:relative;
       font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif">
       <div style="position:absolute;left:0;right:0;bottom:{bottom};display:flex;justify-content:center;padding:0 80px">
-        <div style="background:rgba(11,20,26,{0.0 if big else 0.72});color:#F0F5F5;font-size:{size}px;font-weight:{700 if big else 600};
+        <div style="background:rgba(11,20,26,{0.0 if big else 0.88});color:#F0F5F5;font-size:{size}px;font-weight:{700 if big else 600};
           padding:{pad};border-radius:18px;{'text-shadow:0 4px 30px rgba(0,0,0,.85);' if big else 'border:1px solid rgba(112,220,203,.35);'}
           text-align:center;line-height:1.35;max-width:1700px">{text}</div></div></body></html>""")
     img = Image.open(io.BytesIO(page.screenshot(omit_background=True))).convert("RGBA")
     page.close()
     if (W, H) != (1920, 1080):
         img = img.resize((W, H), Image.LANCZOS)
+    bb = img.getbbox() or (0, 0, 1, 1)
+    img = (img.crop(bb), bb[0], bb[1])
     _CAPTIONS[key] = img
+    return img
+
+
+_TAGS: dict[str, Image.Image] = {}
+
+
+def tag_png(text: str, size: int = 44) -> Image.Image:
+    """A tight label (rounded dark pill) for callouts, rendered by Chrome, scaled to the output size."""
+    key = f"{size}|{text}"
+    if key in _TAGS:
+        return _TAGS[key]
+    global _browser
+    if _browser is None:
+        _pw = sync_playwright().start()
+        _browser = _pw.chromium.launch(channel="chrome", headless=True)
+    page = _browser.new_page(viewport={"width": 1200, "height": 300})
+    page.set_content(f"""<html dir="rtl"><body style="margin:0;background:transparent"><div id="t" style="display:inline-block;
+      background:#0b141a;color:#70dccb;border:3px solid #70dccb;border-radius:14px;padding:8px 22px;white-space:nowrap;
+      font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;font-size:{size}px;font-weight:700">{text}</div></body></html>""")
+    box = page.locator("#t").bounding_box()
+    img = Image.open(io.BytesIO(page.screenshot(omit_background=True, clip=box))).convert("RGBA")
+    page.close()
+    k = W / 1920
+    if k != 1:
+        img = img.resize((max(1, int(img.width * k)), max(1, int(img.height * k))), Image.LANCZOS)
+    _TAGS[key] = img
     return img
 
 
@@ -80,7 +108,7 @@ def letterbox(img: Image.Image, canvas=(1920, 1080), margin=0.0) -> Image.Image:
     return out
 
 
-def kenburns(img: Image.Image, dur: float, views: list[tuple[float, float, float]]):
+def kenburns(img: Image.Image, dur: float, views: list[tuple[float, float, float]], post=None):
     """views: (zoom, cx, cy) keyframes, evenly spaced; cx, cy in 0..1. Yields RGB arrays."""
     img = img.convert("RGB")
     iw, ih = img.size
@@ -99,7 +127,8 @@ def kenburns(img: Image.Image, dur: float, views: list[tuple[float, float, float
             bw = bh * 16 / 9
         x0 = min(max(cx * iw - bw / 2, 0), iw - bw)
         y0 = min(max(cy * ih - bh / 2, 0), ih - bh)
-        yield np.asarray(img.crop((int(x0), int(y0), int(x0 + bw), int(y0 + bh))).resize((W, H), Image.BICUBIC))
+        arr = np.asarray(img.crop((int(x0), int(y0), int(x0 + bw), int(y0 + bh))).resize((W, H), Image.BICUBIC))
+        yield post(arr, i / FPS, (x0, y0, bw, bh)) if post else arr
 
 
 def clip_frames(path: Path, start: float, dur: float, speed: float = 1.0):
@@ -142,6 +171,160 @@ def phones(names: list[str]) -> Image.Image:
     return out
 
 
+# ── effects: callouts, counters, dust, phone ─────────────────────────────────
+import math
+
+from PIL import ImageDraw, ImageFont
+
+FONT = "C:/Windows/Fonts/segoeuib.ttf"
+TEAL = (112, 220, 203)
+
+
+def _with_alpha(img: Image.Image, a: float) -> Image.Image:
+    if a >= 1:
+        return img
+    img = img.copy()
+    img.putalpha(img.getchannel("A").point(lambda v: int(v * a)))
+    return img
+
+
+def _paste(base: Image.Image, img: Image.Image, x: float, y: float) -> None:
+    x = int(min(max(x, 0), W - img.width))
+    y = int(min(max(y, 0), H - img.height))
+    base.alpha_composite(img, (x, y))
+
+
+def fx(items: list[dict]):
+    """Callouts in image coordinates: rings (x, y) or boxes (x, y, w, h), each with an optional label."""
+    k = W / 1920
+
+    def post(arr, t, g):
+        x0, y0, bw, bh = g if g else (0, 0, W, H)
+        base = Image.fromarray(arr).convert("RGBA")
+        d = ImageDraw.Draw(base, "RGBA")
+        for it in items:
+            a = min(1.0, (t - it["t0"]) / 0.4, (it["t1"] - t) / 0.4)
+            if a <= 0:
+                continue
+            sx, sy = (it["x"] - x0) / bw * W, (it["y"] - y0) / bh * H
+            col = (*TEAL, int(255 * a))
+            if "w" in it:
+                ex, ey = (it["x"] + it["w"] - x0) / bw * W, (it["y"] + it["h"] - y0) / bh * H
+                d.rounded_rectangle((sx, sy, ex, ey), 12 * k, outline=col, width=max(2, int(6 * k)))
+                ax, ay_top, ay_bot = (sx + ex) / 2, sy, ey
+            else:
+                r = (52 + 9 * math.sin(t * 6)) * k * it.get("s", 1)
+                d.ellipse((sx - r, sy - r, sx + r, sy + r), outline=col, width=max(2, int(6 * k)))
+                ax, ay_top, ay_bot = sx, sy - r, sy + r
+            if it.get("label"):
+                tg = _with_alpha(tag_png(it["label"]), a)
+                if it.get("below"):
+                    _paste(base, tg, ax - tg.width / 2, ay_bot + 10 * k)
+                else:
+                    _paste(base, tg, ax - tg.width / 2, ay_top - tg.height - 10 * k)
+        return np.asarray(base.convert("RGB"))
+
+    return post
+
+
+def counter(value: float, t0: float, dur: float, cx: float, cy: float, decimals=2, size=150, label=""):
+    """A number counting up, centred at (cx, cy) as fractions of the frame."""
+    k = W / 1920
+    font = ImageFont.truetype(FONT, int(size * k))
+
+    def post(arr, t, g):
+        if t < t0:
+            return arr
+        a = min(1.0, (t - t0) / 0.3)
+        txt = f"{value * ease(min(1.0, (t - t0) / dur)):.{decimals}f}"
+        base = Image.fromarray(arr).convert("RGBA")
+        d = ImageDraw.Draw(base, "RGBA")
+        bb = d.textbbox((0, 0), txt, font=font)
+        w, h = bb[2] - bb[0], bb[3] - bb[1]
+        x, y = cx * W - w / 2, cy * H - h / 2
+        pad = 32 * k
+        d.rounded_rectangle((x - pad, y - pad, x + w + pad, y + h + pad), 22 * k, fill=(11, 20, 26, int(225 * a)),
+                            outline=(*TEAL, int(255 * a)), width=max(2, int(4 * k)))
+        d.text((x, y - bb[1]), txt, font=font, fill=(*TEAL, int(255 * a)))
+        if label:
+            tg = _with_alpha(tag_png(label, 46), a)
+            _paste(base, tg, cx * W - tg.width / 2, y + h + pad + 12 * k)
+        return np.asarray(base.convert("RGB"))
+
+    return post
+
+
+def dust(seed: int = 1, n: int = 36):
+    """Slow drifting light motes over a still, so a photograph is never perfectly static."""
+    rng = np.random.default_rng(seed)
+    px, py = rng.random(n) * W, rng.random(n) * H
+    vx, vy = (rng.random(n) - 0.3) * 22 * W / 1920, -(rng.random(n) * 14 + 4) * H / 1080
+    rr = (rng.random(n) * 3.5 + 1.5) * W / 1920
+    al = (rng.random(n) * 90 + 40).astype(int)
+
+    def post(arr, t, g):
+        base = Image.fromarray(arr).convert("RGBA")
+        over = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(over)
+        for i in range(n):
+            x, y = (px[i] + vx[i] * t) % W, (py[i] + vy[i] * t) % H
+            d.ellipse((x - rr[i], y - rr[i], x + rr[i], y + rr[i]), fill=(255, 240, 210, int(al[i])))
+        base.alpha_composite(over)
+        return np.asarray(base.convert("RGB"))
+
+    return post
+
+
+def darken(amount: float):
+    def post(arr, t, g):
+        return (arr.astype(np.float32) * (1 - amount)).astype(np.uint8)
+
+    return post
+
+
+def compose(*posts):
+    posts = [p for p in posts if p]
+
+    def post(arr, t, g):
+        for p in posts:
+            arr = p(arr, t, g)
+        return arr
+
+    return post
+
+
+def phone_post(shot: str, tags: list[tuple[float, float, float, str]]):
+    """A phone sliding up over the frame showing a real screenshot; tags = (t0, y_frac_of_phone, x_offset, label)."""
+    ph = Image.open(FR / f"phone_{shot}.png").convert("RGB")
+    h = int(H * 0.9)
+    w = int(ph.width * h / ph.height)
+    ph = ph.resize((w, h), Image.LANCZOS)
+    r = int(40 * W / 1920)
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w, h), r, fill=255)
+    bez = int(12 * W / 1920)
+    frame = Image.new("RGBA", (w + 2 * bez, h + 2 * bez), (0, 0, 0, 0))
+    ImageDraw.Draw(frame).rounded_rectangle((0, 0, w + 2 * bez - 1, h + 2 * bez - 1), r + bez, fill=(30, 40, 46, 255),
+                                            outline=(112, 220, 203, 255), width=max(2, int(3 * W / 1920)))
+    frame.paste(ph, (bez, bez), mask)
+
+    def post(arr, t, g):
+        f = ease(min(1.0, t / 0.9))
+        top = (H - frame.height) / 2
+        y = top + (1 - f) * (H - top)
+        base = Image.fromarray(arr).convert("RGBA")
+        x = (W - frame.width) / 2
+        base.alpha_composite(frame, (int(x), int(y))) if y < H else None
+        for t0, yf, xo, label in tags:
+            if t >= t0:
+                a = min(1.0, (t - t0) / 0.4)
+                tg = _with_alpha(tag_png(label), a)
+                _paste(base, tg, x + frame.width + xo * W / 1920 if xo >= 0 else x + xo * W / 1920 - tg.width, top + yf * frame.height - tg.height / 2)
+        return np.asarray(base.convert("RGB"))
+
+    return post
+
+
 # ── scene description ────────────────────────────────────────────────────────
 def A(name: str) -> Image.Image:
     return Image.open(FR / f"{name}.png")
@@ -152,46 +335,50 @@ def S(name: str) -> Image.Image:
 
 
 def scenes():
-    """(label, frames-generator factory, duration seconds, captions [(start, end, text, big)])."""
+    """(label, frames factory, duration s, captions [(start, end, text, big)], fade seconds)."""
     dash = A("app_dashboard")
+    live_alarm = A("live_alarms_fault")
     hmi = lambda n: static_canvas(A(f"hmi_{n}"))
-    yield ("title", lambda: kenburns(S("still_dawn"), 12, [(1.0, .5, .5), (1.14, .5, .5)]), 12,
-           [(1.0, 11, "مزرعة الجروشي<br><span style='font-size:54px;font-weight:500'>ري ذكي بالكامل</span>", True)])
-    yield ("problem", lambda: kenburns(S("still_manual"), 13, [(1.0, .5, .5), (1.18, .35, .5)]), 13,
-           [(1.2, 12, "كل صمام يُفتح باليد، في كل موسم", False)])
-    yield ("one_screen", lambda: kenburns(dash, 26, [(1.0, .5, .5), (1.9, .42, .72), (2.4, .12, .75), (2.1, .45, .12), (1.0, .5, .5)]), 26,
-           [(1.0, 8, "كل المزرعة على شاشة واحدة", False), (8, 14, "الخريطة الحية: كل منطقة وحالتها", False),
-            (14, 20, "الخزان والمضخات والضغط", False), (20, 25.5, "وموجز صباحي كتبه المستشار الذكي", False)])
-    yield ("day", lambda: kenburns(A("app_schedules"), 10, [(1.0, .5, .5), (1.6, .55, .3)]), 10,
-           [(1.0, 9.5, "جدول الري يعمل وحده: منطقة بعد منطقة", False)])
-    yield ("running", lambda: clip_frames(FR / "live_session.webm", 8, 24), 24,
-           [(1.0, 23, "الري يبدأ فعلاً: تدفق وضغط حقيقيان من وحدة التحكم", False)])
-    yield ("zones", lambda: kenburns(A("app_zones"), 14, [(1.0, .5, .5), (1.8, .72, .2), (1.8, .3, .2)]), 14,
-           [(1.0, 13.5, "كل منطقة: حالتها وتدفقها وضغطها لحظة بلحظة", False)])
-    yield ("fault", lambda: clip_frames(FR / "live_session.webm", 38, 22), 22,
-           [(1.5, 9, "عطل في مضخة التعزيز", False), (9, 21, "إنذار فوري بالعربية وإيقاف آمن للري", False)])
-    yield ("advisor", lambda: kenburns(dash, 14, [(1.0, .5, .5), (2.7, .5, .12), (2.9, .45, .1)]), 14,
-           [(1.0, 13.5, "مستشار ذكي: ماذا نسقي ومتى ولماذا", False)])
-    yield ("panel_a", lambda: still(hmi("overview_idle"), 5), 5,
-           [(0.8, 4.5, "وحدة تحكم صناعية، وشاشة لمس في غرفة التحكم", False)])
-    yield ("panel_b", lambda: clip_frames(FR / "hmi_session.webm", 22, 20, 1.5), 20,
-           [(1.0, 19, "من الشاشة: اختيار منطقة، ثم تشغيل", False)])
-    yield ("panel_c", lambda: still(hmi("pumps_running"), 6), 6,
-           [(0.8, 5.5, "المضخات والخزان والشبكة", False)])
-    yield ("panel_d", lambda: kenburns(A("hmi_schedule"), 9, [(1.0, .5, .5), (1.5, .55, .4)]), 9,
-           [(1.0, 8.5, "حتى لو انقطع الإنترنت يستمر الري بالجدول المحفوظ", False)])
-    yield ("settings", lambda: still(hmi("settings"), 5), 5,
-           [(0.8, 4.5, "تغيير وضع النظام من الشاشة مباشرة", False)])
-    yield ("pocket", lambda: still(static_canvas(phones(["dashboard", "alarms", "zones"])), 14), 14,
-           [(1.0, 13.5, "وفي جيبك: التقارير والإنذارات من أي مكان", False)])
-    yield ("next_a", lambda: kenburns(S("still_soil"), 6, [(1.0, .5, .5), (1.12, .5, .5)]), 6,
-           [(0.8, 5.5, "قريباً: حساسات رطوبة التربة", False)])
-    yield ("next_b", lambda: kenburns(S("still_solar"), 6, [(1.0, .5, .5), (1.12, .5, .5)]), 6,
-           [(0.8, 5.5, "الضخ بالطاقة الشمسية", False)])
-    yield ("next_c", lambda: kenburns(S("still_camera"), 6, [(1.0, .5, .5), (1.12, .5, .5)]), 6,
-           [(0.8, 5.5, "ومراقبة بالكاميرات", False)])
-    yield ("close", lambda: kenburns(S("still_close"), 10, [(1.0, .5, .5), (1.12, .5, .5)]), 10,
-           [(1.0, 9.5, "مزرعة الجروشي<br><span style='font-size:54px;font-weight:500'>ري أذكى لموسم أفضل</span>", True)])
+    punch = lambda name, d, v=1.16, cx=.5, cy=.5, seed=1: (
+        lambda: kenburns(S(name), d, [(1.0, cx, cy), (v, cx, cy)], dust(seed)))
+
+    # the hook: pain, then the answer
+    yield ("hook_valve", punch("s2_valve", 3.2, 1.18, .5, .55, 1), 3.2, [(0.2, 3.0, "كل صمام يُفتح باليد", False)], 0.15)
+    yield ("hook_dry", punch("s2_dry", 2.6, 1.16, .5, .5, 2), 2.6, [(0.2, 2.4, "كل صباح... وكل موسم", False)], 0.15)
+    yield ("hook_night", punch("s2_night", 3.6, 1.18, .5, .5, 3), 3.6, [(0.3, 3.4, "ماذا لو سقت المزرعة نفسها؟", False)], 0.25)
+    yield ("title", lambda: kenburns(dash, 5, [(1.7, .62, .78), (2.1, .6, .8)], darken(.55)), 5,
+           [(0.5, 4.6, "مزرعة الجروشي<br><span style='font-size:60px;font-weight:500'>ري ذكي بالكامل</span>", True)], 0.3)
+    yield ("map", lambda: kenburns(dash, 12, [(1.9, .53, .76), (2.3, .53, .82)], fx([
+        dict(x=1077, y=660, t0=1.5, t1=6, label="كل منطقة وحالتها"),
+        dict(x=958, y=825, t0=6, t1=11.5, label="الخزان والمضخات")])), 12,
+        [(0.6, 5.8, "كل المزرعة على شاشة واحدة", False), (6.2, 11.6, "الخريطة حيّة، لحظة بلحظة", False)], 0.4)
+    yield ("advisor", lambda: kenburns(dash, 11, [(1.25, .5, .19), (1.25, .5, .19), (1.7, .3, .22)], fx([
+        dict(x=75, y=158, w=1545, h=82, t0=1.2, t1=5.6, label="ملخص كتبه المستشار الذكي"),
+        dict(x=45, y=275, w=515, h=70, t0=6.2, t1=10.4, label="توقعات الطقس")])), 11,
+        [(0.6, 5.8, "مستشار ذكي يكتب موجز الصباح", False), (6.2, 10.6, "من الطقس والمياه والإنذارات", False)], 0.4)
+    yield ("running", lambda: clip_frames(FR / "live_session.webm", 9, 12), 12,
+           [(0.6, 11.4, "الري يبدأ فعلاً: تدفق وضغط حقيقيان", False)], 0.4)
+    yield ("fault", lambda: clip_frames(FR / "live_session.webm", 38, 6), 6,
+           [(0.4, 5.6, "عطل في مضخة التعزيز", False)], 0.3)
+    yield ("alarm", lambda: kenburns(live_alarm, 7, [(1.0, .5, .5), (1.9, .6, .2)], fx([
+        dict(x=24, y=212, w=1290, h=58, t0=1.5, t1=6.6, label="إنذار فوري بالعربية")])), 7,
+        [(0.5, 6.5, "إنذار فوري، وإيقاف آمن للري", False)], 0.3)
+    yield ("reports", lambda: kenburns(A("app_reports"), 11, [(1.0, .5, .5), (1.25, .5, .42)], counter(
+        115.79, 1.2, 3.5, .5, .64, 2, 130, "م³ مياه في 7 أيام")), 11,
+        [(0.6, 5.5, "تقارير الري واستهلاك المياه", False), (5.8, 10.6, "كل منطقة، كل يوم، كل دورة", False)], 0.4)
+    yield ("phone", lambda: kenburns(S("s2_night"), 9, [(1.1, .5, .5), (1.25, .5, .5)], compose(
+        darken(.55), phone_post("alarms", [(2.0, .38, 30, "خطأ متكرر في المنطقة"), (3.2, .59, 30, "لم يتم اكتشاف تدفق")]))), 9,
+        [(0.6, 8.6, "الإنذارات في جيبك، أينما كنت", False)], 0.4)
+    yield ("panel", lambda: clip_frames(FR / "hmi_session.webm", 22, 12, 1.5), 12,
+           [(0.6, 11.4, "وشاشة لمس في غرفة التحكم", False)], 0.4)
+    yield ("offline", lambda: kenburns(A("hmi_schedule"), 5, [(1.0, .5, .5), (1.4, .55, .4)]), 5,
+           [(0.4, 4.6, "وبلا إنترنت: الري يستمر بجدوله", False)], 0.3)
+    yield ("next_a", punch("s2_soil", 3.5, 1.14, .5, .5, 4), 3.5, [(0.3, 3.3, "قريباً: حساسات رطوبة التربة", False)], 0.25)
+    yield ("next_b", punch("s2_solar", 3.5, 1.14, .5, .5, 5), 3.5, [(0.3, 3.3, "ضخٌّ بالطاقة الشمسية", False)], 0.25)
+    yield ("next_c", punch("s2_camera", 3.5, 1.14, .5, .5, 6), 3.5, [(0.3, 3.3, "ومراقبة بالكاميرات", False)], 0.25)
+    yield ("close", lambda: kenburns(S("s2_close"), 6, [(1.0, .5, .5), (1.12, .5, .5)], compose(dust(7), darken(.25))), 6,
+           [(0.5, 5.6, "مزرعة الجروشي<br><span style='font-size:60px;font-weight:500'>ري أذكى لموسم أفضل</span>", True)], 0.5)
+
 
 
 def render() -> None:
@@ -201,7 +388,7 @@ def render() -> None:
                            "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20" if not PREVIEW else "28",
                            "-preset", "medium" if not PREVIEW else "veryfast", str(silent)], stdin=subprocess.PIPE)
     total = 0.0
-    for label, make, dur, caps in scenes():
+    for label, make, dur, caps, fade_s in scenes():
         n = int(dur * FPS)
         overlays = [(a, b, caption_png(text, big)) for a, b, text, big in caps]
         count = 0
@@ -213,12 +400,15 @@ def render() -> None:
             for a, b, cap in overlays:
                 if a <= t <= b:
                     k = min(1.0, (t - a) / 0.35, (b - t) / 0.35)
-                    arr = np.asarray(cap, dtype=np.float32)
+                    ci, cx0, cy0 = cap
+                    arr = np.asarray(ci, dtype=np.float32)
                     alpha = arr[..., 3:4] / 255.0 * max(0.0, k)
-                    im = (im.astype(np.float32) * (1 - alpha) + arr[..., :3] * alpha).astype(np.uint8)
-            fade = min(1.0, t / FADE, (dur - t) / FADE)
+                    im = np.array(im, copy=True)
+                    reg = im[cy0:cy0 + arr.shape[0], cx0:cx0 + arr.shape[1]]
+                    im[cy0:cy0 + arr.shape[0], cx0:cx0 + arr.shape[1]] = (reg.astype(np.float32) * (1 - alpha) + arr[..., :3] * alpha).astype(np.uint8)
+            fade = min(1.0, t / fade_s, (dur - t) / fade_s)
             if fade < 1.0:
-                im = (im.astype(np.float32) * max(0.0, fade)).astype(np.uint8)
+                im = ((im.astype(np.uint16) * int(255 * max(0.0, fade))) >> 8).astype(np.uint8)
             ff.stdin.write(np.ascontiguousarray(im).tobytes())
             count += 1
         # a clip that ended early: hold the last frame so the scene keeps its length
