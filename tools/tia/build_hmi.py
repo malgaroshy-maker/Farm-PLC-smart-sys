@@ -37,7 +37,7 @@ NAV = [("نظرة عامة", "Overview", "hmi_icon_overview"), ("المناطق"
        ("المضخات", "Pumps", "hmi_icon_pump"), ("الإنذارات", "Alarms", "hmi_icon_bell"),
        ("الجدول", None, "hmi_icon_calendar"), ("الإعدادات", None, "hmi_icon_settings")]
 # icons on the equipment cards: title item name, graphic
-CARD_ICONS = [("E_Tank_T", "hmi_icon_reservoir"), ("E_Pumps_T", "hmi_icon_pump"), ("E_Line_T", "hmi_icon_gauge"),
+CARD_ICONS = [("E_Tank_T", "hmi_icon_tank_1"), ("E_Pumps_T", "hmi_icon_pump"), ("E_Line_T", "hmi_icon_gauge"),
               ("E_Power_T", "hmi_icon_bolt")]
 
 calls = 0
@@ -236,7 +236,7 @@ def overview() -> None:
     text("E_Tank_T", ex + 15, 166, ew - 62, 26, "مستوى الخزان", size=18, bold=True)
     field("E_Tank_Val", ex + 167, 204, 130, 72, "Farm_TankLevelPct", fmt="0", size=53)
     text("E_Tank_Unit", ex + 130, 222, 36, 36, "%", color=MUTED, size=21, align="Left")
-    picture("E_Tank_Illu", "hmi_illu_reservoir", ex + 15, 202, 100, 91)
+    picture("E_Tank_Illu", "hmi_illu_tank_1", ex + 15, 202, 100, 91)
     tank = item("HmiRectangle", "E_Tank_Draw", ex + 120, 206, 14, 86, BackColor="#2B8F80", BorderColor=NEUTRAL,
                 BorderWidth="2", AlternateBackColor=BG, ShowFillLevel="true", FillDirection="BottomToTop")
     dyn_tag(tank, "FillLevel", "Farm_TankLevelPct")
@@ -366,8 +366,8 @@ def pumps() -> None:
     tx = xs[1]
     card("P_Tank", tx, y0, w, hh)
     text("P_Tank_T", tx + 15, y0 + 12, w - 62, 32, "الخزان", size=22, bold=True)
-    picture("P_Tank_Icon", "hmi_icon_reservoir", tx + w - 15 - 30, y0 + 12, 30, 30)
-    picture("P_Tank_Illu", "hmi_illu_reservoir", tx + 14, y0 + 58, 190, 174)
+    picture("P_Tank_Icon", "hmi_icon_tank_1", tx + w - 15 - 30, y0 + 12, 30, 30)
+    picture("P_Tank_Illu", "hmi_illu_tank_1", tx + 14, y0 + 58, 190, 174)
     bar = item("HmiRectangle", "P_Tank_Bar", tx + 212, y0 + 66, 16, 158, BackColor="#2B8F80", BorderColor=NEUTRAL,
                BorderWidth="2", AlternateBackColor=BG, ShowFillLevel="true", FillDirection="BottomToTop")
     dyn_tag(bar, "FillLevel", "Farm_TankLevelPct")
