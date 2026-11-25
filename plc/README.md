@@ -37,7 +37,7 @@ TIA Portal source files for the farm PLC: ET 200SP CPU 1512SP-1 PN, all SCL. Des
   - **Open, needs the owner:**
     - The PLC's per-zone flow and pressure limits are still the 1-30 m3/h defaults, so a mainline leak can't trip ALM-013 until each zone's limits are set.
     - The scheduled-day scenarios speed up the clock; a real PLC runs on real time, so they only run in simulator mode.
-- **HMI (2026-11-24):** the MTP1000 Unified Comfort panel `FarmHMI` is in the TIA project; the owner builds the screens from [docs/HMI_BUILD_GUIDE.md](../docs/HMI_BUILD_GUIDE.md). PLC side done: `DB_HMI` buttons (`BtnStart`, `BtnStop`, `BtnStopAll`, `BtnReset`) become commands on the HMI channel in `FB_Link`, with the PLC's answer in `ResultOk`, `ResultText`, `ResultSeq`. Tested in PLCSIM: Start runs zone 1 with run source 4 (hmi), Stop all stops it.
+- **HMI (2026-11-25): built and tested live.** `FarmHMI` (MTP1000 Unified Comfort) has six screens made by `tools/tia/build_hmi.py` (see [docs/HMI_BUILD_GUIDE.md](../docs/HMI_BUILD_GUIDE.md)); the notes below are from the first HMI step, when the owner was to build the screens from the spec. PLC side done: `DB_HMI` buttons (`BtnStart`, `BtnStop`, `BtnStopAll`, `BtnReset`) become commands on the HMI channel in `FB_Link`, with the PLC's answer in `ResultOk`, `ResultText`, `ResultSeq`. Tested in PLCSIM: Start runs zone 1 with run source 4 (hmi), Stop all stops it.
 - **Plant bridge note:** `PlcsimBridge` now reads the data-block tags too (`ETagListDetails.IOMDB`); without it new DB members were `DoesNotExist` after a download. Rebuild the exe after pulling.
 - **Next:** the open points above, then the HMI screens (owner, in TIA).
 
