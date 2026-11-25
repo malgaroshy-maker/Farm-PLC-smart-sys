@@ -27,6 +27,8 @@ VERSION : 0.1
       useWell : Bool;
       now : DTL;
       ret : Int;
+      rem : DInt;
+      sel : Int;
    END_VAR
 BEGIN
    // one-cycle pulse every second
@@ -86,6 +88,28 @@ BEGIN
          "DB_Pumps".Well.EnergyKwhToday := 0.0;
       END_IF;
       #lastDay := #now.DAY;
+   END_IF;
+
+   // display values for the HMI: minutes left on a timed run, and the selected zone mirrored
+   FOR #i := 1 TO 16 DO
+      "DB_HMI".RemainingMin[#i] := 0;
+      IF "DB_Zones".Zone[#i].Running AND "DB_Zones".Zone[#i].TargetSec > 0 THEN
+         #rem := "DB_Zones".Zone[#i].TargetSec - "DB_Zones".Zone[#i].RuntimeSec;
+         IF #rem > 0 THEN
+            "DB_HMI".RemainingMin[#i] := DINT_TO_INT((#rem + 59) / 60);
+         END_IF;
+      END_IF;
+   END_FOR;
+   #sel := "DB_HMI".SelectedZone;
+   IF #sel >= 1 AND #sel <= 16 THEN
+      "DB_HMI".SelState := "DB_Zones".Zone[#sel].State;
+      "DB_HMI".SelRunSource := "DB_Zones".Zone[#sel].RunSource;
+      "DB_HMI".SelPanelMode := "DB_Zones".Zone[#sel].PanelMode;
+      "DB_HMI".SelFaultCode := "DB_Zones".Zone[#sel].FaultCode;
+      "DB_HMI".SelRuntimeMin := DINT_TO_INT("DB_Zones".Zone[#sel].RuntimeSec / 60);
+      "DB_HMI".SelRemainingMin := "DB_HMI".RemainingMin[#sel];
+      "DB_HMI".SelFlow := "DB_Zones".Zone[#sel].FlowM3h;
+      "DB_HMI".SelPressure := "DB_Zones".Zone[#sel].PressureBar;
    END_IF;
 
    CASE "DB_Farm".Mode OF

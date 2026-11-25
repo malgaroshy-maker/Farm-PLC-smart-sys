@@ -175,5 +175,15 @@ NON_RETAIN
       ResultText : String[32];             // the PLC's answer to the last button ('' = accepted)
       ResultOk : Bool;
       ResultSeq : Int;                     // changes with every answer (HMI shows the text for a few seconds)
+      // display values for the screens (written by FB_Farm every scan)
+      RemainingMin : Array[1..16] of Int;  // minutes left on a run with a time limit, else 0
+      SelState : Int;                      // the selected zone, mirrored so one Zone screen serves all zones
+      SelRunSource : Int;
+      SelPanelMode : Int;
+      SelFaultCode : Int;
+      SelRuntimeMin : Int;
+      SelRemainingMin : Int;
+      SelFlow : Real;
+      SelPressure : Real;
    END_VAR
 END_DATA_BLOCK
