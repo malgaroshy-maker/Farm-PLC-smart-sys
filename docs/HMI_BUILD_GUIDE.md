@@ -144,3 +144,9 @@ The app also derives alarms from live data; the HMI shows only what the PLC itse
 3. Switch AR | EN: every text changes and the layout mirrors.
 4. Trip the booster from the app's Simulator page: ALM-005 appears on the Alarms screen with its Arabic text. Press Reset alarms as admin once the pump is repaired.
 5. Send me screenshots and I'll check them against layout A.
+
+## 9. Icons and images
+The icons, logo, textures and drawings are in `hmi/assets/ready` (made with Codex by `tools/tia/gen_hmi_assets.sh`).
+- **Import once:** TIA has no API to add graphics. Drag the PNG files from Explorer onto any screen, then **drag each graphic from the Toolbox Graphics panel onto a screen once**. Until a graphic has been used on a screen it is not part of the project and shows blank. Delete the test views afterwards; the graphics stay.
+- **Use by name:** a graphic view or button refers to a graphic by its plain name, e.g. `hmi_icon_bell` (what TIA itself stores).
+- `python tools/tia/add_hmi_icons.py --save` puts the logo, navigation, card and tile icons on the built screens.
