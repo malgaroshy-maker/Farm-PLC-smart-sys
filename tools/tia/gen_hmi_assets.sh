@@ -11,7 +11,7 @@ ILLU='Clean flat vector-style illustration for a dark industrial touch-panel HMI
 
 declare -A JOBS=(
   [icon_irrigation]="$ICON an irrigation water drop above two gentle wave lines."
-  [icon_tank]="$ICON a water storage tank, rounded rectangle with a wave line inside near the middle and two short legs."
+  [icon_tank]="$ICON a square concrete water reservoir building seen from the front: a square box with a flat roof slab, a small access hatch on the roof, and a wavy water line inside."
   [icon_pump]="$ICON a centrifugal water pump: circular housing with an impeller circle, an outlet pipe on top right and a base."
   [icon_gauge]="$ICON a pressure gauge: semicircle dial with a needle and four small tick marks."
   [icon_bolt]="$ICON a lightning bolt for electrical power."
@@ -24,7 +24,7 @@ declare -A JOBS=(
   [icon_hand]="$ICON an open hand for manual control mode."
   [icon_chevron]="$ICON a single thin chevron arrow pointing left."
   [logo_mark]="$ICON a rounded-square badge containing a stylised irrigation drop and a single field row line; slightly bolder stroke, still outline only."
-  [illu_tank]="$ILLU a front view of a cylindrical water storage tank with a ladder and a level window, half full of teal water."
+  [illu_tank]="$ILLU a square concrete water reservoir building, front three-quarter view: a rectangular box-shaped concrete structure with a flat roof slab, a roof access hatch with a short steel ladder on the side, a vertical level-gauge window half filled with teal water, and a small inlet pipe at the base. Concrete in dark slate tones with subtle panel joints."
   [illu_pump]="$ILLU a side view of a booster water pump with motor, pipe flanges and base plate."
   [tex_card]="Seamless subtle dark texture for a UI card background: very fine diagonal micro-grain in dark slate #172832 with barely visible lighter specks, extremely low contrast, no pattern lines, no text. Opaque square tile."
   [tex_header]="A wide dark header banner background for an industrial HMI: dark slate #172832 with a very soft teal #70DCCB horizon glow fading out at the bottom edge and faint contour lines like farm terraces, extremely low contrast, no text. Opaque, wide 16:3 aspect."
