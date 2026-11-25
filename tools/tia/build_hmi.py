@@ -129,7 +129,8 @@ def button(name, left, top, width, height, label, script, back=CARD, fore=TEXT, 
 
 
 def goto(name: str) -> str:
-    return f'HMIRuntime.UI.SysFct.ChangeScreen("{name}", null);'
+    # "//" addresses the root screen window; null and "~" do nothing at runtime (tested in the simulation)
+    return f'HMIRuntime.UI.SysFct.ChangeScreen("{name}", "//");'
 
 
 def press(tag: str) -> str:
