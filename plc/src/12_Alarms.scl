@@ -5,6 +5,9 @@ FUNCTION_BLOCK "FB_Alarms"
 TITLE = 'Set alarm bits, handle reset, pack bits for Modbus and the HMI'
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1
+   VAR
+      scans : UDInt;              // a multi-instance needs at least one static member (TIA)
+   END_VAR
    VAR_TEMP
       i : Int;
       code : Int;
@@ -14,6 +17,7 @@ VERSION : 0.1
       w2 : Word;
    END_VAR
 BEGIN
+   #scans := #scans + 1;
    FOR #i := 1 TO 48 DO
       "DB_Alarms".Active[#i] := FALSE;
    END_FOR;
@@ -52,10 +56,17 @@ BEGIN
          IF "DB_Zones".Zone[#i].PanelMode <> 0 AND #i <= "DB_Config".ZoneCount THEN
             #manual := TRUE;
          END_IF;
-         // a zone fault is reported while AlarmCode holds it (FB_Zone); the app latches it
+         // a zone fault is reported while AlarmCode holds it (FB_Zone); the app latches it.
+         // Pump and system causes (tank, pumps, dry run, E-stop) have their own bit above: a zone
+         // stopped by a pump trip must not hold ALM-005 for 30 s after the pump is repaired
+         // (found in PLCSIM). The zone's fault code still reaches the app in its state register.
          #code := "DB_Zones".Zone[#i].AlarmCode;
          IF #code >= 1 AND #code <= 48 THEN
-            "DB_Alarms".Active[#code] := TRUE;
+            CASE #code OF
+               2, 4..7, 27, 41: ;
+            ELSE
+               "DB_Alarms".Active[#code] := TRUE;
+            END_CASE;
          END_IF;
       END_FOR;
       "DB_Alarms".Active[42] := #manual;

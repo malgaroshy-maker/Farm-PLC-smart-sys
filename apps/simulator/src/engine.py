@@ -91,6 +91,8 @@ class SimulatorEngine:
         if ctype == "set_mode":
             s.system.system_mode = payload.get("mode", "auto")
             return "completed", None
+        if ctype == "reset_alarm":
+            return "completed", None  # the app resets its own alarms; the simulator latches nothing
         if ctype == "inject_fault":
             ok, msg = self.faults.handle(payload)
             return ("completed", None) if ok else ("failed", msg)

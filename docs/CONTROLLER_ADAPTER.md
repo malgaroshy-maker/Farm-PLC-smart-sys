@@ -76,6 +76,15 @@ Both PLC adapters now follow the farm PLC's data blocks (`plc/src`, [PLC_PROGRAM
 - **Field sensors** reach the app directly, as they will on the farm (LoRaWAN gateway).
 - **Settings.** `CONTROLLER_ADAPTER=modbus VIRTUAL_PLC=1`, with the port in `VIRTUAL_PLC_PORT` (default 1502, local only).
 
+### Real PLC program in PLCSIM Advanced
+`run.bat demo plcsim` runs the app against the **real PLC program** in a PLCSIM Advanced instance (set-up in [plc/README.md](../plc/README.md)).
+- The gateway uses the production Modbus adapter, pointed at the instance (`MODBUS_HOST`, default 192.168.0.1).
+- `src/plcsim_plant.py` plays the farm around the PLC through `tools/plcsim/PlcsimBridge.exe`: it reads the PLC's outputs, steps a farm model and writes the inputs.
+- Panel switches and faults from the Simulator page go to that farm model (`PlcsimGateway`). Everything else goes to the PLC.
+- **Settings:** `CONTROLLER_ADAPTER=modbus PLCSIM_PLANT=1`, `PLCSIM_INSTANCE` (default `PLC`), `PLCSIM_BRIDGE_PORT` (default 1600).
+
+**Lost link.** When a Modbus read times out, the gateway marks the link down and stops pushing state. It now retries the PLC every second (`probe`) and picks up again as soon as it answers; before, one timeout stopped the gateway for good. After a timeout or a mismatched reply the client also drops the TCP connection and reconnects, because a late reply would otherwise leave every later answer one behind. Both were found running the scenarios in PLCSIM.
+
 Fixed while doing this (they would have broken on the real PLC):
 - Command refusals were reported as `reason`, but the API reads `failure_reason`, so the app never showed why the PLC refused.
 - The OPC UA adapter wrote 32-bit integers; S7 `Int` is 16-bit, so the PLC would have rejected every command.
@@ -87,7 +96,7 @@ Fixed while doing this (they would have broken on the real PLC):
 
 `apps/simulator/tests/test_modbus_adapter.py` runs the adapter against the in-process register server. The server plays the PLC: it accepts a start, rejects a zone in manual, and in one test never answers. The test also checks scaling and what happens when the link is lost.
 
-`apps/simulator/tests/test_opcua_adapter.py` starts a real in-process OPC UA server built from a tag map. That server answers the handshake the way the PLC will: it accepts a start, rejects an interlocked zone, and in a separate test stays silent so the no-ack path is covered. Validation against **PLCSIM Advanced** comes in G5, before any hardware.
+`apps/simulator/tests/test_opcua_adapter.py` starts a real in-process OPC UA server built from a tag map. That server answers the handshake the way the PLC will: it accepts a start, rejects an interlocked zone, and in a separate test stays silent so the no-ack path is covered. The same scenarios also run against the real PLC program in PLCSIM Advanced (`run.bat demo plcsim`).
 
 ## Adding a zone
 Settings → Zones & equipment → Add a zone creates the zone, its valve and its moisture sensor in the database.

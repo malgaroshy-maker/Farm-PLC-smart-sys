@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 
 from ..adapter import Layout
-from ..modbus_tcp import ModbusTcpClient
+from ..modbus_tcp import ModbusError, ModbusTcpClient
 from ..state import utcnow
 from . import plc_common as pc
 
@@ -117,6 +117,15 @@ class ModbusAdapter:
     def link_ok(self) -> bool:
         return self._ok
 
+    async def probe(self) -> None:
+        """Link down: try the PLC again (the gateway calls this every second until it answers)."""
+        try:
+            await self.client.read_holding(self._addr["command.seq"][0], 1)
+        except Exception:
+            return
+        print("[MODBUS] PLC answering again")
+        self._ok = True
+
     def on_clock(self, payload: dict) -> None:
         return None  # the PLC runs on real time
 
@@ -157,7 +166,10 @@ class ModbusAdapter:
     async def read_state(self) -> list[dict]:
         try:
             await self._send_heartbeat()
-            v, raw = await self._read_all()
+            try:
+                v, raw = await self._read_all()
+            except (TimeoutError, OSError, ModbusError):
+                v, raw = await self._read_all()  # one slow reply: retry once on a fresh connection
         except Exception as exc:
             self._ok = False
             print(f"[MODBUS] read failed: {type(exc).__name__}")

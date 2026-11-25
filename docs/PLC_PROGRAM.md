@@ -2,13 +2,13 @@
 
 The design for the farm PLC program. It is built in TIA Portal V19, tested in PLCSIM Advanced V6 and connected to the app. It builds on [PLC_CONTROL_LOGIC.md](PLC_CONTROL_LOGIC.md) (rules), [IO_LIST.md](IO_LIST.md) (signals) and [CONTROLLER_ADAPTER.md](CONTROLLER_ADAPTER.md) (the link to the app).
 
-**Status:** approved 2026-11-24. The PLC code is written as TIA source files in [plc/](../plc/README.md) and statically checked; compiling waits for a STEP 7 licence on the development PC.
+**Status:** approved 2026-11-24. The PLC code lives as TIA source files in [plc/](../plc/README.md). It **compiles in TIA Portal V19 with no errors or warnings** (CPU 6ES7 512-1DM03-0AB0 at firmware V3.1, the version PLCSIM Advanced V6 simulates). The PLCSIM Advanced tests are next.
 
 ## 1. Owner decisions (2026-11-24)
 
 | Topic | Decision |
 |---|---|
-| CPU | ET 200SP **CPU 1512SP-1 PN** (S7-1500 family) |
+| CPU | ET 200SP **CPU 1512SP-1 PN**, article **6ES7 512-1DM03-0AB0**, firmware V3.1 (S7-1500 family) |
 | Link to the app | **Both** OPC UA and Modbus TCP. Each installation picks one (`CONTROLLER_ADAPTER`). |
 | Language | **All SCL** |
 | Zone valves | **Both** wired outputs and radio boxes (Modbus RTU over RS-485/LoRa), chosen per zone in a config DB |
@@ -169,6 +169,11 @@ While `FallbackActive`, `FB_Fallback` starts each run in `DB_Fallback` at its ti
 | Schedule | Today's fallback runs (read-only) and when they were loaded |
 | Settings | Zone config (`DB_Config`): admin only, with HMI user login |
 
+- **Owner decisions (2026-11-24):**
+  - Style: **match the app**: the same dark theme and zone state colours, Arabic RTL by default with an EN switch.
+  - Overview: **layout A, the zone grid**. A 4 x 3 grid of zone tiles (name, state, timer, flow, hand badge) with a status column beside it (tank, both pumps, pressure and flow, mains). Alarm count, link state, clock and the AR | EN switch sit in the top bar. A bottom bar switches screens: Overview, Zones, Pumps, Alarms, Schedule, Settings.
+  - Panel: 1280 x 800 (MTP1000).
+- **Build guide:** [HMI_BUILD_GUIDE.md](HMI_BUILD_GUIDE.md). WinCC Unified Openness is not installed, so the owner builds the screens in TIA from that spec. The panel `FarmHMI` is in the project.
 - A language button switches Arabic ⇄ English; the colours match the app.
 - HMI commands go through `DB_Cmd`, so the PLC checks them exactly as it checks the app's.
 
@@ -195,7 +200,7 @@ PLCSIM Advanced has a .NET API (`Siemens.Simatic.Simulation.Runtime.Api`) that r
 - **Faults:** the Simulator page's faults (pump trip, well low, power cut, valve stuck…) act on the physics as they do today, so the PLC sees them as real input changes.
 - **The app:** it then talks to the **PLC** (OPC UA or Modbus), not to the simulator. That is the real setup.
 
-Reaching the .NET API from Python needs `pythonnet` (a new package). Ask before downloading it. The alternative is a small C# bridge.
+Built as a small C# bridge (`tools/plcsim/PlcsimBridge.cs`, no new Python package) and a farm model in `apps/simulator/src/plcsim_plant.py`. Run it with `run.bat demo plcsim`.
 
 The panel switches are simulated the same way: the Simulator page sets the two input bits per zone or pump.
 

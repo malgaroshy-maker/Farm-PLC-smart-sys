@@ -358,6 +358,8 @@ export interface Alarm {
   condition_active: boolean;
   requires_ack: boolean;
   requires_manual_reset: boolean;
+  /** the controller (PLC) holds this alarm until it gets a reset: reset allowed while active */
+  controller_reset?: boolean;
 }
 
 // ─── Event Log ──────────────────────────────────────────

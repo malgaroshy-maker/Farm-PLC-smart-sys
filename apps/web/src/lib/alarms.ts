@@ -36,7 +36,10 @@ export type AlarmAction = 'ack' | 'reset';
 export function availableActions(alarm: Alarm): AlarmAction[] {
   const actions: AlarmAction[] = [];
   if (alarm.status === 'active_unacked') actions.push('ack');
-  if (isOpen(alarm) && !alarm.condition_active && (alarm.requires_manual_reset || alarm.status === 'active_acked')) {
+  const latched = !alarm.condition_active && (alarm.requires_manual_reset || alarm.status === 'active_acked');
+  // a PLC holds a failed pump start until reset: offer the reset while it is active (once only)
+  const heldByController = alarm.condition_active && alarm.controller_reset && !alarm.reset_at;
+  if (isOpen(alarm) && (latched || heldByController)) {
     actions.push('reset');
   }
   return actions;

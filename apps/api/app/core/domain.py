@@ -67,6 +67,11 @@ COMMAND_PERMISSIONS: dict[str, frozenset[str]] = {
     "set_mode": frozenset({"owner_admin"}),
     "inject_fault": frozenset({"owner_admin"}),
     "set_panel": frozenset({"owner_admin"}),
+    # G5: the Alarm Center reset also resets the controller (PLC latches, beacon, HMI)
+    "reset_alarm": frozenset({"owner_admin"}),
 }
 # Known command types that have no implementation yet.
-NOT_IMPLEMENTED_COMMANDS = frozenset({"ack_alarm", "reset_alarm", "force_valve", "source_override"})
+NOT_IMPLEMENTED_COMMANDS = frozenset({"ack_alarm", "force_valve", "source_override"})
+# Alarms the controller itself holds until it gets a reset (a PLC latches a failed pump start
+# and the dry-run lock-out): the app may send that reset while the alarm is still active.
+CONTROLLER_LATCHED_ALARMS = frozenset({"ALM-006", "ALM-007", "ALM-027"})

@@ -74,6 +74,12 @@ describe('availableActions', () => {
     expect(describeState(latched)).toBe('LATCHED · ACKED');
   });
 
+  it('offers reset for an alarm the controller holds, even while active', () => {
+    const held = alarm({ status: 'active_acked', controller_reset: true });
+    expect(availableActions(held)).toEqual(['reset']);
+    expect(availableActions({ ...held, reset_at: '2026-11-24T10:00:00Z' })).toEqual([]);
+  });
+
   it('offers nothing for history entries', () => {
     expect(availableActions(alarm({ status: 'cleared', condition_active: false }))).toEqual([]);
     expect(describeState(alarm({ status: 'cleared' }))).toBe('CLEARED');

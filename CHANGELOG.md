@@ -17,7 +17,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
   - zone valves either wired or on radio boxes, chosen per zone;
   - testing in PLCSIM Advanced, with our simulator playing the farm.
 - **PLC program written** as TIA source files in `plc/src`: zones, pumps, interlocks, the command handshake, the link watchdog and fallback schedule, the 30-minute power-cut rule, hydraulics and trips, radio boxes and energy meters, the Modbus TCP server and alarms.
-  - A static checker (`tools/tia/scl_lint.py`) checks it. It is **not compiled yet**: TIA Portal on the development PC has no active STEP 7 licence (the licence service was stopped).
+  - A static checker (`tools/tia/scl_lint.py`) checks it.
+  - Once the STEP 7 licence was active, TIA Portal compiled it with **0 errors and 0 warnings**: CPU 1512SP-1 PN 6ES7 512-1DM03-0AB0 at firmware V3.1. PLCSIM Advanced V6 refuses older firmware, and the older 6ES7 512-1DK01 stops at V2.9, all modules, the Farm_IO tag table, 32 blocks.
+  - Three fixes the checker couldn't catch: FC `String` inputs take no length, a multi-instance FB needs a static member, `40000` overflows an `Int`.
+  - The Openness helper gained `import-sources` and `delete-device`.
+  - **Runs in PLCSIM Advanced.**
+    - The production Modbus adapter talks to it: commands, refusal reasons, state and PLC alarms.
+    - The fallback schedule switches on after 120 s without the app and off again when the app returns.
+    - Fixed a bug only the real runtime showed: the 1-second tick never fired (`IN := NOT #tTick.Q`), which would have disabled the link watchdog and the fallback.
+    - Set-up lessons are in `plc/README.md`: an ET 200SP PLCSIM family, firmware 3.1, a one-time certificate trust, and the Siemens services.
+  - **Plant bridge:** `run.bat demo plcsim` runs the app against the real PLC program, with our farm model driving the PLC's inputs through the PLCSIM Advanced API (`tools/plcsim/PlcsimBridge.cs`, `apps/simulator/src/plcsim_plant.py`).
+    - PLC fix: the alarm reset was read before the command channels set it, so pumps and the well lock-out never saw a reset.
+    - Gateway fix: one Modbus timeout stopped the gateway for good. It now reconnects, and a late reply can no longer leave the client one answer behind.
+    - API fix: a start without a duration now carries the zone's default duration (the PLC refuses open-ended starts).
+    - Scenario fixes: the prep waits for zones to finish stopping, comms loss waits for the link to return, and refusals are logged with their reason.
+    - **Alarm reset reaches the PLC (owner):** every Alarm Center reset also sends `reset_alarm` to the controller. Alarms the PLC holds until reset (ALM-006/007 failed pump start, ALM-027 dry-run lock-out) can be reset while active; one click clears both.
+    - PLC fix: a pump trip no longer holds ALM-005 for the zone's 30 s fault hold after the pump is repaired.
+    - **Valve faults by flow (owner):** no limit switches. A valve that fails to close faults the zone with ALM-020 when it stops and water keeps flowing; a valve that fails to open shows as no flow (ALM-012).
+    - Scenario fixes: a failed clock scenario restores the clock speed (it left the farm at 60x and the real programs fired mid-scenario), and the prep waits for the PLC's 30 s zone fault to clear.
+    - **HMI:** the MTP1000 Unified Comfort panel is in the TIA project and [docs/HMI_BUILD_GUIDE.md](docs/HMI_BUILD_GUIDE.md) is the screen-by-screen spec (layout A, matching the app). The PLC side is ready: `DB_HMI` buttons become commands on the HMI channel with the app's checks, and the PLC answers with a result text.
+    - 12 of the 15 scenarios pass on the real PLC. Two points still need the owner: per-zone flow limits (mainline leak) and the clock-speed scenarios (listed in `plc/README.md`).
 - **Gateway adapters speak the PLC design** (OPC UA and Modbus):
   - zone state and run source, runtime, faults;
   - PLC alarms;
