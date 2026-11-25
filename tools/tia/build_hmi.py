@@ -111,9 +111,10 @@ def field(name, left, top, width, height, tag, fmt=None, color=TEXT, size=22, al
     path = item("HmiIOField", name, left, top, width, height, **attrs)
     h("set", f"{path}.ProcessValue", "0")  # design-time text only; the value comes from the tag
     dyn_tag(path, "ProcessValue", tag)
-    if fmt:
-        # Unified syntax (read from a field formatted in TIA): {F0} whole numbers, {F1} one decimal, ...
-        h("set", f"{path}.OutputFormat", "{F%d}" % (len(fmt.split(".")[1]) if "." in fmt else 0))
+    if fmt and fmt != "0":
+        # Unified syntax (read from a field formatted in TIA): {F1} one decimal, {F2} two, ...
+        # Int tags (fmt "0") need no format: {F0} shows them with a decimal (tested in the runtime)
+        h("set", f"{path}.OutputFormat", "{F%d}" % len(fmt.split(".")[1]))
     return path
 
 
@@ -236,7 +237,7 @@ def overview() -> None:
     # tank
     card("E_Tank", ex, 153, ew, 161)
     text("E_Tank_T", ex + 15, 166, ew - 62, 26, "مستوى الخزان", size=18, bold=True)
-    field("E_Tank_Val", ex + 167, 204, 130, 72, "Farm_TankLevelPct", fmt="0", size=53)
+    field("E_Tank_Val", ex + 167, 204, 130, 72, "Farm_TankLevelPct", fmt="0.0", size=44)
     text("E_Tank_Unit", ex + 130, 222, 36, 36, "%", color=MUTED, size=21, align="Left")
     picture("E_Tank_Illu", "hmi_illu_tank_1", ex + 15, 202, 100, 91)
     tank = item("HmiRectangle", "E_Tank_Draw", ex + 120, 206, 14, 86, BackColor="#2B8F80", BorderColor=NEUTRAL,
@@ -373,7 +374,7 @@ def pumps() -> None:
     bar = item("HmiRectangle", "P_Tank_Bar", tx + 212, y0 + 66, 16, 158, BackColor="#2B8F80", BorderColor=NEUTRAL,
                BorderWidth="2", AlternateBackColor=BG, ShowFillLevel="true", FillDirection="BottomToTop")
     dyn_tag(bar, "FillLevel", "Farm_TankLevelPct")
-    field("P_Tank_Val", tx + 232, y0 + 80, 100, 62, "Farm_TankLevelPct", fmt="0", size=44)
+    field("P_Tank_Val", tx + 232, y0 + 80, 100, 62, "Farm_TankLevelPct", fmt="0.0", size=38)
     text("P_Tank_Unit", tx + 332, y0 + 92, 36, 40, "%", color=MUTED, size=20, align="Left")
     text("P_Tank_L", tx + 222, y0 + 52, w - 237, 24, "مستوى الماء", color=MUTED, size=14)
     dyn_tag(lamp("P_Fill_Dot", tx + w - 15 - 14, y0 + 164, 14), "BackColor", "Farm_Refilling", [(0, 0, NEUTRAL), (1, 1, ACCENT)])
