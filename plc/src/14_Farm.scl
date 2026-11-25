@@ -29,6 +29,16 @@ VERSION : 0.1
       ret : Int;
       rem : DInt;
       sel : Int;
+      r : Int;
+      z : Int;
+      hh : Int;
+      mm : Int;
+      digits : String[10];
+      ca : String[2];
+      cb : String[2];
+      cc : String[2];
+      cd : String[2];
+      tstr : String[5];
    END_VAR
 BEGIN
    // one-cycle pulse every second
@@ -110,6 +120,57 @@ BEGIN
       "DB_HMI".SelRemainingMin := "DB_HMI".RemainingMin[#sel];
       "DB_HMI".SelFlow := "DB_Zones".Zone[#sel].FlowM3h;
       "DB_HMI".SelPressure := "DB_Zones".Zone[#sel].PressureBar;
+   END_IF;
+
+   // Settings screen: apply a mode chosen on the HMI (same values as the app's set_mode)
+   IF "DB_HMI".ReqMode >= 0 AND "DB_HMI".ReqMode <= 3 THEN
+      "DB_Farm".Mode := "DB_HMI".ReqMode;
+   END_IF;
+   "DB_HMI".ReqMode := -1;
+
+   // Schedule screen: the next fallback runs as rows (zone name, HH:MM, minutes, done)
+   #digits := '0123456789';
+   "DB_HMI".SchedCount := "DB_Fallback".Count;
+   FOR #r := 1 TO 12 DO
+      "DB_HMI".SchedValid[#r] := #r <= "DB_Fallback".Count AND "DB_Fallback".Run[#r].Valid;
+      IF "DB_HMI".SchedValid[#r] THEN
+         #z := "DB_Fallback".Run[#r].ZoneIndex;
+         IF #z >= 1 AND #z <= 16 THEN
+            "DB_HMI".SchedName[#r] := "DB_HMI".ZoneName[#z];
+         END_IF;
+         #hh := "DB_Fallback".Run[#r].StartMinOfDay / 60;
+         #mm := "DB_Fallback".Run[#r].StartMinOfDay MOD 60;
+         #ca := MID(IN := #digits, L := 1, P := #hh / 10 + 1);
+         #cb := MID(IN := #digits, L := 1, P := #hh MOD 10 + 1);
+         #cc := MID(IN := #digits, L := 1, P := #mm / 10 + 1);
+         #cd := MID(IN := #digits, L := 1, P := #mm MOD 10 + 1);
+         #tstr := CONCAT(IN1 := #ca, IN2 := #cb);
+         #tstr := CONCAT(IN1 := #tstr, IN2 := ':');
+         #tstr := CONCAT(IN1 := #tstr, IN2 := #cc);
+         #tstr := CONCAT(IN1 := #tstr, IN2 := #cd);
+         "DB_HMI".SchedTime[#r] := #tstr;
+         "DB_HMI".SchedDur[#r] := "DB_Fallback".Run[#r].DurationMin;
+         "DB_HMI".SchedDone[#r] := "DB_Fallback".Run[#r].Done;
+      ELSE
+         "DB_HMI".SchedName[#r] := WSTRING#'';
+         "DB_HMI".SchedTime[#r] := '';
+         "DB_HMI".SchedDur[#r] := 0;
+         "DB_HMI".SchedDone[#r] := FALSE;
+      END_IF;
+   END_FOR;
+   IF "DB_Fallback".LoadedAt.YEAR > 2000 THEN
+      #hh := USINT_TO_INT("DB_Fallback".LoadedAt.HOUR);
+      #mm := USINT_TO_INT("DB_Fallback".LoadedAt.MINUTE);
+      #ca := MID(IN := #digits, L := 1, P := #hh / 10 + 1);
+      #cb := MID(IN := #digits, L := 1, P := #hh MOD 10 + 1);
+      #cc := MID(IN := #digits, L := 1, P := #mm / 10 + 1);
+      #cd := MID(IN := #digits, L := 1, P := #mm MOD 10 + 1);
+      #tstr := CONCAT(IN1 := #ca, IN2 := #cb);
+      #tstr := CONCAT(IN1 := #tstr, IN2 := ':');
+      #tstr := CONCAT(IN1 := #tstr, IN2 := #cc);
+      "DB_HMI".SchedLoaded := CONCAT(IN1 := #tstr, IN2 := #cd);
+   ELSE
+      "DB_HMI".SchedLoaded := '--:--';
    END_IF;
 
    CASE "DB_Farm".Mode OF

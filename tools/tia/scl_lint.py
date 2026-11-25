@@ -42,6 +42,8 @@ SYSTEM_TYPES: dict[str, dict[str, str]] = {
     "Modbus_Comm_Load": {"DONE": "Bool", "ERROR": "Bool", "STATUS": "Word"},
 }
 BUILTIN_FUNCS = {
+    "CONCAT",
+    "MID",
     "RD_LOC_T",
     "T_DIFF",
     "SHR",

@@ -1,4 +1,4 @@
-// Algaroshy Farm PLC (G5) - global data blocks. Needs 01_Types.udt first.
+﻿// Algaroshy Farm PLC (G5) - global data blocks. Needs 01_Types.udt first.
 // All optimized: OPC UA is symbolic; Modbus reads only DB_Modbus.HR.
 
 DATA_BLOCK "DB_Config"
@@ -185,5 +185,29 @@ NON_RETAIN
       SelRemainingMin : Int;
       SelFlow : Real;
       SelPressure : Real;
+      // Schedule screen: the next fallback runs as display rows, and the zone names (Arabic)
+      SchedCount : Int;
+      SchedLoaded : String[5];             // HH:MM the list was loaded, '--:--' if never
+      SchedName : Array[1..12] of WString[24];
+      SchedTime : Array[1..12] of String[5];
+      SchedDur : Array[1..12] of Int;
+      SchedDone : Array[1..12] of Bool;
+      SchedValid : Array[1..12] of Bool;
+      ZoneName : Array[1..16] of WString[24];
+      // Settings screen: the HMI writes a mode (0 off, 1 auto, 2 manual, 3 maintenance); the PLC applies it
+      ReqMode : Int := -1;
    END_VAR
+BEGIN
+   ZoneName[1] := WSTRING#'رمان 1';
+   ZoneName[2] := WSTRING#'رمان 2';
+   ZoneName[3] := WSTRING#'رمان 3';
+   ZoneName[4] := WSTRING#'رمان 4';
+   ZoneName[5] := WSTRING#'رمان 5';
+   ZoneName[6] := WSTRING#'رمان 6';
+   ZoneName[7] := WSTRING#'رمان امهات';
+   ZoneName[8] := WSTRING#'رمان جديد';
+   ZoneName[9] := WSTRING#'زيتون';
+   ZoneName[10] := WSTRING#'زيتون 2';
+   ZoneName[11] := WSTRING#'عنب';
+   ZoneName[12] := WSTRING#'خوخ + مشمش + عوينة';
 END_DATA_BLOCK

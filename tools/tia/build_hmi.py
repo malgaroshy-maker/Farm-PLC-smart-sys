@@ -35,7 +35,7 @@ STATE_COLORS = STATE_FILL
 # bottom bar, right to left: label, screen to open (None = not built yet)
 NAV = [("نظرة عامة", "Overview", "hmi_icon_overview"), ("المناطق", "Zone", "hmi_icon_zones"),
        ("المضخات", "Pumps", "hmi_icon_pump"), ("الإنذارات", "Alarms", "hmi_icon_bell"),
-       ("الجدول", None, "hmi_icon_calendar"), ("الإعدادات", None, "hmi_icon_settings")]
+       ("الجدول", "Schedule", "hmi_icon_calendar"), ("الإعدادات", "Settings", "hmi_icon_settings")]
 # icons on the equipment cards: title item name, graphic
 CARD_ICONS = [("E_Tank_T", "hmi_icon_tank_1"), ("E_Pumps_T", "hmi_icon_pump"), ("E_Line_T", "hmi_icon_gauge"),
               ("E_Power_T", "hmi_icon_bolt")]
@@ -315,7 +315,9 @@ def zone() -> None:
     button("Z_Start", 330, 330, 290, 110, "تشغيل", press("Hmi_BtnStart"), back="#1B4A3C", border=GREEN, size=30, fore=SOFT)
     button("Z_Stop", 48, 330, 270, 110, "إيقاف", press("Hmi_BtnStop"), back="#4A3B1E", border=AMBER, size=30, fore=SOFT)
     button("Z_StopAll", 48, 456, 572, 80, "إيقاف الكل", press("Hmi_BtnStopAll"), back=FAULT_BG, border=FAULT_LINE, size=26, fore=FAULT_TXT)
-    text("Z_Hint", 48, 556, 572, 60, "الأوامر تمر عبر وحدة التحكم بنفس فحوصات التطبيق", color=MUTED, size=15)
+    text("Z_Hint", 48, 556, 572, 40, "الأوامر تمر عبر وحدة التحكم بنفس فحوصات التطبيق", color=MUTED, size=15)
+    text("Z_AnswerLbl", 360, 610, 260, 36, "رد وحدة التحكم", color=MUTED, size=16)
+    field("Z_Answer", 48, 610, 300, 36, "Hmi_ResultText", color=AMBER, size=18, align="Left")
 
 
 
@@ -400,6 +402,68 @@ def pumps() -> None:
         dyn_tag(lamp(f"P_St{k}_Dot", x + 288 - 30, yy + 15, 20), "BackColor", tag, ranges)
         text(f"P_St{k}_T", x + 10, yy + 8, 288 - 50, 36, label, color=SOFT, size=18)
 
+
+# ── Schedule (the PLC's fallback runs) ──────────────────────
+def schedule() -> None:
+    new_screen("Schedule")
+    chrome("Schedule", "جدول الري الاحتياطي")
+    card("Sc_Info", 32, 111, 1216, 64)
+    text("Sc_InfoNote", 560, 119, 676, 48, "تشغيل ذاتي من وحدة التحكم عند انقطاع التطبيق لأكثر من دقيقتين", color=MUTED, size=17)
+    text("Sc_LoadLbl", 330, 119, 220, 48, "آخر تحميل للجدول", color=MUTED, size=15)
+    field("Sc_Loaded", 215, 123, 110, 40, "Sched_Loaded", size=26, align="Center")
+    text("Sc_CountLbl", 150, 119, 60, 48, "عدد", color=MUTED, size=15)
+    field("Sc_Count", 60, 123, 80, 40, "Sched_Count", size=26, align="Center")
+    card("Sc_Table", 32, 187, 1216, 529)
+    cols = (("#", 1186, 50), ("المنطقة", 700, 470), ("وقت البدء", 540, 150), ("المدة (دقيقة)", 380, 150),
+            ("الحالة", 220, 150))
+    for k, (label, x, w) in enumerate(cols):
+        text(f"Sc_H{k}", x, 195, w, 36, label, color=MUTED, size=16, align="Center" if k != 1 else "Right")
+    hline("Sc_HLine", 47, 234, 1186)
+    for r in range(1, 13):
+        y = 240 + (r - 1) * 39
+        z = f"S{r:02d}"
+        num = text(f"Sc_N{r}", 1186, y, 50, 36, str(r), color=MUTED, size=17, align="Center")
+        dyn_tag(num, "Visible", f"{z}_Valid", [(0, 0, "false"), (1, 1, "true")])
+        field(f"Sc_Name{r}", 700, y, 470, 36, f"{z}_Name", size=22, align="Right")
+        field(f"Sc_Time{r}", 540, y, 150, 36, f"{z}_Time", size=24, align="Center", color=ACCENT)
+        dur = field(f"Sc_Dur{r}", 380, y, 150, 36, f"{z}_Dur", size=22, align="Center")
+        dyn_tag(dur, "Visible", f"{z}_Valid", [(0, 0, "false"), (1, 1, "true")])
+        lamp_p = lamp(f"Sc_Lamp{r}", 282, y + 7, 22)
+        dyn_tag(lamp_p, "BackColor", f"{z}_Done", [(0, 0, AMBER), (1, 1, GREEN)])
+        dyn_tag(lamp_p, "Visible", f"{z}_Valid", [(0, 0, "false"), (1, 1, "true")])
+    text("Sc_Legend", 47, 690, 1186, 24, "برتقالي: بانتظار التشغيل     أخضر: تم تشغيله", color=MUTED, size=14, align="Left")
+
+
+# ── Settings ────────────────────────────────────────────────
+def settings() -> None:
+    new_screen("Settings")
+    chrome("Settings", "إعدادات النظام")
+    card("St_Mode", 652, 111, 596, 605)
+    text("St_ModeT", 667, 123, 566, 40, "وضع النظام", size=24, bold=True)
+    cur = text("St_ModeCur", 667, 172, 566, 56, "-", color=ACCENT, size=34, bold=True)
+    text_from_list(cur, "SystemMode", "Farm_Mode")
+    modes = (("تلقائي", 1, "#1B4A3C", GREEN, "الري حسب الجدول والأوامر"), ("يدوي", 2, "#1D3D43", ACCENT, "الأوامر اليدوية فقط"),
+             ("صيانة", 3, "#4A3B1E", AMBER, "لا ري تلقائي، لأعمال الصيانة"), ("إيقاف", 0, FAULT_BG, FAULT_LINE, "لا بدء لأي منطقة"))
+    for k, (label, value, back, border, note) in enumerate(modes):
+        y = 250 + k * 112
+        button(f"St_M{value}", 880, y, 340, 90, label, f'Tags("Hmi_ReqMode").Write({value});', back=back, border=border, size=28, fore=SOFT)
+        text(f"St_M{value}_N", 667, y + 8, 200, 74, note, color=MUTED, size=15)
+    card("St_Status", 32, 111, 596, 605)
+    text("St_StatusT", 47, 123, 566, 40, "حالة النظام", size=24, bold=True)
+    rows = (("اتصال التطبيق", "Farm_LinkOk", [(0, 0, AMBER), (1, 1, GREEN)]),
+            ("الجدول الاحتياطي يعمل", "Farm_FallbackActive", [(0, 0, NEUTRAL), (1, 1, AMBER)]),
+            ("الكهرباء", "Farm_PowerOk", [(0, 0, RED), (1, 1, GREEN)]),
+            ("إيقاف الطوارئ", "Farm_EStop", [(0, 0, NEUTRAL), (1, 1, RED)]),
+            ("تعبئة الخزان", "Farm_Refilling", [(0, 0, NEUTRAL), (1, 1, ACCENT)]))
+    for k, (label, tag, ranges) in enumerate(rows):
+        y = 180 + k * 70
+        item("HmiRectangle", f"St_R{k}", 47, y, 566, 56, BackColor=BG, BorderColor=BORDER, BorderWidth="1")
+        dyn_tag(lamp(f"St_R{k}_Dot", 575, y + 17, 22), "BackColor", tag, ranges)
+        text(f"St_R{k}_T", 62, y + 8, 500, 40, label, color=SOFT, size=20)
+    text("St_Note", 47, 540, 566, 160,
+         "تغيير الوضع يمر عبر وحدة التحكم ويسري فوراً. التطبيق يستطيع تغييره أيضاً. "
+         "صلاحيات المسؤول فقط تُضاف لاحقاً من إعدادات المستخدمين.", color=MUTED, size=16)
+
 # ── Alarms ──────────────────────────────────────────────────
 def alarms() -> None:
     new_screen("Alarms")
@@ -408,7 +472,8 @@ def alarms() -> None:
     item("HmiAlarmControl", "A_Control", 32, 163, 1216, 553)
 
 
-BUILDERS = {"overview": overview, "zone": zone, "alarms": alarms, "pumps": pumps}
+BUILDERS = {"overview": overview, "zone": zone, "alarms": alarms, "pumps": pumps, "schedule": schedule,
+            "settings": settings}
 
 
 def main() -> None:
