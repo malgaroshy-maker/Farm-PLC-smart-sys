@@ -13,6 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - Audited the AI workflows and evaluated all 22 APInex entries advertised as free. The audit records account access, tool calling, factual grounding, Arabic quality, and latency.
 - Grounded alarm and irrigation advice in server-owned records. Kept missing readings unavailable, labeled estimated water, and added verified source labels in Arabic and English.
 - Populated the current day's briefing schedule from configured programs and approved overrides. Kept the existing default provider chain after the shortlist retest.
+- Aligned hourly forecasts with Tripoli time on browsers and CI runners in other time zones.
+- Made initial crop moisture levels safe to create concurrently when the monitor and telemetry sync start together.
 
 ### Milestone G5 bench closeout (2026-11-26)
 - Added a per-zone PLC flow profile and a dedicated high-flow trip timer. The leak scenario checks a fresh ALM-013, shutdown and recovery using controller data. It no longer inserts historical irrigation runs.

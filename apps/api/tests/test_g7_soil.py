@@ -4,10 +4,13 @@ import asyncio
 import json
 from datetime import timedelta
 
+import pytest
 from conftest import SIM, login, push_state
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.clock import clock
 from app.database import async_session_factory
+from app.models.soil import CropMoistureLevel
 from app.services import soil
 
 
@@ -44,6 +47,41 @@ def test_levels_start_unconfirmed_and_validate(client):
         ).status_code
         == 403
     )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_level_initialization_preserves_the_winning_rows(tmp_path, monkeypatch):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{(tmp_path / 'soil.db').as_posix()}")
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(CropMoistureLevel.__table__.create)
+        async with sessions() as first, sessions() as second:
+            first_rows = await soil.levels(first)
+            first_rows["olives"].start_pct = 41.0
+            first_rows["olives"].confirmed = True
+            await first.flush()
+
+            read = second.execute
+            committed = False
+
+            async def read_levels(*args, **kwargs):
+                nonlocal committed
+                result = await read(*args, **kwargs)
+                if not committed:
+                    # Commit after the second session reads the empty table, before it inserts.
+                    committed = True
+                    await first.commit()
+                return result
+
+            monkeypatch.setattr(second, "execute", read_levels)
+            second_rows = await soil.levels(second)
+            assert committed
+            assert set(second_rows) == set(soil.PROPOSED)
+            assert second_rows["olives"].start_pct == 41.0
+            assert second_rows["olives"].confirmed is True
+    finally:
+        await engine.dispose()
 
 
 def test_probe_registration_and_ingest_override_map_moisture(client):

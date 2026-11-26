@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import as_utc, utcnow
@@ -105,17 +107,30 @@ PROPOSED = {
 
 
 async def levels(db: AsyncSession) -> dict[str, CropMoistureLevel]:
-    rows = {r.crop_type: r for r in (await db.execute(select(CropMoistureLevel))).scalars()}
-    missing = [c for c in PROPOSED if c not in rows]
-    for crop in missing:  # a fresh database: add the proposed, unconfirmed levels
-        start, stop = PROPOSED[crop]
-        rows[crop] = CropMoistureLevel(
-            crop_type=crop, start_pct=start, stop_pct=stop, confirmed=False
+    query = select(CropMoistureLevel)
+    rows = {row.crop_type: row for row in (await db.scalars(query))}
+    proposed = [
+        {"crop_type": crop, "start_pct": start, "stop_pct": stop, "confirmed": False}
+        for crop, (start, stop) in PROPOSED.items()
+        if crop not in rows
+    ]
+    if not proposed:
+        return rows
+
+    # State sync and the monitor can discover missing levels at the same time.
+    insert = {"sqlite": sqlite_insert, "postgresql": postgres_insert}.get(
+        db.get_bind().dialect.name
+    )
+    if insert is not None:
+        await db.execute(
+            insert(CropMoistureLevel)
+            .values(proposed)
+            .on_conflict_do_nothing(index_elements=[CropMoistureLevel.crop_type])
         )
-        db.add(rows[crop])
-    if missing:
+    else:
+        db.add_all([CropMoistureLevel(**row) for row in proposed])
         await db.flush()
-    return rows
+    return {row.crop_type: row for row in (await db.scalars(query))}
 
 
 async def zone_levels(

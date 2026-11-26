@@ -59,6 +59,8 @@ export interface ActiveWeatherSelection {
   inRange: boolean;
 }
 
+const ISO_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
 /**
  * Select the forecast and next 6 hourly items matching current farm time (Africa/Tripoli).
  * If farm time is outside the forecast range, returns { current: null, next6: [], inRange: false }.
@@ -71,19 +73,14 @@ export function selectForecastForFarmTime(
     return { current: null, next6: [], inRange: false };
   }
 
-  const farmTime = new Date(
-    farmNowIso.includes('Z') || /[+-]\d{2}/.test(farmNowIso) ? farmNowIso : `${farmNowIso}Z`
-  );
+  const farmTime = new Date(ISO_OFFSET.test(farmNowIso) ? farmNowIso : `${farmNowIso}Z`);
   const farmTimeMs = farmTime.getTime();
   if (Number.isNaN(farmTimeMs)) {
     return { current: null, next6: [], inRange: false };
   }
 
   const parsedHourly = forecast.hourly.map((h) => {
-    const tsStr =
-      h.timestamp.includes('Z') || /[+-]\d{2}/.test(h.timestamp)
-        ? h.timestamp
-        : `${h.timestamp}+02:00`;
+    const tsStr = ISO_OFFSET.test(h.timestamp) ? h.timestamp : `${h.timestamp}+02:00`;
     const tMs = new Date(tsStr).getTime();
     return { item: h, tMs };
   });

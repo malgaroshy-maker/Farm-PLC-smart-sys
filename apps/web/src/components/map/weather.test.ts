@@ -309,6 +309,14 @@ describe('Weather on Farm Map (Milestone F)', () => {
       expect(res.next6[0].timestamp).toBe('2026-11-21T09:00');
     });
 
+    it('uses UTC for an unzoned farm clock value and respects explicit forecast offsets', () => {
+      const current = { ...mockHourly[12], timestamp: '2026-11-20T10:00:00Z' };
+      const next = { ...mockHourly[13], timestamp: '2026-11-20T13:00:00+02:00' };
+      const result = selectForecastForFarmTime({ hourly: [current, next] }, '2026-11-20T10:00:00');
+      expect(result.current).toBe(current);
+      expect(result.next6).toEqual([next]);
+    });
+
     it('returns no data when farm time is beyond forecast range (e.g. 14 Dec)', () => {
       const res = selectForecastForFarmTime(mockForecast, '2026-12-14T10:00:00+02:00');
       expect(res.inRange).toBe(false);
