@@ -15,7 +15,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - A program that comes due while another is still running is now recorded as missed.
 - Live data recovers when the gateway or server clock is set back.
 - A clean irrigation run is no longer reported as having missing flow readings.
-- Five wrong passwords pause sign-in for that username for up to 5 minutes. Failed sign-ins are logged.
+- Ten wrong passwords within a minute pause sign-in for that username for up to a minute. Failed sign-ins are logged.
 - Push subscriptions are accepted only for browser push services, and a user can remove only their own device (an admin can remove any).
 - Telegram messages are escaped, so `<` or `&` no longer makes sending fail.
 - JavaScript packages updated; `pnpm audit` reports no known vulnerabilities.

@@ -21,7 +21,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     if wait:
         raise HTTPException(
             status_code=429,
-            detail="Too many failed sign-in attempts. Try again in a few minutes.",
+            detail="Too many failed sign-in attempts. Try again in a minute.",
             headers={"Retry-After": str(wait)},
         )
     result = await db.execute(select(User).where(User.username == body.username))
