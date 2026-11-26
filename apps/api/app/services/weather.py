@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.clock import clock
+from app.core.timeutil import as_utc
 from app.models.ai import WeatherCache
 
 log = logging.getLogger(__name__)
@@ -102,6 +103,16 @@ class WeatherForecast(BaseModel):
     last_fetched_at: str
     source: str = "open-meteo"
     cached: bool = False
+
+
+def is_usable_forecast(forecast: WeatherForecast | None) -> bool:
+    if not forecast or forecast.source == "offline_fallback":
+        return False
+    try:
+        age = as_utc(clock.farm_now()) - as_utc(datetime.fromisoformat(forecast.last_fetched_at))
+    except ValueError:
+        return False
+    return 0 <= age.total_seconds() <= settings.weather_cache_ttl_sec
 
 
 class WeatherService:

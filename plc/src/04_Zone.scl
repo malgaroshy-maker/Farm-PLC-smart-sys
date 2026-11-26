@@ -23,6 +23,7 @@ VERSION : 0.1
       tValve : TON_TIME;
       tValidate : TON_TIME;
       tBand : TON_TIME;
+      tHighFlow : TON_TIME;
       tFault : TON_TIME;
    END_VAR
    VAR_TEMP
@@ -31,6 +32,7 @@ VERSION : 0.1
       j : Int;
       otherOpen : Bool;
       outBand : Bool;
+      bandTripTime : Time;
    END_VAR
 BEGIN
    #s := "DB_Zones".Zone[#ZoneIndex];
@@ -96,6 +98,10 @@ BEGIN
 
    #entered := #s.State <> #lastState;
    #lastState := #s.State;
+   #bandTripTime := DINT_TO_TIME(INT_TO_DINT("DB_Config".BandTripS) * 1000);
+   // Pressure or low flow must not use up the sustained-high-flow delay.
+   #tHighFlow(IN := #s.State = 4 AND NOT #entered AND #s.FlowM3h > #c.FlowMaxM3h,
+              PT := #bandTripTime);
 
    REGION State machine
       CASE #s.State OF
@@ -132,15 +138,16 @@ BEGIN
          4:  // running
             #s.NeedPump := TRUE;
             #s.ValveCmd := TRUE;
-            #outBand := #s.FlowM3h < #c.FlowMinM3h OR #s.FlowM3h > #c.FlowMaxM3h
+            #outBand := #s.FlowM3h < #c.FlowMinM3h
                         OR #s.PressureBar < #c.PressMinBar OR #s.PressureBar > #c.PressMaxBar;
-            #tBand(IN := #outBand AND NOT #entered, PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".BandTripS) * 1000));
-            IF #tBand.Q THEN
+            #tBand(IN := #outBand AND NOT #entered, PT := #bandTripTime);
+            IF #tHighFlow.Q THEN
+               #s.State := 7;
+               #s.FaultCode := 13;                    // high flow / leak
+            ELSIF #tBand.Q THEN
                #s.State := 7;
                IF #s.FlowM3h < #c.FlowMinM3h THEN
                   #s.FaultCode := 12;                  // no flow
-               ELSIF #s.FlowM3h > #c.FlowMaxM3h THEN
-                  #s.FaultCode := 13;                  // high flow / leak
                ELSIF #s.PressureBar < #c.PressMinBar THEN
                   #s.FaultCode := 8;                   // low pressure
                ELSE

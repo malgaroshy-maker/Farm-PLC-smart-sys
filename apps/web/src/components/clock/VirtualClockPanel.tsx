@@ -34,6 +34,7 @@ export default function VirtualClockPanel() {
   const isAdmin = can('owner_admin');
 
   const speed = useClockStore((s) => s.speed);
+  const lockedReal = useClockStore((s) => s.lockedReal);
   const paused = useClockStore((s) => s.paused);
   const isSimulated = useClockStore((s) => s.isSimulated);
   const setSpeed = useClockStore((s) => s.setSpeed);
@@ -55,7 +56,7 @@ export default function VirtualClockPanel() {
   };
 
   const handleAction = async (fn: () => Promise<void>, successText?: string) => {
-    if (!isAdmin) return;
+    if (!isAdmin || lockedReal) return;
     setBusy(true);
     try {
       await fn();
@@ -96,8 +97,8 @@ export default function VirtualClockPanel() {
         <div className="flex items-center gap-2.5">
           <Clock className="text-[#00e5ff]" size={22} />
           <div>
-            <h2 className="text-base font-bold text-[#e5e2e1]">{t('clock.title')}</h2>
-            <p className="text-xs text-[#849396]">{t('clock.subtitle')}</p>
+            <h2 className="text-base font-bold text-[#e5e2e1]">{t(lockedReal ? 'clock.plcRealTime' : 'clock.title')}</h2>
+            <p className="text-xs text-[#849396]">{t(lockedReal ? 'clock.plcLocked' : 'clock.subtitle')}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -141,7 +142,7 @@ export default function VirtualClockPanel() {
       </div>
 
       {/* Controls Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <fieldset disabled={lockedReal} className={lockedReal ? 'hidden' : 'grid grid-cols-1 md:grid-cols-2 gap-4'}>
         {/* Play / Pause / Step / Speeds */}
         <div className="space-y-3">
           <label className="text-xs font-bold text-[#bac9cc] block">
@@ -236,10 +237,10 @@ export default function VirtualClockPanel() {
             </button>
           </form>
         </div>
-      </div>
+      </fieldset>
 
       {/* Back to Real Time section */}
-      <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+      <div className={lockedReal ? 'hidden' : 'pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-3'}>
         <div className="text-xs text-[#849396]">
           {isSimulated ? (
             <span className="text-[#ff9f43] flex items-center gap-1.5">
@@ -268,7 +269,7 @@ export default function VirtualClockPanel() {
       </div>
 
       {/* Confirmation Modal */}
-      {showConfirmReset && (
+      {showConfirmReset && !lockedReal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="panel p-6 max-w-md w-full border border-[#ff9f43]/40 bg-[#18181b] shadow-2xl space-y-4">
             <div className="flex items-start gap-3">

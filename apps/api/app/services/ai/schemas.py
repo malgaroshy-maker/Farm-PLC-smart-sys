@@ -3,7 +3,10 @@
 Strictly structured models — never parse free text.
 """
 
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field
+from typing_extensions import TypedDict
 
 
 class AlarmExplanation(BaseModel):
@@ -18,7 +21,7 @@ class AlarmExplanation(BaseModel):
     suggested_actions: list[str] = Field(default_factory=list)
     suggested_actions_ar: list[str] = Field(default_factory=list)
     safety_critical: bool = False
-    confidence: float = 0.95
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     provider_used: str = "rule_based"
     model_used: str = ""
     fallback_reason: str | None = None
@@ -74,16 +77,22 @@ class ChatResponse(BaseModel):
 
 
 class AlarmExplainRequest(BaseModel):
-    alarm_id: str | None = None
-    alarm_code: str | None = None
-    language: str = "ar"
+    alarm_id: str | None = Field(default=None, max_length=100)
+    alarm_code: str | None = Field(default=None, max_length=32)
+    language: Literal["ar", "en"] = "ar"
+    question: str | None = Field(default=None, max_length=1500)
+
+
+class ChatHistoryMessage(TypedDict):
+    role: Literal["user", "assistant"]
+    content: Annotated[str, Field(max_length=3000)]
 
 
 class ChatRequest(BaseModel):
-    message: str
-    language: str = "ar"
-    context_zone_id: str | None = None
-    history: list[dict[str, str]] = Field(default_factory=list)
+    message: str = Field(min_length=1, max_length=3000)
+    language: Literal["ar", "en"] = "ar"
+    context_zone_id: str | None = Field(default=None, max_length=100)
+    history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=12)
 
 
 class SuggestionActionRequest(BaseModel):
@@ -133,8 +142,8 @@ class AISettingsResponse(BaseModel):
 
 class AISettingsUpdateRequest(BaseModel):
     global_enabled: bool | None = None
-    primary_provider: str | None = None
-    fallback_provider: str | None = None
+    primary_provider: Literal["apinex", "gemini"] | None = None
+    fallback_provider: Literal["apinex", "gemini", "rule_based"] | None = None
     apinex_base_url: str | None = None
     apinex_model: str | None = None
     apinex_fallback_model: str | None = None
@@ -151,7 +160,7 @@ class AISettingsUpdateRequest(BaseModel):
     water_optimizer_enabled: bool | None = None
     daily_insights_enabled: bool | None = None
     offline_fallback: bool | None = None
-    timeout_sec: float | None = None
-    advisor_timeout_sec: float | None = None
-    token_budget: int | None = None
+    timeout_sec: float | None = Field(default=None, gt=0, le=120)
+    advisor_timeout_sec: float | None = Field(default=None, gt=0, le=120)
+    token_budget: int | None = Field(default=None, ge=256, le=16384)
     daily_briefing_time: str | None = None

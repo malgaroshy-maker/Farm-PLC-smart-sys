@@ -9,6 +9,7 @@ class ClockResponse(BaseModel):
     mode: str
     speed: float
     paused: bool
+    locked_real: bool
     farm_now: datetime
     real_now: datetime
     action: str | None = None

@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import settings
 from app.core.clock import clock
 from app.database import async_session_factory
-from app.services.live_state import current_map_state
-from app.services.weather import weather_service
+from app.services.alarms import active_alarm_responses
+from app.services.live_state import build_map_state, is_fresh, load_snapshots
+from app.services.weather import is_usable_forecast, weather_service
 
 log = logging.getLogger(__name__)
 
@@ -31,37 +32,42 @@ Arabic writing rules (whenever you write Arabic):
 
 SNAPSHOT_RULE = (
     "Answer directly from the LIVE FARM SNAPSHOT below. Call tools only for details it does not contain "
-    "(cycle history, a specific alarm's details, telemetry trends)."
+    "(cycle history, a specific alarm's details, telemetry trends). Label simulated readings when reporting them."
 )
-
-
-# Key facts of the most recent snapshot, so the rule-based fallback can still answer with
-# real numbers when every AI model is down.
-LAST_FACTS: dict = {}
 
 
 def _f(v: float | None, digits: int = 1) -> str:
     return "n/a" if v is None else f"{v:.{digits}f}"
 
 
-async def build_live_snapshot_block(factory: async_sessionmaker[AsyncSession] | None = None) -> str:
+async def build_live_snapshot_block(
+    factory: async_sessionmaker[AsyncSession] | None = None, *, facts: dict | None = None
+) -> str:
     factory = factory or async_session_factory
     lines: list[str] = []
-    facts: dict = {}
+    facts = {} if facts is None else facts
     try:
         async with factory() as db:
-            state = await current_map_state(db)
-            facts["tank_pct"] = state.tank_level_pct
-            facts["fresh"] = state.data_fresh
+            snapshots = await load_snapshots(db)
+            state = build_map_state(snapshots, await active_alarm_responses(db))
+            stats = snapshots.get("simulation_stats")
+            readings = stats.state if stats else {}
+            fresh = bool(stats and is_fresh({"simulation_stats": stats}))
+            facts["tank_pct"] = readings.get("tank_level_pct")
+            facts["fresh"] = fresh
+            simulated = settings.deployment_mode == "simulation"
+            facts["simulated"] = simulated
             tz = ZoneInfo(settings.farm_timezone)
             now_local = clock.farm_now().astimezone(tz)
             lines.append(
                 f"LIVE FARM SNAPSHOT (farm time {now_local:%Y-%m-%d %H:%M} Africa/Tripoli; "
-                f"live data {'fresh' if state.data_fresh else 'STALE - say the readings may be old'})"
+                f"source {'simulation' if simulated else 'controller'}, "
+                f"live data {'fresh' if fresh else 'unavailable or stale - quote only last known readings'})"
             )
             lines.append(
-                f"- Tank {_f(state.tank_level_pct)} %, main flow {_f(state.main_flow_m3h, 2)} m³/h, "
-                f"main pressure {_f(state.main_pressure_bar, 2)} bar, mode {state.system_mode}"
+                f"- Tank {_f(readings.get('tank_level_pct'))} %, main flow {_f(readings.get('main_flow_m3h'), 2)} m³/h, "
+                f"main pressure {_f(readings.get('main_pressure_bar'), 2)} bar, "
+                f"mode {state.system_mode if 'system_mode' in snapshots else 'unavailable'}"
             )
             pumps = ", ".join(
                 f"{p.pump_id}={p.state}{' FAULT' if p.fault else ''}" for p in state.pumps
@@ -78,7 +84,11 @@ async def build_live_snapshot_block(factory: async_sessionmaker[AsyncSession] | 
                     )
                 )
             else:
-                lines.append("- Irrigating now: none")
+                lines.append(
+                    "- Irrigating now: none reported"
+                    if state.zones
+                    else "- Irrigation state unavailable"
+                )
             with_m = [z for z in state.zones if z.moisture_pct is not None]
             if with_m:
                 dry = sorted(with_m, key=lambda z: z.moisture_pct)[:4]
@@ -101,7 +111,7 @@ async def build_live_snapshot_block(factory: async_sessionmaker[AsyncSession] | 
                     )
                 lines.append(f"- Active alarms ({len(alarms)}): " + "; ".join(items))
             else:
-                lines.append("- Active alarms: none")
+                lines.append("- Active alarms in the app: none recorded")
             try:
                 from app.routers.schedules import get_upcoming_runs
 
@@ -120,6 +130,7 @@ async def build_live_snapshot_block(factory: async_sessionmaker[AsyncSession] | 
                         f"in {int(r.seconds_until_start // 3600)} h {int(r.seconds_until_start % 3600 // 60)} min"
                     )
                 else:
+                    facts["next_run"] = None
                     lines.append("- Next irrigation: none in the next 24 h")
             except Exception as exc:  # pragma: no cover - schedule shape changes must not break AI
                 log.debug("snapshot: upcoming runs unavailable: %s", exc)
@@ -128,7 +139,7 @@ async def build_live_snapshot_block(factory: async_sessionmaker[AsyncSession] | 
         lines.append("LIVE FARM SNAPSHOT: unavailable")
 
     fc = weather_service._cached_forecast  # cached only: never block the answer on the network
-    if fc and fc.daily:
+    if fc and fc.daily and is_usable_forecast(fc):
         parts = []
         for label, d in zip(("today", "tomorrow"), fc.daily[:2], strict=False):
             parts.append(
@@ -145,6 +156,4 @@ async def build_live_snapshot_block(factory: async_sessionmaker[AsyncSession] | 
         }
     else:
         lines.append("- Weather: forecast not loaded yet (say so if asked)")
-    LAST_FACTS.clear()
-    LAST_FACTS.update(facts)
     return "\n".join(lines)

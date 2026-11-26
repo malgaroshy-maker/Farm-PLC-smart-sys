@@ -1,11 +1,34 @@
 import { useState, useRef } from 'react';
 import { X, Send, Bot, XCircle, Copy, Check, AlertTriangle } from 'lucide-react';
 import { useFarmStore } from '../../store/farm';
-import { useT, fmtNum } from '../../lib/i18n';
+import { useT, fmtNum, type MsgKey } from '../../lib/i18n';
 import { sendAiChat, type ChatMessage } from '../../lib/api';
 import { AiSparklesIcon, FlowIcon, GaugeIcon, PumpIcon, ZonesIcon } from '../icons/FarmIcons';
 import ModelBadge from './ModelBadge';
 import { useElapsedSeconds } from '../../hooks/useElapsedSeconds';
+
+const SOURCE_LABELS = new Map<string, MsgKey>([
+  ['get_alarm', 'chat.source.alarms'],
+  ['get_zone_state', 'chat.source.zones'],
+  ['get_recent_telemetry', 'chat.source.telemetry'],
+  ['get_cycles', 'chat.source.cycles'],
+  ['get_schedule', 'chat.source.schedule'],
+  ['get_forecast', 'chat.source.weather'],
+]);
+
+function ChatSources({ references }: { references: string[] }) {
+  const { t, isRtl } = useT();
+  const labels = [...new Set(references)].flatMap((reference) => {
+    const key = SOURCE_LABELS.get(reference);
+    return key ? [t(key)] : [];
+  });
+  if (!labels.length) return null;
+  return (
+    <p className="mt-1 max-w-[85%] px-1 text-[11px] leading-relaxed text-[#9eacaf]">
+      {t('chat.sources')}{' · '}{labels.join(isRtl ? '، ' : ', ')}
+    </p>
+  );
+}
 
 export default function FloatingAssistant() {
   const { t, lang, isRtl } = useT();
@@ -39,12 +62,9 @@ export default function FloatingAssistant() {
   };
 
   const state = useFarmStore((s) => s.state);
-  const activeAlarms = state?.active_alarms ?? [];
-  const pumps = state?.pumps ?? [];
-  const activePumps = pumps.filter((p) => p.state === 'running').length;
-  const runningZones = (state?.zones ?? []).filter((z) => z.state === 'running').length;
-  const flow = state?.main_flow_m3h ?? 0;
-  const pressure = state?.main_pressure_bar ?? 0;
+  const live = state?.data_fresh ? state : null;
+  const activePumps = live?.pumps.filter((p) => p.state === 'running').length;
+  const runningZones = live?.zones.filter((z) => z.state === 'running').length;
 
   const quickPrompts = [
     { key: 'chat.quickPrompt.activeZones', text: t('chat.quickPrompt.activeZones') },
@@ -92,14 +112,8 @@ export default function FloatingAssistant() {
     abortControllerRef.current = controller;
 
     try {
-      // Build lightweight state payload to provide prompt context even if backend tool lookup is bypassed
-      const liveContext = `[Telemetry: P=${pressure.toFixed(2)}bar, Q=${flow.toFixed(1)}m3/h, RunningZones=${runningZones}, ActivePumps=${activePumps}, Alarms=${activeAlarms.length}]`;
       const apiPayload = nextMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({
-          role: m.role,
-          content: m.role === 'user' ? `${m.content}\n${liveContext}` : m.content,
-        }));
+        .filter((m) => m.provider !== 'system');
 
       const res = await sendAiChat(apiPayload, lang, controller.signal);
       setMessages([
@@ -112,6 +126,7 @@ export default function FloatingAssistant() {
           is_fallback: res.is_fallback,
           latency_ms: res.latency_ms,
           fallback_reason: res.fallback_reason,
+          references: res.references,
           created_at: new Date().toISOString(),
         },
       ]);
@@ -189,19 +204,19 @@ export default function FloatingAssistant() {
           <div className="px-3 py-2 bg-black/40 border-b border-white/5 flex items-center justify-between gap-1 overflow-x-auto text-[11px] font-mono">
             <div className="flex items-center gap-1 px-2 py-1 rounded bg-white/5 text-[#bac9cc]">
               <GaugeIcon size={14} accent="#00e5ff" />
-              <span>{fmtNum(pressure, 2)} bar</span>
+              <span>{fmtNum(live?.main_pressure_bar, 2)} bar</span>
             </div>
             <div className="flex items-center gap-1 px-2 py-1 rounded bg-white/5 text-[#bac9cc]">
               <FlowIcon size={14} accent="#00e5ff" />
-              <span>{fmtNum(flow, 1)} m³/h</span>
+              <span>{fmtNum(live?.main_flow_m3h, 1)} m³/h</span>
             </div>
             <div className="flex items-center gap-1 px-2 py-1 rounded bg-white/5 text-[#bac9cc]">
               <PumpIcon size={14} accent={activePumps ? '#00e5ff' : '#849396'} />
-              <span>{activePumps} {t('chat.telemetry.pumps')}</span>
+              <span>{fmtNum(activePumps)} {t('chat.telemetry.pumps')}</span>
             </div>
             <div className="flex items-center gap-1 px-2 py-1 rounded bg-white/5 text-[#bac9cc]">
               <ZonesIcon size={14} accent={runningZones ? '#00e5ff' : '#849396'} />
-              <span>{runningZones} {t('chat.telemetry.zones')}</span>
+              <span>{fmtNum(runningZones)} {t('chat.telemetry.zones')}</span>
             </div>
           </div>
 
@@ -227,12 +242,13 @@ export default function FloatingAssistant() {
                 </div>
                 {m.role === 'assistant' && (
                   <>
-                    <div className="flex items-center justify-between gap-2 mt-1.5 px-1 w-full max-w-[85%]">
-                      <ModelBadge modelUsed={m.model_used || m.model} provider={m.provider} />
+                    {m.references?.length ? <ChatSources references={m.references} /> : null}
+                    <div className="flex items-center gap-2 mt-1.5 px-1 w-full max-w-[85%]">
+                      {m.model !== 'farm_records' && <ModelBadge modelUsed={m.model_used || m.model} provider={m.provider} />}
                       <button
                         type="button"
                         onClick={() => handleCopy(m.content, idx)}
-                        className="flex items-center gap-1 text-[10px] text-[#849396] hover:text-[#e5e2e1] p-1 rounded hover:bg-white/10 transition-colors"
+                        className="ms-auto flex items-center gap-1 text-[10px] text-[#849396] hover:text-[#e5e2e1] p-1 rounded hover:bg-white/10 transition-colors"
                         title={t('ai.copy')}
                         aria-label={t('ai.copy')}
                       >
@@ -242,7 +258,7 @@ export default function FloatingAssistant() {
                     </div>
 
                     {/* Rule-based notice */}
-                    {(m.provider === 'rule_based' || m.is_fallback || m.fallback_reason) && (
+                    {m.provider === 'rule_based' && m.is_fallback && (
                       <div className="flex items-start gap-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] mt-1 max-w-[85%]">
                         <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-400" />
                         <span>{t('ai.ruleBasedNotice')}</span>

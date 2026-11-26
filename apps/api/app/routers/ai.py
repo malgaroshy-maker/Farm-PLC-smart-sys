@@ -17,6 +17,7 @@ import asyncio
 import json
 import time
 from collections import deque
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,6 +32,7 @@ from app.database import async_session_factory, get_db
 from app.deps import Actor, get_actor, require_roles
 from app.models.ai import AISettings, AISuggestion
 from app.models.alarm import Alarm
+from app.models.feature_flag import FeatureFlag
 from app.models.irrigation_cycle import IrrigationCycle
 from app.models.zone import Zone
 from app.services.ai import (
@@ -55,12 +57,22 @@ from app.services.ai import (
     mark_model_unavailable,
     reject_suggestion,
 )
+from app.services.ai.briefing import get_briefing_schedule
+from app.services.ai.providers import validated_apinex_url
+from app.services.ai.redaction import redact_text
 from app.services.anomaly import anomaly_detector
+from app.services.features import clear_cache as clear_feature_cache
 from app.services.realtime import manager
 from app.services.weather import WeatherForecast, weather_service
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 require_operator = require_roles("owner_admin", "operator")
+AI_FEATURE_SETTINGS = {
+    "alarm_assistant_enabled": "ai.alarm_explain",
+    "weather_advisor_enabled": "ai.advisor",
+    "daily_insights_enabled": "ai.briefing",
+    "anomaly_detection_enabled": "automation.anomaly",
+}
 
 
 def feature_on(key: str):
@@ -133,19 +145,30 @@ async def api_explain_alarm(
         alarm = await db.get(Alarm, body.alarm_id)
         if not alarm:
             # Check by code
-            res = await db.execute(select(Alarm).where(Alarm.alarm_code == body.alarm_id).limit(1))
+            res = await db.execute(
+                select(Alarm)
+                .where(Alarm.alarm_code == body.alarm_id)
+                .order_by(desc(Alarm.triggered_at))
+                .limit(1)
+            )
             alarm = res.scalar_one_or_none()
 
         if alarm:
+            zone = await db.get(Zone, alarm.zone_id) if alarm.zone_id else None
             alarm_data = {
                 "id": alarm.id,
                 "alarm_code": alarm.alarm_code,
                 "name": alarm.name,
                 "name_ar": alarm.name_ar,
                 "severity": alarm.severity,
+                "status": alarm.status,
+                "condition_active": alarm.cleared_at is None,
+                "triggered_at": alarm.triggered_at,
                 "current_value": alarm.current_value,
                 "threshold_value": alarm.threshold_value,
                 "zone_id": alarm.zone_id,
+                "zone_name": zone.name if zone else None,
+                "zone_name_ar": zone.name_ar if zone else None,
                 "guidance_en": alarm.guidance_en,
                 "guidance_ar": alarm.guidance_ar,
             }
@@ -159,7 +182,9 @@ async def api_explain_alarm(
             detail="Either alarm_id or alarm_code must be provided",
         )
 
-    return await explain_alarm(alarm_data=alarm_data, db=db, lang=body.language)
+    return await explain_alarm(
+        alarm_data=alarm_data, db=db, lang=body.language, question=body.question
+    )
 
 
 # ── Chat Assistant ───────────────────────────────────────────
@@ -235,10 +260,14 @@ async def api_evaluate_advisor(
     actor: Actor = Depends(require_operator),
 ):
     """Trigger on-demand weather advisor evaluation for target date."""
-    target = target_date or clock.farm_now().strftime("%Y-%m-%d")
+    if target_date is not None:
+        try:
+            target_date = date.fromisoformat(target_date).isoformat()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Expected a YYYY-MM-DD farm date") from exc
     suggestion = await evaluate_weather_advisor(
         db=db,
-        target_date=target,
+        target_date=target_date,
         lang=lang,
     )
 
@@ -349,22 +378,22 @@ async def api_reject_suggestion(
 @router.get("/briefing", dependencies=[feature_on("ai.briefing")])
 @router.get("/insights/daily", dependencies=[feature_on("ai.briefing")])
 async def api_get_daily_briefing(
-    target_date: str | None = Query(None, alias="date"),
+    target_date: date | None = Query(None, alias="date"),
     force_refresh: bool = Query(False),
     lang: str = Query("ar"),
     db: AsyncSession = Depends(get_db),
     actor: Actor = Depends(get_actor),
 ):
     """Retrieve or generate daily operations briefing for target date."""
-    target = target_date or clock.farm_now().strftime("%Y-%m-%d")
     record = await get_or_generate_daily_briefing(
         db=db,
-        target_date=target,
+        target_date=target_date.isoformat() if target_date else None,
         force_refresh=force_refresh,
         lang=lang,
     )
 
     recs = json.loads(record.recommendations_json or "[]")
+    payload = json.loads(record.payload_json or "{}")
     return {
         "id": record.id,
         "date": record.date,
@@ -380,6 +409,9 @@ async def api_get_daily_briefing(
         "alarms_overview_ar": record.alarms_overview_ar,
         "recommendations": recs,
         "provider_used": record.provider_used,
+        "model_used": payload.get("model_used"),
+        **payload.get("metrics", {}),
+        "schedules_today": await get_briefing_schedule(db, record.date),
         "created_at": record.created_at.isoformat(),
     }
 
@@ -394,7 +426,10 @@ async def api_get_weather_forecast(
     actor: Actor = Depends(get_actor),
 ):
     """Retrieve 7-day weather forecast from Open-Meteo with 3h caching."""
-    return await weather_service.get_forecast(db=db, force_refresh=force_refresh)
+    forecast = await weather_service.get_forecast(db=db, force_refresh=force_refresh)
+    if forecast.source == "offline_fallback":
+        raise HTTPException(status_code=503, detail="Verified weather forecast is unavailable")
+    return forecast
 
 
 @router.get("/weather/current")
@@ -404,6 +439,8 @@ async def api_get_current_weather(
 ):
     """Retrieve current weather conditions for Algaroshy Farm."""
     fc = await weather_service.get_forecast(db=db)
+    if fc.source == "offline_fallback":
+        raise HTTPException(status_code=503, detail="Verified weather conditions are unavailable")
     return fc.current
 
 
@@ -503,15 +540,29 @@ async def api_update_ai_settings(
     actor: Actor = Depends(require_admin),
 ):
     """Update AI persistent configuration and feature toggles (Admin only)."""
+    if body.apinex_base_url is not None:
+        try:
+            validated_apinex_url(body.apinex_base_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     entry = await _get_or_create_settings(db)
 
     update_data = body.model_dump(exclude_unset=True)
     for k, v in update_data.items():
         if hasattr(entry, k) and v is not None:
             setattr(entry, k, v)
+    for setting, key in AI_FEATURE_SETTINGS.items():
+        if update_data.get(setting) is not None:
+            flag = await db.get(FeatureFlag, key)
+            if flag is None:
+                flag = FeatureFlag(key=key)
+                db.add(flag)
+            flag.enabled = update_data[setting]
+            flag.updated_by = actor.name
     entry.updated_at = clock.farm_now()
     await db.commit()
     await db.refresh(entry)
+    clear_feature_cache()
 
     # Sync runtime settings
     if body.apinex_model:
@@ -591,7 +642,6 @@ async def api_test_ai(
     target_provider = (
         (body.provider if body and body.provider else None)
         or (saved.primary_provider if saved else None)
-        or settings.primary_provider
         or "apinex"
     ).lower()
     target_model = (
@@ -600,32 +650,47 @@ async def api_test_ai(
         or (saved.gemini_model if saved and target_provider != "apinex" else None)
         or (settings.apinex_model if target_provider == "apinex" else settings.gemini_model)
     )
-    test_prompt = body.prompt if body and body.prompt else "Test connection. Reply with OK."
+    test_prompt = (
+        redact_text(body.prompt) if body and body.prompt else "Test connection. Reply with OK."
+    )
 
     t0 = time.monotonic()
     try:
         if target_provider == "apinex":
-            llm_model = get_primary_model(model_name=target_model)
-        else:
+            if not settings.apinex_api_key:
+                raise ValueError("APInex credentials are not configured")
+            llm_model = get_primary_model(
+                model_name=target_model, base_url=saved.apinex_base_url if saved else None
+            )
+        elif target_provider == "gemini":
+            if not settings.gemini_api_key:
+                raise ValueError("Gemini credentials are not configured")
             llm_model = get_fallback_model(model_name=target_model)
+        else:
+            raise ValueError("Unknown AI provider")
 
-        test_agent = Agent(model=llm_model)
-        await asyncio.wait_for(test_agent.run(test_prompt), timeout=15.0)
+        test_agent = Agent(model=llm_model, output_type=ChatResponse, retries=0)
+        result = await asyncio.wait_for(test_agent.run(test_prompt), timeout=15.0)
+        if not (result.output.reply.strip() or result.output.reply_ar.strip()):
+            raise ValueError("Empty structured response")
         latency_ms = round((time.monotonic() - t0) * 1000, 2)
         mark_model_available(target_model)
         return AITestResponse(
             ok=True,
             provider=target_provider,
             model=target_model,
-            model_used=target_model,
+            model_used=result.response.model_name or target_model,
             latency_ms=latency_ms,
             error=None,
         )
     except Exception as exc:
         latency_ms = round((time.monotonic() - t0) * 1000, 2)
-        err_msg = str(exc)
-        if any(code in err_msg for code in ("400", "402")):
-            mark_model_unavailable(target_model, f"HTTP error during test: {err_msg[:100]}")
+        status_code = getattr(exc, "status_code", None)
+        err_msg = (
+            f"Provider HTTP {status_code}" if isinstance(status_code, int) else type(exc).__name__
+        )
+        if status_code in (400, 402):
+            mark_model_unavailable(target_model, err_msg)
         return AITestResponse(
             ok=False,
             provider=target_provider,

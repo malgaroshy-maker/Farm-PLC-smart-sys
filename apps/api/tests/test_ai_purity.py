@@ -21,7 +21,8 @@ from app.services.ai.schemas import AlarmExplanation
 def test_pure_arabic_with_allowed_technical_terms():
     """Valid Arabic text containing permitted engineering codes and units passes cleanly."""
     pure_text = (
-        "تم رصد إنذار ALM-004 في المنطقة RUMMAN_1 بمعدل تدفق 4.2 m3/h وضغط 2.5 bar عبر جهاز PLC."
+        "رُصد إنذار ALM-004 في المنطقة RUMMAN_1. تعمل محاكاة PLCSIM Advanced بسرعة 1×، "
+        "وتظهر قراءتا التدفق والضغط في WinCC Unified."
     )
     report = check_arabic_text_purity(pure_text)
     assert report.is_pure is True
@@ -67,6 +68,7 @@ def test_impure_english_words_outside_allow_list():
     assert "warning" in report.violating_words
     assert "system" in report.violating_words
     assert "offline" in report.violating_words
+    assert not check_arabic_text_purity("تشغيل advanced في المزرعة").is_pure
 
 
 def test_check_response_purity_on_schema():
@@ -98,10 +100,13 @@ def test_check_response_purity_on_schema():
 
 
 @pytest.mark.asyncio
-async def test_agent_purity_guard_retries_and_logs_reason(client):
+async def test_agent_purity_guard_retries_and_logs_reason(client, monkeypatch):
     """When model generates impure Arabic, agent retries with cleaner model and logs language_purity."""
     clear_ai_cache()
     reset_call_history()
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "apinex_api_key", "offline-fixture")
 
     impure_first = AlarmExplanation(
         alarm_code="ALM-004",

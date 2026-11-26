@@ -17,10 +17,25 @@ from app.services.ai.advisor import (
     evaluate_weather_advisor,
     reject_suggestion,
 )
+from app.services.ai.schemas import AdvisorSuggestion
 from app.services.scheduler import scheduler
 from app.services.weather import WeatherData, WeatherDaySummary, WeatherForecast, weather_service
 
 models.ALLOW_MODEL_REQUESTS = False
+
+
+async def _add_test_program(db):
+    db.add(
+        Program(
+            id="audit_program",
+            name="Test program",
+            start_time_local="06:00",
+            steps=[
+                ProgramStep(id="audit_step", zone_id="zone_rumman_1", step_order=1, duration_min=15)
+            ],
+        )
+    )
+    await db.commit()
 
 
 def _build_forecast_day(
@@ -59,16 +74,16 @@ def _build_forecast_day(
 async def test_weather_advisor_rain_threshold(client):
     """Rain > 50% or precip > 2mm triggers skip recommendation."""
     async with async_session_factory() as db:
+        await _add_test_program(db)
         weather_service._cached_forecast = _build_forecast_day(
             temp_max=24.0,
             precip_mm=4.5,
             precip_prob=65.0,
             et0=2.5,
-            date_str="2026-11-25",
         )
         weather_service._cache_time = clock.farm_now()
 
-        sug = await evaluate_weather_advisor(db, target_date="2026-11-25", force_refresh=True)
+        sug = await evaluate_weather_advisor(db, force_refresh=True)
         assert sug is not None
         assert sug.feature == "weather_advisor"
         assert sug.status == "pending"
@@ -80,16 +95,16 @@ async def test_weather_advisor_rain_threshold(client):
 async def test_weather_advisor_heat_threshold(client):
     """Heat > 38°C or ET0 > 6.0mm triggers extend (+20%) recommendation."""
     async with async_session_factory() as db:
+        await _add_test_program(db)
         weather_service._cached_forecast = _build_forecast_day(
             temp_max=41.0,
             precip_mm=0.0,
             precip_prob=0.0,
             et0=7.2,
-            date_str="2026-11-26",
         )
         weather_service._cache_time = clock.farm_now()
 
-        sug = await evaluate_weather_advisor(db, target_date="2026-11-26", force_refresh=True)
+        sug = await evaluate_weather_advisor(db, force_refresh=True)
         assert sug is not None
         assert sug.status == "pending"
         assert "extend" in sug.action_payload_json.lower()
@@ -113,9 +128,10 @@ async def test_weather_advisor_normal_conditions_no_suggestion(client):
 
 
 @pytest.mark.asyncio
-async def test_advisor_approval_creates_override(client):
+async def test_advisor_approval_creates_override(client, monkeypatch):
     """Approving creates a ProgramOverride in DB and marks suggestion approved."""
     async with async_session_factory() as db:
+        await _add_test_program(db)
         weather_service._cached_forecast = _build_forecast_day(
             temp_max=22.0,
             precip_mm=6.0,
@@ -124,12 +140,33 @@ async def test_advisor_approval_creates_override(client):
         )
         weather_service._cache_time = clock.farm_now()
 
+        async def advise_with_different_scope(**kwargs):
+            return AdvisorSuggestion(
+                action="extend",
+                duration_factor=1.2,
+                target_date="2099-01-01",
+                program_id=None,
+                title="Rain forecast",
+                title_ar="توقعات بهطول المطر",
+                reasoning="Rain is expected.",
+                reasoning_ar="من المتوقّع هطول المطر.",
+                provider_used="test",
+            )
+
+        monkeypatch.setattr(
+            "app.services.ai.advisor.run_weather_advisor", advise_with_different_scope
+        )
+
         sug = await evaluate_weather_advisor(db, force_refresh=False)
         assert sug is not None
+        assert sug.title.startswith("Skip irrigation")
 
         override = await approve_suggestion(db, sug.id, operator_name="admin")
         assert override is not None
         assert override.action == "skip"
+        assert override.program_id == "audit_program"
+        assert override.target_date == weather_service._cached_forecast.daily[0].date
+        assert override.duration_factor == 0
         assert override.applied is False
         assert override.suggestion_id == sug.id
 
@@ -143,6 +180,7 @@ async def test_advisor_approval_creates_override(client):
 async def test_advisor_rejection(client):
     """Rejecting marks status rejected and creates no override."""
     async with async_session_factory() as db:
+        await _add_test_program(db)
         weather_service._cached_forecast = _build_forecast_day(
             temp_max=40.0,
             precip_mm=0.0,

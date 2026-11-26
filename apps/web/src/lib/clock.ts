@@ -16,12 +16,14 @@ export interface ClockData {
   clock_paused?: boolean;
   farm_now?: string;
   real_now?: string;
+  locked_real?: boolean;
 }
 
 interface ClockStore {
   mode: 'real' | 'sim';
   speed: number;
   paused: boolean;
+  lockedReal: boolean;
   anchorSimMs: number;
   clientRecvMs: number;
   isSimulated: boolean;
@@ -38,11 +40,13 @@ export const useClockStore = create<ClockStore>((set, get) => ({
   mode: 'real',
   speed: 1.0,
   paused: false,
+  lockedReal: false,
   anchorSimMs: Date.now(),
   clientRecvMs: typeof performance !== 'undefined' ? performance.now() : Date.now(),
   isSimulated: false,
 
   sync(data) {
+    const lockedReal = data.locked_real ?? get().lockedReal;
     const mode = (data.clock_mode || data.mode || 'real') as 'real' | 'sim';
     const speed = data.speed !== undefined ? Number(data.speed) : get().speed;
     const paused = data.clock_paused !== undefined ? Boolean(data.clock_paused) : Boolean(data.paused);
@@ -60,6 +64,7 @@ export const useClockStore = create<ClockStore>((set, get) => ({
       mode,
       speed,
       paused,
+      lockedReal,
       anchorSimMs: simMs,
       clientRecvMs: typeof performance !== 'undefined' ? performance.now() : Date.now(),
       isSimulated,

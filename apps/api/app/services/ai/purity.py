@@ -20,12 +20,16 @@ RE_CYRILLIC = re.compile(r"[\u0400-\u04ff]")
 
 # Pattern for Latin words of 3 or more letters:
 RE_LATIN_WORD = re.compile(r"[a-zA-Z]{3,}")
+RE_PRODUCT_NAME = re.compile(r"\b(?:PLCSIM Advanced|WinCC Unified)\b", re.IGNORECASE)
 
 # Allow-list of legitimate engineering/farm terms, codes, units, and model names:
 PURITY_ALLOW_LIST: set[str] = {
     # Alarms and identifiers
     "ALM",
     "PLC",
+    "PLCSIM",
+    "WINCC",
+    "OPC",
     "VFD",
     "RTU",
     "HMI",
@@ -126,7 +130,7 @@ def check_arabic_text_purity(
     foreign_chars = hangul + cjk + kana + cyrillic
 
     # 2. Count English words of 3+ letters outside allow-list
-    latin_words = RE_LATIN_WORD.findall(text)
+    latin_words = RE_LATIN_WORD.findall(RE_PRODUCT_NAME.sub("", text))
     violating_words: list[str] = []
     for w in latin_words:
         if not _is_allowed_latin_word(w, extra_allowed):

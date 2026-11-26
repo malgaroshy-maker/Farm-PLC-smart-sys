@@ -58,7 +58,10 @@ Still open: the owner confirms the per-crop soil levels (proposed values are not
 - **Modbus TCP adapter** for cheaper controllers (S7-200 SMART, LOGO!, Delta) and the radio boxes' timed valve commands.
 - Not chosen for now: OPC UA security (certificates and user login), on-farm weather station.
 
-## G5: PLC program (next)
+## G5: PLC program and HMI (bench checks passed)
+
+The 2026-11-26 bench checks passed over Modbus in PLCSIM and WinCC Unified simulation. Arabic HMI localization and HMI permissions are deferred. Live Siemens OPC UA and field commissioning remain open. [G5 acceptance record](MILESTONE_G5_CLOSEOUT_PLAN.md)
+
 Owner decisions (2026-11-23): TIA Portal V19 + PLCSIM Advanced, driven through TiaCommander.
 Owner decisions (2026-11-24):
 - **CPU:** ET 200SP CPU 1512SP-1 PN (the hardware report's pick).

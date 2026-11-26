@@ -104,9 +104,15 @@ def test_api_models_endpoint_returns_catalog(client: TestClient):
     assert "free/muse-spark-1.3" in catalog_ids
 
 
-def test_api_test_endpoint_admin_only_and_runtime_marking(client: TestClient):
+def test_api_test_endpoint_admin_only_and_runtime_marking(client: TestClient, monkeypatch):
     """POST /api/v1/ai/test requires admin role and marks 400/402 models unavailable."""
     reset_unavailable_cache()
+    from types import SimpleNamespace
+
+    from app.config import settings
+    from app.services.ai.schemas import ChatResponse
+
+    monkeypatch.setattr(settings, "apinex_api_key", "offline-fixture")
 
     # Viewer role -> 403 Forbidden
     viewer = login(client, "viewer")
@@ -119,7 +125,10 @@ def test_api_test_endpoint_admin_only_and_runtime_marking(client: TestClient):
 
     # Mock successful test ping
     with patch("pydantic_ai.Agent.run", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = AsyncMock()
+        mock_run.return_value = SimpleNamespace(
+            output=ChatResponse(reply="OK"),
+            response=SimpleNamespace(model_name="free/deepseek-v4-pro-0813"),
+        )
         r_ok = client.post(
             "/api/v1/ai/test",
             json={"provider": "apinex", "model": "free/deepseek-v4-pro-0813"},
@@ -133,7 +142,9 @@ def test_api_test_endpoint_admin_only_and_runtime_marking(client: TestClient):
 
     # Mock 402 failure -> model marked unavailable
     test_target = "free/hy4"
-    with patch("pydantic_ai.Agent.run", side_effect=Exception("HTTP 402: Payment Required")):
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    with patch("pydantic_ai.Agent.run", side_effect=ModelHTTPError(402, test_target)):
         r_fail = client.post(
             "/api/v1/ai/test",
             json={"provider": "apinex", "model": test_target},

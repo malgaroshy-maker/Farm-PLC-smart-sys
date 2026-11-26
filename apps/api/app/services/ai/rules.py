@@ -14,6 +14,7 @@ from app.services.ai.schemas import (
     ChatResponse,
     DailyBriefing,
 )
+from app.services.alarms import OPEN
 from app.services.weather import WeatherForecast
 
 
@@ -27,7 +28,7 @@ class RuleBasedService:
 
         title_en = spec.name if spec else alarm_data.get("name", f"Alarm {alarm_code}")
         title_ar = spec.name_ar if spec else alarm_data.get("name_ar", f"تنبيه {alarm_code}")
-        severity = spec.severity if spec else alarm_data.get("severity", "S2")
+        severity = alarm_data.get("severity") or (spec.severity if spec else "S2")
 
         guidance_en = (
             spec.guidance_en
@@ -40,25 +41,17 @@ class RuleBasedService:
             else alarm_data.get("guidance_ar", "تحقق من الحساسات والمضخات في الموقع.")
         )
 
-        causes_en = [
-            f"Sensor threshold exceeded: value={alarm_data.get('current_value')} (threshold={alarm_data.get('threshold_value')})",
-            "Possible hydraulic line obstruction or valve state mismatch.",
-        ]
-        causes_ar = [
-            f"تجاوز حد الحساس: القيمة الحالية={alarm_data.get('current_value')} (الحد={alarm_data.get('threshold_value')})",
-            "احتمال وجود انسداد في خط الري أو عدم توافق في حالة الصمامات.",
-        ]
+        current, threshold = alarm_data.get("current_value"), alarm_data.get("threshold_value")
+        causes_en, causes_ar = [], []
+        if current is not None and threshold is not None:
+            causes_en.append(f"Recorded value: {current}. Configured limit: {threshold}.")
+            causes_ar.append(f"القيمة المسجلة {current}، والحد المضبوط {threshold}.")
 
-        actions_en = [
-            guidance_en,
-            "Inspect physical pipe for leaks or physical damage.",
-            "Verify booster pump pressure and well supply level.",
-        ]
-        actions_ar = [
-            guidance_ar,
-            "فحص الخط الرئيسي للتأكد من عدم وجود تسريبات أو تلف في الأنابيب.",
-            "التحقق من ضغط مضخة التعزيز ومستوى المياه في خزان الإمداد.",
-        ]
+        actions_en = [guidance_en]
+        actions_ar = [guidance_ar]
+        if severity == "S3":
+            actions_en.append("Keep PLC protection enabled and verify the cause before restarting.")
+            actions_ar.append("أبقِ حماية المتحكم مفعّلة، وتحقّق من السبب قبل إعادة التشغيل.")
 
         diag_en = f"Diagnostic: {title_en}. {guidance_en}"
         diag_ar = f"التشخيص: {title_ar}. {guidance_ar}"
@@ -74,8 +67,7 @@ class RuleBasedService:
             probable_causes_ar=causes_ar,
             suggested_actions=actions_en,
             suggested_actions_ar=actions_ar,
-            safety_critical=(severity in ("S1", "S2")),
-            confidence=1.0,
+            safety_critical=severity == "S3",
             provider_used="rule_based",
             model_used="rule_based",
         )
@@ -97,9 +89,6 @@ class RuleBasedService:
             if day.date == target_date:
                 day_summary = day
                 break
-        if not day_summary and forecast.daily:
-            day_summary = forecast.daily[0]
-
         if not day_summary:
             return AdvisorSuggestion(
                 action="none",
@@ -215,12 +204,18 @@ class RuleBasedService:
         if not isinstance(a_list, list):
             a_list = []
 
-        total_water = sum(c.get("water_volume_m3", 0.0) for c in c_list)
+        water_entries = [c for c in c_list if c.get("water_volume_m3") is not None]
+        total_water = sum(c["water_volume_m3"] for c in water_entries)
+        has_estimates = any(c.get("water_is_estimate", False) for c in water_entries)
         completed = [c for c in c_list if c.get("outcome") == "completed"]
         aborted = [c for c in c_list if c.get("outcome") in ("aborted", "faulted")]
 
         cur_temp = forecast.current.temperature_c if forecast and forecast.current else None
-        today_fc = forecast.daily[0] if forecast and forecast.daily else None
+        today_fc = (
+            next((day for day in forecast.daily if day.date == date_str), None)
+            if forecast
+            else None
+        )
         t_max = today_fc.temp_max_c if today_fc else None
         p_prob = today_fc.precipitation_probability_pct if today_fc else None
         et0 = (
@@ -255,19 +250,30 @@ class RuleBasedService:
             w_summary_en = "No weather forecast available."
             w_summary_ar = "لا تتوفر توقعات للطقس."
 
-        irr_en = f"Executed {len(c_list)} cycle(s) delivering {total_water:.1f} m³ of water ({len(completed)} completed, {len(aborted)} interrupted)."
-        irr_ar = f"تم تنفيذ {len(c_list)} دورة ري بإجمالي استهلاك {total_water:.1f} م³ ({len(completed)} مكتملة، {len(aborted)} متوقفة)."
+        volume_en = (
+            f"{'Estimated total' if has_estimates else 'Recorded total'}: {total_water:.1f} m³."
+        )
+        volume_ar = (
+            f"{'الإجمالي المقدّر' if has_estimates else 'الإجمالي المسجّل'} {total_water:.1f} م³."
+        )
+        if not water_entries:
+            volume_en, volume_ar = "Water volume is unavailable.", "حجم المياه غير متاح."
+        elif len(water_entries) < len(c_list):
+            volume_en = f"Available records account for {total_water:.1f} m³{' (estimated)' if has_estimates else ''}. The total is unavailable."
+            volume_ar = f"تغطي السجلات المتاحة {total_water:.1f} م³{' (تقديري)' if has_estimates else ''}. الإجمالي غير متاح."
+        irr_en = f"Irrigation cycles: {len(c_list)} recorded, {len(completed)} completed, {len(aborted)} interrupted. {volume_en}"
+        irr_ar = f"دورات الري المسجّلة: {len(c_list)}، منها {len(completed)} مكتملة و{len(aborted)} متوقفة. {volume_ar}"
 
-        active_alarms = [a for a in a_list if a.get("status") == "active"]
+        active_alarms = [a for a in a_list if a.get("status") in (*OPEN, "active")]
         alm_en = (
-            f"{len(active_alarms)} active alarm(s) requiring attention."
+            f"{len(active_alarms)} active {'alarm requires' if len(active_alarms) == 1 else 'alarms require'} attention."
             if active_alarms
-            else "All systems normal. No active alarms."
+            else "No active alarms are recorded."
         )
         alm_ar = (
-            f"يوجد {len(active_alarms)} إنذار نشط يتطلب المتابعة."
+            f"الإنذارات النشطة التي تتطلب المتابعة: {len(active_alarms)}."
             if active_alarms
-            else "جميع الأنظمة تعمل بشكل طبيعي ولا توجد إنذارات نشطة."
+            else "لا توجد إنذارات نشطة مسجّلة."
         )
 
         recs_en = [
@@ -279,8 +285,8 @@ class RuleBasedService:
             "التحقق من فرق ضغط فلتر الخط الرئيسي قبل بدء الدورة التالية.",
         ]
 
-        summary_en = f"Farm operations normal on {date_str}. Delivered {total_water:.1f} m³ of water with {len(active_alarms)} active alarms."
-        summary_ar = f"عمليات المزرعة مستقرة ليوم {date_str}. تم ضخ {total_water:.1f} م³ مياه، مع وجود {len(active_alarms)} إنذار نشط."
+        summary_en = f"{date_str}. {irr_en} {alm_en}"
+        summary_ar = f"{date_str}. {irr_ar} {alm_ar}"
 
         return DailyBriefing(
             date=date_str,
@@ -305,18 +311,22 @@ class RuleBasedService:
         """Answer tank / next-irrigation / dryness / alarm questions from live facts."""
         if not f:
             return None
-        from app.seed import ZONES
-
-        names = {z["id"]: (z["name"], z["name_ar"]) for z in ZONES}
+        inventory = f.get("zone_inventory", [])
+        names = {zid: (name, name_ar) for zid, name, name_ar, _ in inventory}
         stale_en = "" if f.get("fresh", True) else " (live data may be old)"
         stale_ar = "" if f.get("fresh", True) else " (قد تكون البيانات الحية قديمة)"
+        if f.get("simulated"):
+            stale_en += " (simulation)"
+            stale_ar += " (محاكاة)"
         if any(w in msg for w in ("tank", "خزان", "الخزان")) and f.get("tank_pct") is not None:
             t = f["tank_pct"]
             return (
                 f"The water tank is at {t:.0f} %{stale_en}.",
                 f"مستوى الخزان الآن {t:.0f} %{stale_ar}.",
             )
-        if any(w in msg for w in ("next", "schedule", "موعد", "القادم", "الجدول", "متى")):
+        if "next_run" in f and any(
+            w in msg for w in ("next", "schedule", "موعد", "القادم", "الجدول", "متى")
+        ):
             r = f.get("next_run")
             if r:
                 return (
@@ -337,12 +347,52 @@ class RuleBasedService:
         if any(w in msg for w in ("alarm", "إنذار", "انذار")) and "alarm_count" in f:
             n = f["alarm_count"]
             if n == 0:
-                return ("There are no active alarms.", "لا توجد إنذارات نشطة.")
+                return (
+                    f"No active alarms are recorded{stale_en}.",
+                    f"لا توجد إنذارات نشطة مسجّلة{stale_ar}.",
+                )
             return (
-                f"There are {n} active alarm(s); open the Alarm Center for details.",
-                f"يوجد {n} إنذار نشط؛ افتح مركز الإنذارات للتفاصيل.",
+                f"Active alarms recorded: {n}{stale_en}. Open the Alarm Center for details.",
+                f"عدد الإنذارات النشطة المسجّلة {n}{stale_ar}. راجع مركز الإنذارات للتفاصيل.",
             )
+        if inventory and any(w in msg for w in ("crop", "محصول", "محاصيل")):
+            crops = {
+                "pomegranate": "الرمان",
+                "olive": "الزيتون",
+                "grape": "العنب",
+                "mixed_fruit": "فواكه مختلطة",
+            }
+            en = "; ".join(f"{name}: {crop.replace('_', ' ')}" for _, name, _, crop in inventory)
+            ar = "؛ ".join(
+                f"{name_ar}: {crops.get(crop, 'محصول آخر')}" for _, _, name_ar, crop in inventory
+            )
+            return en + ".", ar + "."
         return None
+
+    def yesterday_zone_volume(self, history: dict, name: str, name_ar: str) -> ChatResponse:
+        cycles = [row for row in history["cycles"] if row["outcome"] == "completed"]
+        date_label = history["local_date"]
+        if history["truncated"] or any(row["water_volume_m3"] is None for row in cycles):
+            en = f"The cycle records for {name} on {date_label} are incomplete. A total is unavailable."
+            ar = f"سجلات دورات {name_ar} ليوم {date_label} غير مكتملة. إجمالي المياه غير متاح."
+        elif not cycles:
+            en = f"No completed irrigation cycles were recorded for {name} on {date_label}."
+            ar = f"لا توجد دورات ري مكتملة مسجّلة في {name_ar} ليوم {date_label}."
+        else:
+            volume = sum(row["water_volume_m3"] for row in cycles)
+            estimated = any(row["water_is_estimate"] is not False for row in cycles)
+            en = f"{name} used {'an estimated ' if estimated else ''}{volume:.2f} m³ on {date_label} in completed cycles."
+            ar = f"بلغ حجم المياه {'المقدّر ' if estimated else ''}لدورات الري المكتملة في {name_ar} ليوم {date_label} {volume:.2f} م³."
+        if history["deployment_mode"] == "simulation":
+            en = f"Simulation. {en}"
+            ar = f"محاكاة. {ar}"
+        return ChatResponse(
+            reply=en,
+            reply_ar=ar,
+            references=["get_cycles"],
+            provider_used="rule_based",
+            model_used="farm_records",
+        )
 
     def chat(self, message: str, lang: str = "ar", facts: dict | None = None) -> ChatResponse:
         """Deterministic assistant replies for farm queries.
@@ -359,22 +409,21 @@ class RuleBasedService:
             )
 
         if any(w in msg_lower for w in ("alarm", "fault", "إنذار", "عطل", "تنبيه")):
-            en = "I can inspect current active alarms, provide root-cause diagnostics, and recommend PLC acknowledgment steps."
-            ar = "يمكنني فحص الإنذارات النشطة، وتقديم تشخيص للأسباب المحتملة، واقتراح خطوات المعالجة والتحقق."
+            en = "Current alarm information is unavailable. Check the Alarm Center before acting."
+            ar = "بيانات الإنذارات الحالية غير متاحة. راجع مركز الإنذارات قبل اتخاذ إجراء."
         elif any(w in msg_lower for w in ("weather", "rain", "طقس", "مطر", "حرارة")):
-            en = "Live forecast is retrieved from Open-Meteo for Algaroshy Farm (32.516250, 14.070361). I automatically advise skipping or extending cycles."
-            ar = "يتم جلب الطقس المباشر لمزرعة الجروشي من Open-Meteo، وأقدم توصيات بتخطي الري عند المطر أو تمديده أثناء موجات الحر."
+            en = "A verified weather answer is unavailable. Check the forecast before changing irrigation."
+            ar = "تعذّر تقديم جواب موثوق عن الطقس. تحقّق من التوقعات قبل تعديل الري."
         elif any(w in msg_lower for w in ("zone", "crop", "منطقة", "محصول", "رمان", "زيتون")):
-            en = "Algaroshy Farm has 12 irrigation zones: pomegranates (including the mother trees), olives, grapes, and a mixed block of peach, apricot and plum. You can ask about the live flow and pressure of any zone."
-            ar = "تضم مزرعة الجروشي 12 منطقة ري: الرمان (ومنها رمان الأمهات)، والزيتون، والعنب، ومنطقة فواكه مختلطة من الخوخ والمشمش والعوينة. يمكنك السؤال عن التدفق والضغط الحالي لأي منطقة."
+            en = "The zone detail needed to answer is unavailable. Check the Zones page."
+            ar = "بيانات المنطقة المطلوبة غير متاحة الآن. راجع صفحة المناطق."
         else:
-            en = "I am the Algaroshy Farm AI Assistant. I can assist with alarms, weather-aware scheduling, irrigation summaries, and system diagnostics."
-            ar = "مرحباً بك، أنا المساعد الذكي لمزرعة الجروشي. يمكنني مساعدتك في تشخيص الإنذارات، والتوصيات المرتبطة بالطقس، وتقارير الري المجدول."
+            en = "I could not verify the answer from available farm records."
+            ar = "تعذّر التحقّق من الجواب باستخدام سجلات المزرعة المتاحة."
 
         return ChatResponse(
             reply=ar if lang == "ar" else en,
             reply_ar=ar,
-            references=["docs/AI_FEATURES.md", "docs/ALARM_MATRIX.md"],
             provider_used="rule_based",
             model_used="rule_based",
         )

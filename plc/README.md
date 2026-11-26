@@ -3,6 +3,9 @@
 TIA Portal source files for the farm PLC: ET 200SP CPU 1512SP-1 PN, all SCL. Design: [docs/PLC_PROGRAM.md](../docs/PLC_PROGRAM.md).
 
 **Status (2026-11-24):** **compiles in TIA Portal V19 with 0 errors and 0 warnings.** The TIA project is `AlgaroshyFarm` (projects root of TiaCommander).
+
+**Bench closeout (2026-11-26).** PLCSIM Advanced passed all 13 eligible scenarios over Modbus at 1×, including the mainline leak. The two accelerated scenarios are marked incompatible with PLCSIM. A separate one-minute schedule passed at 1×. The local Unified HMI displayed ALM-013 and passed flashing, acknowledgement, and clear checks for ALM-005 and ALM-013. Arabic localization and HMI permissions are deferred. [Acceptance record](../docs/MILESTONE_G5_CLOSEOUT_PLAN.md)
+
 - **Hardware:** CPU 1512SP-1 PN **6ES7 512-1DM03-0AB0, firmware V3.1**, with the modules from design §2 and a server module. The I/O addresses match `tags.md`. `Farm_IO.tags.xml` is the tag table, ready for TiaCommander `tag import_table`.
   - It is the current 1512SP-1 PN: 400 KB code, 25 ns bit operation time. The older 6ES7 512-1DK01 stops at V2.9.
   - PLCSIM Advanced V6 only accepts firmware 3.1 (its virtual CPU reports "S31.23"). A V2.8 project is refused as incompatible.
@@ -25,7 +28,7 @@ TIA Portal source files for the farm PLC: ET 200SP CPU 1512SP-1 PN, all SCL. Des
   - The app talks to the PLC as on the farm: Modbus TCP to 192.168.0.1. The Simulator page's panel switches and faults go to the farm model, so the PLC sees them as input changes.
   - Settings: `PLCSIM_HOST` (default 192.168.0.1), `PLCSIM_INSTANCE` (the instance name in PLCSIM, default `PLC`), `PLCSIM_BRIDGE_PORT` (default 1600).
   - Time runs at 1x: the PLC's timers are real time, so the simulation speed buttons do not speed it up.
-- **Scenario suite on the real PLC (2026-11-24): 12 of 15 pass.** Normal cycle, direct-well cycle, tank critical, booster failed start, booster trip, valve failed to open, valve failed to close, repeated fault, no flow, emergency stop, comms loss and reset. Mainline leak and the two scheduled-day scenarios wait on the owner's points below. Running the suite found:
+- **Initial PLCSIM scenario suite (2026-11-24): 12 of 15 passed.** Normal cycle, direct-well cycle, tank critical, booster failed start, booster trip, valve failed to open, valve failed to close, repeated fault, no flow, emergency stop, comms loss and reset passed. The initial run left the leak and two accelerated schedule scenarios open. Running the suite found:
   - **Fixed (app):** a start without a duration was refused by the PLC (`plc_rejected`; the simulator used the zone default). The API now always sends the zone's default duration.
   - **Fixed (app):** one Modbus timeout stopped the gateway for good; it now reconnects (see `docs/CONTROLLER_ADAPTER.md`).
   - **Fixed (scenarios):** the prep waits until no zone is starting, running or stopping, because a PLC zone takes the valve travel time (10 s) to stop and refuses a new start until then. The comms-loss scenario waits for the controller to come back, not a fixed 20 s. A refused command now shows its reason in the scenario log.
@@ -34,12 +37,8 @@ TIA Portal source files for the farm PLC: ET 200SP CPU 1512SP-1 PN, all SCL. Des
   - **Fixed (app):** a slow Modbus reply is retried once on a fresh connection before the link is marked down.
   - **Decided (owner, 2026-11-24): valve faults are detected by flow, no limit switches.** A valve that fails to open shows as no flow (ALM-012, the same as a blocked lateral). A valve that fails to close is caught when a zone stops: water still flowing with every valve commanded shut faults the zone with ALM-020 and the pump stops. The valve scenarios accept ALM-019 (simulator) or ALM-012 (PLC) for a stuck-closed valve.
   - **Fixed (scenarios):** a failed clock-speed scenario left the farm clock at 60x, so the farm's real programs fired every few minutes and started zones in the middle of other scenarios. The runner now restores the clock speed. The prep also waits for the PLC's zone fault (reported for 30 s) to clear before resetting alarms.
-  - **Open, needs the owner:**
-    - The PLC's per-zone flow and pressure limits are still the 1-30 m3/h defaults, so a mainline leak can't trip ALM-013 until each zone's limits are set.
-    - The scheduled-day scenarios speed up the clock; a real PLC runs on real time, so they only run in simulator mode.
 - **HMI (2026-11-25): built and tested live.** `FarmHMI` (MTP1000 Unified Comfort) has six screens made by `tools/tia/build_hmi.py` (see [docs/HMI_BUILD_GUIDE.md](../docs/HMI_BUILD_GUIDE.md)); the notes below are from the first HMI step, when the owner was to build the screens from the spec. PLC side done: `DB_HMI` buttons (`BtnStart`, `BtnStop`, `BtnStopAll`, `BtnReset`) become commands on the HMI channel in `FB_Link`, with the PLC's answer in `ResultOk`, `ResultText`, `ResultSeq`. Tested in PLCSIM: Start runs zone 1 with run source 4 (hmi), Stop all stops it.
 - **Plant bridge note:** `PlcsimBridge` now reads the data-block tags too (`ETagListDetails.IOMDB`); without it new DB members were `DoesNotExist` after a download. Rebuild the exe after pulling.
-- **Next:** the open points above, then the HMI screens (owner, in TIA).
 
 The first compile found three things the static checker can't catch, all fixed in the sources:
 - an FC input `String` takes no length;
@@ -76,6 +75,20 @@ The first compile found three things the static checker can't catch, all fixed i
 6. Download to a PLCSIM Advanced instance in TCP/IP mode. Then follow the test plan in the design §8.
 
 The helper `tools/tia/TiaTool.exe` (built from `tools/tia/TiaTool.cs`) can add the CPU and modules through Openness (`add-device`, `plug`, `project-set`), once the licence allows it.
+
+## Load approved zone flow limits
+
+Generate a separate `02_Config.db` in a staging folder. The exporter reads the app's existing zone fields by PLC zone ID and validates the bands against the mainline meter range. It leaves the farm database and checked-in PLC defaults untouched.
+
+```powershell
+# Run from the repository root. Supply a new output file in an existing folder.
+python tools/tia/export_flow_config.py --bench <staging-folder>/02_Config.db
+python tools/tia/export_flow_config.py --approved-database <approved-app.db> <staging-folder>/02_Config.db
+```
+
+- **PLCSIM only.** The owner approved 2–6 m³/h per zone for the bench. The simulated plant models 4 m³/h healthy and 10 m³/h with the fault applied. Field limits require measured flows and owner approval before export.
+- Import the staged `DB_Config` and compile. After the approved download, read back `DB_Config.Zone[n].Id`, `.FlowMinM3h`, and `.FlowMaxM3h` for every mapped zone. If the running PLC still holds old retained limits, wait until the zones and pumps are idle, apply the approved values to those members in the online watch table, and repeat the readback before running a zone. On PLCSIM, the simulation API can perform the same check.
+- Run one zone at a time. Check healthy flow, a pulse shorter than `BandTripS`, a sustained leak that raises ALM‑013 and closes the valve and stops the booster, and a restart after clearing the leak. Confirm the PLC alarm in the app and Unified runtime. Rerun `no_flow` and `valve_failed_close` after the change.
 
 ## Static check
 

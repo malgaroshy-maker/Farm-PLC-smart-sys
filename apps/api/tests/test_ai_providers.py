@@ -164,17 +164,17 @@ async def test_provider_chain_total_failure_rule_fallback():
     with alarm_agent.override(model=failing_model):
         res = await explain_alarm(
             alarm_data={
-                "alarm_code": "ALM-001",
+                "alarm_code": "ALM-002",
                 "name": "Emergency Stop Triggered",
                 "name_ar": "تم تفعيل التوقف الطارئ",
-                "severity": "S1",
+                "severity": "S3",
                 "current_value": 1.0,
                 "threshold_value": 1.0,
             },
             lang="ar",
         )
         assert isinstance(res, AlarmExplanation)
-        assert res.alarm_code == "ALM-001"
+        assert res.alarm_code == "ALM-002"
         assert res.provider_used == "rule_based"
         assert res.safety_critical is True
         assert len(res.suggested_actions) > 0
@@ -255,7 +255,8 @@ async def test_tools_direct_execution_with_seeded_data(client):
 
     # 4. get_cycles
     c_res = await get_cycles(ctx, days=1)
-    assert isinstance(c_res, list)
+    assert isinstance(c_res["cycles"], list)
+    assert c_res["truncated"] is False
 
     # 5. get_schedule
     s_res = await get_schedule(ctx)
@@ -284,8 +285,7 @@ async def test_farm_context_block_only_db_crops():
 
 @pytest.mark.asyncio
 async def test_tools_accept_zone_scoped_arguments(client):
-    """Regression (live review): deepseek called get_schedule(zone_id=...), which the tool
-    rejected until its retries ran out, so every Explain fell back to rule-based."""
+    """The alarm agent can call its zone-scoped diagnostics in the same turn."""
     clear_ai_cache()
     expected = AlarmExplanation(
         alarm_code="ALM-012",
@@ -305,15 +305,12 @@ async def test_tools_accept_zone_scoped_arguments(client):
         if turn == 1:
             return ModelResponse(
                 parts=[
-                    ToolCallPart(tool_name="get_schedule", args={"zone_id": "zone_rumman_2"}),
-                    ToolCallPart(
-                        tool_name="get_cycles", args={"days": 2, "zone_id": "zone_rumman_2"}
-                    ),
+                    ToolCallPart(tool_name="get_zone_state", args={"zone_id": "zone_rumman_2"}),
                     ToolCallPart(
                         tool_name="get_recent_telemetry",
                         args={"hours": 1, "zone_id": "zone_rumman_2"},
                     ),
-                    ToolCallPart(tool_name="get_forecast", args={"days": 2}),
+                    ToolCallPart(tool_name="get_alarm", args={"alarm_id": "ALM-012"}),
                 ]
             )
         return ModelResponse(

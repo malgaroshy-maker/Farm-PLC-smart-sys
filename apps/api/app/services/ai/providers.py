@@ -8,6 +8,7 @@ Dynamic model fetching from APInex GET /v1/models with TTL caching.
 import logging
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic_ai.models import Model
@@ -29,6 +30,21 @@ _APINEX_MODELS_CACHE_TIME: datetime | None = None
 APINEX_CACHE_TTL_SEC = 3600  # 1 hour
 
 
+def validated_apinex_url(value: str | None = None) -> str:
+    """Keep provider credentials on the deployment-configured HTTPS endpoint."""
+    approved = settings.apinex_base_url.rstrip("/")
+    requested = (value or approved).rstrip("/")
+    parts = urlsplit(requested)
+    if (
+        requested != approved
+        or parts.scheme != "https"
+        or not parts.hostname
+        or any((parts.username, parts.password, parts.query, parts.fragment))
+    ):
+        raise ValueError("APInex endpoint must match the configured HTTPS provider URL")
+    return requested
+
+
 async def fetch_apinex_models(
     base_url: str | None = None,
     api_key: str | None = None,
@@ -37,7 +53,7 @@ async def fetch_apinex_models(
     """Fetch available models from APInex GET /v1/models with 1-hour cache."""
     global _APINEX_MODELS_CACHE, _APINEX_MODELS_CACHE_TIME
 
-    url = (base_url or settings.apinex_base_url).rstrip("/")
+    url = validated_apinex_url(base_url)
     key = api_key if api_key is not None else settings.apinex_api_key
 
     now = utcnow()
@@ -65,7 +81,7 @@ async def fetch_apinex_models(
                     log.info("Fetched %d models from APInex: %s", len(models), models[:5])
                     return list(_APINEX_MODELS_CACHE)
     except Exception as exc:
-        log.warning("Could not fetch models dynamically from APInex (%s): %s", models_endpoint, exc)
+        log.warning("Could not fetch APInex models (%s)", type(exc).__name__)
 
     # Fallback to configured model or standard default
     default = settings.apinex_model or "free/deepseek-v4-pro-0813"
@@ -80,7 +96,7 @@ def get_primary_model(
     """Build APInex OpenAI-compatible Chat Model."""
     name = model_name or settings.apinex_model or "free/deepseek-v4-pro-0813"
     provider = OpenAIProvider(
-        base_url=base_url or settings.apinex_base_url,
+        base_url=validated_apinex_url(base_url),
         api_key=api_key or settings.apinex_api_key or "no-key",
     )
     return OpenAIChatModel(name, provider=provider)
@@ -94,7 +110,7 @@ def get_apinex_fallback_model(
     """Build secondary APInex fallback model (e.g. free/minimax-m3.1-flash)."""
     name = model_name or settings.apinex_fallback_model or "free/minimax-m3.1-flash"
     provider = OpenAIProvider(
-        base_url=base_url or settings.apinex_base_url,
+        base_url=validated_apinex_url(base_url),
         api_key=api_key or settings.apinex_api_key or "no-key",
     )
     return OpenAIChatModel(name, provider=provider)
@@ -141,6 +157,35 @@ def build_fallback_chain(
     return FallbackModel(active_models[0], *active_models[1:], fallback_on=(Exception,))
 
 
+def configured_chain(
+    primary: str = "apinex",
+    fallback: str = "gemini",
+    *,
+    apinex_model: str | None = None,
+    apinex_secondary: str | None = None,
+    gemini_model: str | None = None,
+    base_url: str | None = None,
+) -> Model | None:
+    """Build the saved provider order using configured credentials and model availability."""
+    candidates: list[Model] = []
+    for provider in dict.fromkeys((primary, fallback)):
+        if provider == "apinex" and settings.apinex_api_key:
+            ids = (
+                apinex_model or settings.apinex_model,
+                apinex_secondary or settings.apinex_fallback_model,
+            )
+            candidates.extend(
+                get_primary_model(model_name=model, base_url=base_url)
+                for model in dict.fromkeys(ids)
+                if is_model_available(model)
+            )
+        elif provider == "gemini" and settings.gemini_api_key:
+            candidates.append(get_fallback_model(model_name=gemini_model))
+    if len(candidates) < 2:
+        return candidates[0] if candidates else None
+    return FallbackModel(candidates[0], *candidates[1:])
+
+
 def identify_provider_label(response_obj: Any) -> str:
     """Classify which provider in the chain serviced the request."""
     if response_obj is None:
@@ -150,7 +195,12 @@ def identify_provider_label(response_obj: Any) -> str:
     p_name = str(getattr(response_obj, "provider_name", "")).lower()
     m_name = str(getattr(response_obj, "model_name", "")).lower()
 
-    if "test" in p_name or "test" in m_name or "function" in p_name:
+    if (
+        "test" in p_name
+        or "test" in m_name
+        or "function" in p_name
+        or m_name.startswith("function:")
+    ):
         return "test"
     if "openai" in p_name or "apinex" in p_name:
         return "apinex"

@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### AI audit and reliability (2026-11-26)
+
+- Audited the AI workflows and evaluated all 22 APInex entries advertised as free. The audit records account access, tool calling, factual grounding, Arabic quality, and latency.
+- Grounded alarm and irrigation advice in server-owned records. Kept missing readings unavailable, labeled estimated water, and added verified source labels in Arabic and English.
+- Populated the current day's briefing schedule from configured programs and approved overrides. Kept the existing default provider chain after the shortlist retest.
+
+### Milestone G5 bench closeout (2026-11-26)
+- Added a per-zone PLC flow profile and a dedicated high-flow trip timer. The leak scenario checks a fresh ALM-013, shutdown and recovery using controller data. It no longer inserts historical irrigation runs.
+- `run.bat demo plcsim` forces a real-time farm clock and rejects the two accelerated scheduling scenarios before preparation. All 13 eligible scenarios and a separate 1× scheduled run passed in PLCSIM. The accelerated scenarios passed in both software simulation modes.
+- Configured FarmHMI's raised critical and major alarms to flash until acknowledgement or clear. Verified both transitions in the local Unified runtime with PLC-triggered ALM-005 and ALM-013.
+- A forward migration fills existing null AI usage and push-failure counters with zero, then makes the four columns non-nullable. The launcher keeps first-run credentials in `.env` and omits their values from console output.
+
 ### Milestone G5 — PLC program (in progress, 2026-11-24)
 - **Design** approved by the owner ([docs/PLC_PROGRAM.md](docs/PLC_PROGRAM.md)):
   - ET 200SP CPU 1512SP-1 PN, programmed all in SCL, for 16 zones;

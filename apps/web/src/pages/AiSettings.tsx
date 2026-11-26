@@ -145,7 +145,8 @@ export default function AiSettingsPage() {
 
     const startTime = performance.now();
     try {
-      const res = await testAiConnection(settings.primary_provider, settings.primary_model);
+      const res = await testAiConnection(settings.primary_provider,
+        settings.primary_provider === 'gemini' ? settings.fallback_model : settings.primary_model);
       setTestResult(res);
     } catch (err: unknown) {
       const elapsed = Math.round(performance.now() - startTime);

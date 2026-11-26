@@ -15,14 +15,16 @@ Each tool acquires its own session so parallel tool calls execute cleanly.
 
 import logging
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pydantic_ai import RunContext
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.core.clock import clock
 from app.database import async_session_factory
 from app.models.alarm import Alarm
@@ -31,8 +33,9 @@ from app.models.program import Program
 from app.models.schedule import Schedule
 from app.models.telemetry import TelemetryPoint
 from app.models.zone import Zone
-from app.services.live_state import load_snapshots
-from app.services.weather import weather_service
+from app.services.ai.redaction import redact_payload, redact_text
+from app.services.live_state import is_fresh, load_snapshots
+from app.services.weather import is_usable_forecast, weather_service
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +45,27 @@ class AIDeps:
     """Dependencies passed to the Pydantic AI Agent."""
 
     session_factory: async_sessionmaker[AsyncSession] = async_session_factory
+
+
+async def _resolve_zone_id(db: AsyncSession, reference: str) -> str | None:
+    value = reference.strip().lower()
+    canonical = await db.scalar(select(Zone.id).where(func.lower(Zone.id) == value))
+    if canonical:
+        return canonical
+    matches = list(
+        (
+            await db.scalars(
+                select(Zone.id)
+                .where(
+                    (func.lower(Zone.code) == value)
+                    | (func.lower(Zone.name) == value)
+                    | (Zone.name_ar == reference.strip())
+                )
+                .limit(2)
+            )
+        ).all()
+    )
+    return matches[0] if len(matches) == 1 else None
 
 
 async def get_alarm(ctx: RunContext[AIDeps], alarm_id: str) -> dict[str, Any]:
@@ -62,33 +86,35 @@ async def get_alarm(ctx: RunContext[AIDeps], alarm_id: str) -> dict[str, Any]:
             res = await db.execute(stmt)
             alarm = res.scalar_one_or_none()
             if not alarm:
-                return {"error": f"Alarm '{alarm_id}' not found"}
+                return {"error": "Alarm not found"}
 
             from app.core.alarm_catalog import CATALOG
 
             spec = CATALOG.get(alarm.alarm_code)
-            return {
-                "id": alarm.id,
-                "alarm_code": alarm.alarm_code,
-                "name": spec.name if spec else alarm.alarm_code,
-                "name_ar": spec.name_ar if spec else alarm.alarm_code,
-                "severity": alarm.severity,
-                "category": alarm.category,
-                "status": alarm.status,
-                "zone_id": alarm.zone_id,
-                "device_id": alarm.device_id,
-                "current_value": alarm.current_value,
-                "threshold_value": alarm.threshold_value,
-                "triggered_at": alarm.triggered_at.isoformat() if alarm.triggered_at else None,
-                "message_en": alarm.message_en,
-                "message_ar": alarm.message_ar,
-                "guidance_en": alarm.guidance_en,
-                "guidance_ar": alarm.guidance_ar,
-                "condition_active": alarm.status in ("active_unacked", "active_acked"),
-            }
+            return redact_payload(
+                {
+                    "id": alarm.id,
+                    "alarm_code": alarm.alarm_code,
+                    "name": spec.name if spec else alarm.alarm_code,
+                    "name_ar": spec.name_ar if spec else alarm.alarm_code,
+                    "severity": alarm.severity,
+                    "category": alarm.category,
+                    "status": alarm.status,
+                    "zone_id": alarm.zone_id,
+                    "device_id": alarm.device_id,
+                    "current_value": alarm.current_value,
+                    "threshold_value": alarm.threshold_value,
+                    "triggered_at": alarm.triggered_at.isoformat() if alarm.triggered_at else None,
+                    "message_en": spec.message_en if spec else None,
+                    "message_ar": spec.message_ar if spec else None,
+                    "guidance_en": spec.guidance_en if spec else None,
+                    "guidance_ar": spec.guidance_ar if spec else None,
+                    "condition_active": alarm.status in ("active_unacked", "active_acked"),
+                }
+            )
     except Exception as exc:
-        log.warning("get_alarm tool error: %s", exc)
-        return {"error": f"Failed to get alarm '{alarm_id}': {exc}"}
+        log.warning("get_alarm tool error: %s", type(exc).__name__)
+        return {"error": "Alarm details are unavailable"}
 
 
 async def get_zone_state(ctx: RunContext[AIDeps], zone_id: str) -> dict[str, Any]:
@@ -100,13 +126,10 @@ async def get_zone_state(ctx: RunContext[AIDeps], zone_id: str) -> dict[str, Any
             else async_session_factory
         )
         async with factory() as db:
-            zone = await db.get(Zone, zone_id)
+            canonical = await _resolve_zone_id(db, zone_id)
+            zone = await db.get(Zone, canonical) if canonical else None
             if not zone:
-                stmt = select(Zone).where((Zone.id == zone_id) | (Zone.code == zone_id))
-                res = await db.execute(stmt)
-                zone = res.scalar_one_or_none()
-            if not zone:
-                return {"error": f"Zone '{zone_id}' not found"}
+                return {"error": "Unknown or ambiguous zone. Use its configured code or ID."}
 
             zid = zone.id
             zcode = zone.code
@@ -131,8 +154,8 @@ async def get_zone_state(ctx: RunContext[AIDeps], zone_id: str) -> dict[str, Any
             return {
                 "zone_id": zid,
                 "code": zcode,
-                "name": zname,
-                "name_ar": zname_ar,
+                "name": redact_text(zname),
+                "name_ar": redact_text(zname_ar) if zname_ar else None,
                 "crop_type": zcrop,
                 "area_ha": zarea,
                 "min_pressure_bar": zp_min,
@@ -140,14 +163,18 @@ async def get_zone_state(ctx: RunContext[AIDeps], zone_id: str) -> dict[str, Any
                 "min_flow_m3h": zf_min,
                 "max_flow_m3h": zf_max,
                 "enabled": zenabled,
-                "state": live_data.get("state", "idle"),
-                "flow_m3h": live_data.get("flow_m3h", 0.0),
-                "pressure_bar": live_data.get("pressure_bar", 0.0),
-                "valve_open": live_data.get("valve_state") == "open",
+                "state": live_data.get("state"),
+                "flow_m3h": live_data.get("flow_m3h"),
+                "pressure_bar": live_data.get("pressure_bar"),
+                "valve_open": (
+                    live_data["valve_state"] == "open" if "valve_state" in live_data else None
+                ),
+                "updated_at": snap.updated_at.isoformat() if snap else None,
+                "data_fresh": is_fresh({zid: snap}) if snap else False,
             }
     except Exception as exc:
-        log.warning("get_zone_state tool error: %s", exc)
-        return {"error": f"Failed to get zone state '{zone_id}': {exc}"}
+        log.warning("get_zone_state tool error: %s", type(exc).__name__)
+        return {"error": "Zone state is unavailable"}
 
 
 async def get_recent_telemetry(
@@ -165,13 +192,16 @@ async def get_recent_telemetry(
             cutoff = clock.farm_now() - timedelta(hours=hours_capped)
 
             stmt = (
-                select(TelemetryPoint.metric_key, TelemetryPoint.value_numeric)
+                select(TelemetryPoint.metric_key, TelemetryPoint.value_numeric, TelemetryPoint.ts)
                 .where(TelemetryPoint.ts >= cutoff)
                 .order_by(desc(TelemetryPoint.ts))
-                .limit(500)
+                .limit(501)
             )
             if zone_id:
-                stmt = stmt.where(TelemetryPoint.zone_id == zone_id)
+                canonical = await _resolve_zone_id(db, zone_id)
+                if canonical is None:
+                    return {"error": "Unknown or ambiguous zone. Use its configured code or ID."}
+                stmt = stmt.where(TelemetryPoint.zone_id == canonical)
             res = await db.execute(stmt)
             points = res.all()
 
@@ -182,69 +212,111 @@ async def get_recent_telemetry(
                     "message": "No telemetry recorded in this time window",
                 }
 
-            flows = [val for key, val in points if "flow" in key and val is not None]
-            pressures = [val for key, val in points if "pressure" in key and val is not None]
+            samples = points[:500]
+            flows = [val for key, val, _ in samples if "flow" in key and val is not None]
+            pressures = [val for key, val, _ in samples if "pressure" in key and val is not None]
 
             return {
                 "window_hours": hours_capped,
-                "data_points": len(points),
-                "avg_flow_m3h": round(sum(flows) / len(flows), 2) if flows else 0.0,
-                "max_flow_m3h": round(max(flows), 2) if flows else 0.0,
-                "avg_pressure_bar": round(sum(pressures) / len(pressures), 2) if pressures else 0.0,
-                "min_pressure_bar": round(min(pressures), 2) if pressures else 0.0,
-                "max_pressure_bar": round(max(pressures), 2) if pressures else 0.0,
-                "latest_flow_m3h": round(flows[0], 2) if flows else 0.0,
-                "latest_pressure_bar": round(pressures[0], 2) if pressures else 0.0,
+                "data_points": len(samples),
+                "truncated": len(points) > 500,
+                "latest_sample_at": samples[0].ts.isoformat(),
+                "avg_flow_m3h": round(sum(flows) / len(flows), 2) if flows else None,
+                "max_flow_m3h": round(max(flows), 2) if flows else None,
+                "avg_pressure_bar": round(sum(pressures) / len(pressures), 2)
+                if pressures
+                else None,
+                "min_pressure_bar": round(min(pressures), 2) if pressures else None,
+                "max_pressure_bar": round(max(pressures), 2) if pressures else None,
+                "latest_flow_m3h": round(flows[0], 2) if flows else None,
+                "latest_pressure_bar": round(pressures[0], 2) if pressures else None,
             }
     except Exception as exc:
-        log.warning("get_recent_telemetry tool error: %s", exc, exc_info=True)
-        return {"error": f"Failed to get recent telemetry: {exc}"}
+        log.warning("get_recent_telemetry tool error: %s", type(exc).__name__)
+        return {"error": "Recent telemetry is unavailable"}
 
 
 async def get_cycles(
-    ctx: RunContext[AIDeps], days: int = 1, zone_id: str | None = None
-) -> list[dict[str, Any]]:
-    """Irrigation cycle history for the past N days. Optionally for one zone_id."""
+    ctx: RunContext[AIDeps],
+    days: int = 1,
+    zone_id: str | None = None,
+    local_date: str | None = None,
+) -> dict[str, Any]:
+    """Read cycle history for a rolling window or an exact farm-local YYYY-MM-DD date."""
+    factory = ctx.deps.session_factory if ctx and ctx.deps else async_session_factory
+    return await read_cycles(factory, days=days, zone_id=zone_id, local_date=local_date)
+
+
+async def read_cycles(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    days: int = 1,
+    zone_id: str | None = None,
+    local_date: str | None = None,
+) -> dict[str, Any]:
     try:
-        factory = (
-            ctx.deps.session_factory
-            if ctx and ctx.deps and ctx.deps.session_factory
-            else async_session_factory
-        )
         async with factory() as db:
             days_capped = max(1, min(days, 14))
-            cutoff = clock.farm_now() - timedelta(days=days_capped)
+            now = clock.farm_now()
+            cutoff, end = now - timedelta(days=days_capped), now
+            if local_date:
+                try:
+                    day = date.fromisoformat(local_date)
+                except ValueError:
+                    return {"error": "Use a YYYY-MM-DD local date"}
+                tz = ZoneInfo(settings.farm_timezone)
+                cutoff = datetime.combine(day, time.min, tzinfo=tz).astimezone(now.tzinfo)
+                end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz).astimezone(
+                    now.tzinfo
+                )
+
+            started = func.coalesce(IrrigationCycle.actual_start_at, IrrigationCycle.created_at)
 
             stmt = (
                 select(IrrigationCycle)
                 .where(
-                    (IrrigationCycle.actual_start_at >= cutoff)
-                    | (IrrigationCycle.created_at >= cutoff)
+                    started >= cutoff,
+                    started < end,
+                    ~IrrigationCycle.id.startswith("cyc_base_", autoescape=True),
                 )
-                .order_by(desc(IrrigationCycle.created_at))
-                .limit(100)
+                .order_by(desc(started))
+                .limit(101)
             )
             if zone_id:
-                stmt = stmt.where(IrrigationCycle.zone_id == zone_id)
+                canonical = await _resolve_zone_id(db, zone_id)
+                if canonical is None:
+                    return {"error": "Unknown or ambiguous zone. Use its configured code or ID."}
+                stmt = stmt.where(IrrigationCycle.zone_id == canonical)
             res = await db.execute(stmt)
             cycles = list(res.scalars().all())
 
-            return [
+            records = [
                 {
                     "cycle_id": c.id,
                     "zone_id": c.zone_id,
                     "program_id": c.program_id,
                     "outcome": c.outcome,
                     "started_at": (c.actual_start_at or c.created_at).isoformat(),
-                    "duration_min": float(c.actual_duration_min or 0.0),
-                    "water_volume_m3": float(c.water_estimate_m3 or 0.0),
-                    "failure_reason": c.failure_reason,
+                    "duration_min": c.actual_duration_min,
+                    "water_volume_m3": c.water_estimate_m3,
+                    "water_is_estimate": c.water_is_estimate
+                    if c.water_estimate_m3 is not None
+                    else None,
+                    "failure_reason": redact_text(c.failure_reason) if c.failure_reason else None,
                 }
-                for c in cycles
+                for c in cycles[:100]
             ]
+            return {
+                "local_date": local_date,
+                "deployment_mode": settings.deployment_mode,
+                "from": cutoff.isoformat(),
+                "to": end.isoformat(),
+                "truncated": len(cycles) > 100,
+                "cycles": records,
+            }
     except Exception as exc:
-        log.warning("get_cycles tool error: %s", exc)
-        return [{"error": f"Failed to get cycles: {exc}"}]
+        log.warning("get_cycles tool error: %s", type(exc).__name__)
+        return {"error": "Cycle history is unavailable"}
 
 
 async def get_schedule(ctx: RunContext[AIDeps], zone_id: str | None = None) -> dict[str, Any]:
@@ -270,14 +342,17 @@ async def get_schedule(ctx: RunContext[AIDeps], zone_id: str | None = None) -> d
             s_res = await db.execute(s_stmt)
             schedules = list(s_res.scalars().all())
             if zone_id:
-                programs = [p for p in programs if any(s.zone_id == zone_id for s in p.steps)]
-                schedules = [s for s in schedules if s.zone_id == zone_id]
+                canonical = await _resolve_zone_id(db, zone_id)
+                if canonical is None:
+                    return {"error": "Unknown or ambiguous zone. Use its configured code or ID."}
+                programs = [p for p in programs if any(s.zone_id == canonical for s in p.steps)]
+                schedules = [s for s in schedules if s.zone_id == canonical]
 
             return {
                 "programs": [
                     {
                         "program_id": p.id,
-                        "name": p.name,
+                        "name": redact_text(p.name),
                         "start_time_local": p.start_time_local,
                         "weekday_mask": p.weekday_mask,
                         "season": p.season,
@@ -305,8 +380,8 @@ async def get_schedule(ctx: RunContext[AIDeps], zone_id: str | None = None) -> d
                 ],
             }
     except Exception as exc:
-        log.warning("get_schedule tool error: %s", exc)
-        return {"error": f"Failed to get schedules: {exc}", "programs": [], "schedules": []}
+        log.warning("get_schedule tool error: %s", type(exc).__name__)
+        return {"error": "Schedules are unavailable"}
 
 
 async def get_forecast(ctx: RunContext[AIDeps], days: int = 3) -> dict[str, Any]:
@@ -319,9 +394,15 @@ async def get_forecast(ctx: RunContext[AIDeps], days: int = 3) -> dict[str, Any]
         )
         async with factory() as db:
             forecast = await weather_service.get_forecast(db=db)
+        if not is_usable_forecast(forecast):
+            return {"available": False, "source": forecast.source, "days": []}
         today = forecast.daily[0] if forecast.daily else None
 
         return {
+            "available": True,
+            "source": forecast.source,
+            "last_fetched_at": forecast.last_fetched_at,
+            "cached": forecast.cached,
             "current_temperature_c": forecast.current.temperature_c,
             "current_humidity_pct": forecast.current.humidity_pct,
             "current_condition": forecast.current.condition,
@@ -345,8 +426,8 @@ async def get_forecast(ctx: RunContext[AIDeps], days: int = 3) -> dict[str, Any]
             ],
         }
     except Exception as exc:
-        log.warning("get_forecast tool error: %s", exc)
-        return {"error": f"Failed to get forecast: {exc}"}
+        log.warning("get_forecast tool error: %s", type(exc).__name__)
+        return {"error": "Forecast is unavailable"}
 
 
 AI_TOOLS = [

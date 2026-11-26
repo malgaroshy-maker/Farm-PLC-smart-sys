@@ -1,9 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { applyPendingRestore, dbPaths, isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls, restartDelay } from './start.mjs';
+
+test('first-run credentials are saved without appearing in launcher output', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'farm-launcher-credentials-'));
+  try {
+    const keys = ['SECRET_KEY', 'SIMULATOR_TOKEN', 'ADMIN_PASSWORD'];
+    writeFileSync(path.join(root, '.env.example'), keys.map((key) => `${key}=placeholder`).join('\n'));
+    const moduleUrl = new URL('./start.mjs', import.meta.url).href;
+    const code = `import { ensureEnv } from ${JSON.stringify(moduleUrl)}; ensureEnv(process.argv[1]);`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, root], { encoding: 'utf8' });
+    assert.equal(result.status, 0);
+    const output = (result.stdout || '') + (result.stderr || '');
+    const saved = readFileSync(path.join(root, '.env'), 'utf8');
+    for (const key of keys) {
+      const line = saved.split(/\r?\n/).find((entry) => entry.startsWith(`${key}=`));
+      const value = line?.slice(key.length + 1);
+      assert.ok(value && value !== 'placeholder', `${key} was not generated`);
+      assert.ok(!output.includes(value), `${key} appeared in launcher output`);
+    }
+  } finally {
+    rmSync(path.join(root, '.env'), { force: true });
+    rmSync(path.join(root, '.env.example'), { force: true });
+    rmdirSync(root);
+  }
+});
 
 test('isVirtualOrLinkLocal filters link-local addresses (169.254.x.x)', () => {
   assert.equal(isVirtualOrLinkLocal('169.254.0.1'), true);

@@ -32,9 +32,10 @@ def test_rule_based_chat_uses_live_facts_and_real_crops():
         "moisture_avg": 35.0,
         "next_run": {"time": "06:00", "zone_ar": "عنب", "zone_en": "Grapes", "minutes": 15},
         "alarm_count": 0,
+        "zone_inventory": [("zone_enab", "Grapes", "عنب", "grape")],
     }
     assert "80 %" in rule_service.chat("ما حالة الخزان؟", facts=facts).reply_ar
     assert "06:00" in rule_service.chat("متى موعد الري القادم؟", facts=facts).reply_ar
     assert "22 %" in rule_service.chat("أي منطقة الأكثر جفافاً؟", facts=facts).reply_ar
-    crops = rule_service.chat("ما المحاصيل في كل منطقة؟").reply_ar
+    crops = rule_service.chat("ما المحاصيل في كل منطقة؟", facts=facts).reply_ar
     assert "النخيل" not in crops and "الحمضيات" not in crops and "العنب" in crops

@@ -26,7 +26,7 @@ The code is about **2,100 lines of scaffold**, but `PROJECT_STATUS.md` marks Pha
 |---|---------|---------|----------|
 | 1 | WebSocket event emitter ✅ | **Dead code.** `manager.broadcast()` is never called. The web app polls `/state/map` every second. | `apps/api/app/routers/websocket.py` |
 | 2 | Alarm center with Ack/Reset ✅ | **Mock data.** 4 hardcoded alarms. The Ack/Reset buttons have no handlers. There's no alarm API and no alarm engine. `active_alarms` is always `[]`. | `apps/web/src/pages/AlarmCenter.tsx`, `routers/state.py` |
-| 3 | Login / auth ✅ | **Credentials are hardcoded in the frontend JS** (`Mahamed97`/`Admin1234`, readable by anyone who opens devtools). "Auth" is a `localStorage` flag. The API has **zero auth**: anyone on the network can start or stop pumps. | `pages/Login.tsx`, every router |
+| 3 | Login / auth ✅ | **Credentials are hardcoded in the frontend JS** (the historical credentials have been redacted). "Auth" is a `localStorage` flag. The API has **zero auth**: anyone on the network can start or stop pumps. | `pages/Login.tsx`, every router |
 | 4 | Fault injection ✅ | **Valve faults always fail.** The simulator never loads valves or sensors (`fetch_initial_layout` only loads zones and pumps). A pump trip doesn't stop the zone, which keeps "running" at 5 m³/h with 0 bar. | `simulator/src/client.py`, `engine.py` |
 | 5 | Command handling ✅ | **No validation or interlocks.** `POST /commands` accepts any `command_type` and target (verified: `delete_everything` → 200). No max-concurrent-zones check, no combination check, no event-log entry, no actor. | `routers/commands.py` |
 | 6 | Scenario runner ✅ | Doesn't exist. `scenarios.py` only contains `FaultInjector`. | |

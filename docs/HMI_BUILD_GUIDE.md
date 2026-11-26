@@ -5,7 +5,7 @@
 - **Number format:** the output-format string is `{F1}` (one decimal), `{F2}`, and so on. `{F0}` still shows a decimal, so Int tags are left without a format.
 - **Text:** text from the PLC needs a `WString` HMI tag (`String` is refused). Arabic text in a PLC source file needs a UTF-8 byte-order mark.
 - **Graphics:** TIA has no API to add them: drop the PNGs on a screen once and use each from the Toolbox (section 9). Importing a name that exists keeps the old image and adds `<name>_1`.
-- **Simulation:** start it with **Online > Simulation > Start** (not Download), after the panel compiles with 0 errors. The runtime page is `https://<pc-name>/WebRH`.
+- **Simulation:** after a clean compile and the owner's approval for the local simulation transfer, use **Online > Simulation > Start**. TIA loads the project into local Unified Runtime over port 20008. The runtime page is `https://<pc-name>/WebRH`. If TIA reports `Online connection to HMI_RT_1 failed` while WebRH still loads, check the Windows `WCCILScsService` and whether port 20008 is listening before changing the project. [WinCC Unified V19 manual](https://support.industry.siemens.com/cs/attachments/109828368/WinCC_VisualizingProcessesUnified_enUS_en-US.pdf)
 - **Compile:** the panel's two network ports must be in different subnets, and Runtime settings needs a password that meets the rules (set by the owner).
 
 You build the screens in TIA Portal; this guide is the spec. The panel device `FarmHMI` (MTP1000 Unified Comfort, 1280 x 800) is already in the project `AlgaroshyFarm`. The PLC side is done and tested in PLCSIM (the HMI buttons, section 5). Design decisions are in [PLC_PROGRAM.md](PLC_PROGRAM.md) section 7: **match the app** (dark theme, Arabic RTL default, EN switch) and **overview layout A** (zone grid).
@@ -106,7 +106,9 @@ The PLC clears each `Btn*` bit itself, so use **SetBit** on press and nothing on
 
 Tested in PLCSIM: Start made zone 1 start with run source 4 (hmi); Stop all stopped it.
 
-Roles (Unified user management): Start, Stop and Stop all for the `Operator` group; **Reset alarms and Settings for `Admin` only**.
+Use Unified operation rights on the controls. Operators can set the run duration, Start, Stop and Stop all. They can view Settings. The mode buttons and alarm reset require the dedicated Farm administration right.
+
+Build `tools/tia/FarmHmiAccess.cs` against the installed V19 `Siemens.Engineering.dll`. Set `FARM_TIA_V19_API` to that PublicAPI folder and run the resulting executable with `inspect <open project.ap19>` to see the current control rights. If TIA reports zero rights, inspect **FarmHMI > Runtime settings > Security > Access control** and **Security settings > Users and roles** in the engineering project. After building or rebuilding screens, use `apply <open project.ap19>` once TIA exposes the Operate right and at least one active named project user has the HMI Administrator role. The helper applies the rights, compiles the HMI and saves on a clean compile. The owner handles account setup and sign-in.
 
 ## 6. Screens
 Bottom bar, always visible (right to left in Arabic): Overview, Zones, Pumps and water, Alarms, Schedule, Settings. Top bar: farm name, alarm count (red when `DB_Alarms.AnyActive`), PLC link state (`DB_Farm.LinkOk`; amber "fallback" while `FallbackActive`), clock, AR | EN switch.
@@ -119,7 +121,7 @@ Bottom bar, always visible (right to left in Arabic): Overview, Zones, Pumps and
 6. **Settings.** Admin only: system mode (`DB_Farm.Mode`) and language. Zone limits stay in `DB_Config` until commissioning.
 
 ## 7. Alarms (Unified discrete alarms)
-**Import them:** `hmi/FarmHMI_alarms.xlsx` (19 discrete alarms with the guidance as info text). HMI alarms > Discrete alarms > **Import**. Classes used: `Alarm` for S3, `Warning` for the rest; create `Warning` first if your project lacks it. Arabic works as for the text lists (add the language, re-export the alarm sample, re-run the generator).
+**Import them:** `hmi/FarmHMI_alarms.xlsx` contains 19 discrete alarms and their guidance. Use HMI alarms > Discrete alarms > **Import**. S3 uses `Alarm`, S2 uses `Major`, and lower severities use `Warning`. Create `Major` with required acknowledgement before importing into a fresh project. For an existing FarmHMI, `python tools/tia/style_hmi_alarm_classes.py --save` creates the class, updates assignments and sets flashing for raised, unacknowledged critical and major alarms. Verify readability and the acknowledge and clear transitions in WebRH. Arabic localization is currently paused.
 One discrete alarm per row, bound to the bit of `DB_Alarms.Word0/1/2` (bit n-1 for alarm n). Class by severity: S3 = Alarm (acknowledge), S2 and S1 = Warning, S0 = Info.
 
 | Code | Tag bit | Arabic text | English text | Severity |
@@ -149,8 +151,8 @@ The app also derives alarms from live data; the HMI shows only what the PLC itse
 ## 8. Test in the Unified runtime simulator
 1. Compile the panel and start the simulation. The PLC must be running in PLCSIM at 192.168.0.1 (`run.bat demo plcsim` plays the farm around it).
 2. Overview shows live zone colours. Press the zone 1 tile, enter 2 minutes, press Start: zone 1 goes through starting and opening to running (green), source "الشاشة". Press Stop. Then Stop all.
-3. Switch AR | EN: every text changes and the layout mirrors.
-4. Trip the booster from the app's Simulator page: ALM-005 appears on the Alarms screen with its Arabic text. Press Reset alarms as admin once the pump is repaired.
+3. After localization resumes, switch AR | EN and verify both versions of the screen and alarm text.
+4. Trip the booster from the app's Simulator page and verify that ALM-005 appears in the alarm table. Pause **Alarms – Show recent** in the table toolbar to select the row, then use **Single acknowledgment**. Repair the simulated pump and use Reset alarms as an administrator. Verify the flashing transitions in the closeout plan.
 5. Send me screenshots and I'll check them against layout A.
 
 ## 9. Icons and images

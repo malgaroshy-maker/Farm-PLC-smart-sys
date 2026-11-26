@@ -243,9 +243,10 @@ export default function SimulatorPanel() {
                   </div>
                   {isAdmin && (
                     <button
-                      disabled={busy}
+                      disabled={busy || Boolean(s.unavailable_reason)}
                       onClick={() => runScenario(s.name)}
                       aria-label={`Run ${s.title}`}
+                      aria-describedby={s.unavailable_reason ? `scenario-reason-${s.name}` : undefined}
                       className="self-start p-2 rounded border border-[#353534] text-[#00e5ff] hover:border-[#00e5ff] disabled:opacity-40"
                     >
                       <Play size={16} />
@@ -253,6 +254,9 @@ export default function SimulatorPanel() {
                   )}
                 </div>
                 <p className="text-xs text-[#849396]">{s.description}</p>
+                {s.unavailable_reason === 'requires_virtual_clock' && (
+                  <p id={`scenario-reason-${s.name}`} className="text-xs text-[#bac9cc]">{t('sim.requiresVirtualClock')}</p>
+                )}
                 {s.expect.length > 0 && (
                   <p className="text-[10px] font-mono text-[#ffeb3b]" dir="ltr">{t('sim.expects')} {s.expect.join(' · ')}</p>
                 )}

@@ -68,6 +68,7 @@ class FarmMapState(BaseModel):
     speed: float = 1.0
     clock_mode: str = "real"
     clock_paused: bool = False
+    locked_real: bool = False
     power_ok: bool = True
     fallback_active: bool = False
     well_level_m: float | None = None

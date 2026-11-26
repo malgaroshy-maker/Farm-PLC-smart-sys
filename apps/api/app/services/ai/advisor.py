@@ -9,23 +9,26 @@ Implements:
 
 import json
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.core.clock import clock
+from app.core.timeutil import as_utc
 from app.models.ai import AISuggestion, ProgramOverride
-from app.models.irrigation_cycle import IrrigationCycle
 from app.models.program import Program
-from app.services.ai.advisor_rules import AdviceInputs, decide
+from app.services.ai.advisor_rules import AdviceInputs, decide, explain
 from app.services.ai.agent import run_weather_advisor
+from app.services.conflicts import parse_weekday_mask
 from app.services.events import log_event
 from app.services.live_state import current_map_state
 from app.services.realtime import manager
-from app.services.weather import weather_service
+from app.services.weather import is_usable_forecast, weather_service
 
 log = logging.getLogger(__name__)
 
@@ -39,10 +42,12 @@ async def evaluate_weather_advisor(
 ) -> AISuggestion | None:
     """Evaluate weather thresholds and create an approval-ready AISuggestion."""
     now_farm = clock.farm_now()
-    date_str = target_date or now_farm.strftime("%Y-%m-%d")
+    date_str = (
+        target_date or now_farm.astimezone(ZoneInfo(settings.farm_timezone)).date().isoformat()
+    )
 
     forecast = await weather_service.get_forecast(db=db, force_refresh=refresh_weather)
-    if not forecast or not forecast.daily:
+    if not forecast or not forecast.daily or not is_usable_forecast(forecast):
         log.info("No weather forecast available for advisor")
         return None
 
@@ -53,40 +58,31 @@ async def evaluate_weather_advisor(
             day_summary = d
             break
     if not day_summary:
-        day_summary = forecast.daily[0]
-        date_str = day_summary.date
+        return None
 
     # Programs that run on the target day -> the zones the advice affects
-    from datetime import date as _date
-
-    from app.services.conflicts import parse_weekday_mask
-
-    weekday = _date.fromisoformat(date_str).isoweekday()
+    weekday = date.fromisoformat(date_str).isoweekday()
     prog_res = await db.execute(
-        select(Program).where(Program.enabled.is_(True)).options(selectinload(Program.steps))
+        select(Program)
+        .where(Program.enabled.is_(True))
+        .options(selectinload(Program.steps))
+        .order_by(Program.start_time_local, Program.id)
     )
     programs = [
         p for p in prog_res.scalars().all() if weekday in parse_weekday_mask(p.weekday_mask)
     ]
-    affected_zones = sorted({s.zone_id for p in programs for s in (p.steps or [])})
-    first_prog_id = programs[0].id if programs else None
+    program = next((p for p in programs if p.steps), None)
+    if program is None:
+        return None
+    affected_zones = sorted({step.zone_id for step in program.steps})
 
-    # Live soil moisture of those zones (all zones when none are scheduled)
+    # Only observations for the selected program inform its decision.
     state = await current_map_state(db)
     zm = [
         z.moisture_pct
         for z in state.zones
-        if z.moisture_pct is not None and (not affected_zones or z.zone_id in affected_zones)
+        if z.moisture_pct is not None and z.zone_id in affected_zones and state.data_fresh
     ]
-    # Water delivered in the last 48 h of farm time
-    water_48h = (
-        await db.execute(
-            select(func.coalesce(func.sum(IrrigationCycle.water_estimate_m3), 0.0)).where(
-                IrrigationCycle.actual_end_at >= now_farm - timedelta(hours=48)
-            )
-        )
-    ).scalar()
-
     decision = decide(
         AdviceInputs(
             rain_mm=day_summary.precipitation_total_mm,
@@ -95,7 +91,6 @@ async def evaluate_weather_advisor(
             et0_mm=day_summary.et0_mm,
             moisture_avg_pct=(sum(zm) / len(zm)) if zm else None,
             moisture_min_pct=min(zm) if zm else None,
-            water_48h_m3=float(water_48h or 0.0),
             zones_count=len(affected_zones),
         )
     )
@@ -121,7 +116,11 @@ async def evaluate_weather_advisor(
             if s.action_payload_json:
                 try:
                     p = json.loads(s.action_payload_json)
-                    if p.get("target_date") == date_str:
+                    if (
+                        p.get("scope_version") == 1
+                        and p.get("target_date") == date_str
+                        and p.get("program_id") == program.id
+                    ):
                         return s
                 except Exception:
                     pass
@@ -131,31 +130,37 @@ async def evaluate_weather_advisor(
         forecast=forecast,
         target_date=date_str,
         affected_zones=affected_zones,
-        program_id=first_prog_id,
+        program_id=program.id,
         db=db,
         lang=lang,
         decision=decision,
     )
-    # Safety: the action is the server's decision, never the model's
-    suggestion_model.action = decision.action
-    suggestion_model.duration_factor = decision.duration_factor
-    suggestion_model.affected_zone_ids = affected_zones
-    if suggestion_model.provider_used == "rule_based":
-        from app.services.ai.advisor_rules import explain
-
+    if (
+        suggestion_model.provider_used == "rule_based"
+        or suggestion_model.action != decision.action
+        or suggestion_model.duration_factor != decision.duration_factor
+        or suggestion_model.target_date != date_str
+        or suggestion_model.program_id != program.id
+        or set(suggestion_model.affected_zone_ids) != set(affected_zones)
+    ):
         (
             suggestion_model.title,
             suggestion_model.title_ar,
             suggestion_model.reasoning,
             suggestion_model.reasoning_ar,
         ) = explain(decision)
+        suggestion_model.provider_used = "rule_based"
+        suggestion_model.model_used = "offline_rules"
 
     action_payload = {
-        "action": suggestion_model.action,
-        "target_date": suggestion_model.target_date,
-        "duration_factor": suggestion_model.duration_factor,
-        "affected_zone_ids": suggestion_model.affected_zone_ids,
-        "program_id": suggestion_model.program_id,
+        "action": decision.action,
+        "target_date": date_str,
+        "duration_factor": decision.duration_factor,
+        "affected_zone_ids": affected_zones,
+        "program_id": program.id,
+        "scope_version": 1,
+        "provider_used": suggestion_model.provider_used,
+        "model_used": suggestion_model.model_used,
         # "why?" details (Milestone G2)
         "rule": decision.rule,
         "inputs": decision.inputs,
@@ -171,7 +176,7 @@ async def evaluate_weather_advisor(
     suggestion = AISuggestion(
         id=f"sug_{uuid4().hex[:12]}",
         feature="weather_advisor",
-        priority="high" if suggestion_model.action == "skip" else "medium",
+        priority="high" if decision.action == "skip" else "medium",
         status="pending",
         title=suggestion_model.title,
         title_ar=suggestion_model.title_ar,
@@ -197,7 +202,7 @@ async def evaluate_weather_advisor(
         actor_type="ai",
         payload={
             "feature": "weather_advisor",
-            "action": suggestion_model.action,
+            "action": decision.action,
             "target_date": date_str,
             "title": suggestion.title,
         },
@@ -207,7 +212,7 @@ async def evaluate_weather_advisor(
         {
             "id": suggestion.id,
             "feature": "weather_advisor",
-            "action": suggestion_model.action,
+            "action": decision.action,
             "target_date": date_str,
             "title": suggestion.title,
             "title_ar": suggestion.title_ar,
@@ -233,10 +238,44 @@ async def approve_suggestion(
     now_farm = clock.farm_now()
     payload = json.loads(suggestion.action_payload_json or "{}")
 
-    target_date = payload.get("target_date", now_farm.strftime("%Y-%m-%d"))
-    action = payload.get("action", "skip")
-    factor = float(payload.get("duration_factor", 0.0 if action == "skip" else 1.2))
+    if suggestion.expires_at and as_utc(suggestion.expires_at) <= as_utc(now_farm):
+        raise ValueError("Suggestion has expired. Generate a new suggestion.")
+    if suggestion.feature != "weather_advisor" or payload.get("scope_version") != 1:
+        raise ValueError("Suggestion lacks a verified program scope. Generate a new suggestion.")
+    target_date = payload.get("target_date")
+    action = payload.get("action")
+    factor = payload.get("duration_factor")
     program_id = payload.get("program_id")
+    program = await db.get(Program, program_id) if program_id else None
+    try:
+        target_day = date.fromisoformat(target_date or "")
+    except ValueError as exc:
+        raise ValueError("Suggestion has an invalid target date.") from exc
+    if (
+        not program
+        or not program.enabled
+        or target_day < now_farm.astimezone(ZoneInfo(settings.farm_timezone)).date()
+        or target_day.isoweekday() not in parse_weekday_mask(program.weekday_mask)
+        or sorted({step.zone_id for step in program.steps}) != payload.get("affected_zone_ids")
+        or action not in ("skip", "extend", "reduce")
+        or not isinstance(factor, (float, int))
+        or not (
+            (action == "skip" and factor == 0)
+            or (action == "extend" and 1 < factor <= 1.3)
+            or (action == "reduce" and 0 < factor < 1)
+        )
+    ):
+        raise ValueError(
+            "Suggestion no longer matches an eligible program. Generate a new suggestion."
+        )
+
+    claim = await db.execute(
+        update(AISuggestion)
+        .where(AISuggestion.id == suggestion_id, AISuggestion.status == "pending")
+        .values(status="approved", responded_at=now_farm, responded_by=operator_name)
+    )
+    if claim.rowcount != 1:
+        raise ValueError("Suggestion is no longer pending.")
 
     override = ProgramOverride(
         id=f"ovr_{uuid4().hex[:12]}",
@@ -249,10 +288,6 @@ async def approve_suggestion(
         created_at=now_farm,
     )
     db.add(override)
-
-    suggestion.status = "approved"
-    suggestion.responded_at = now_farm
-    suggestion.responded_by = operator_name
 
     await db.commit()
     await db.refresh(override)

@@ -15,22 +15,101 @@ Validates:
 """
 
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from conftest import push_state
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.clock import clock
 from app.core.timeutil import utcnow
 from app.database import async_session_factory
 from app.models.alarm import Alarm
+from app.models.irrigation_cycle import IrrigationCycle
+from app.models.telemetry import TelemetryPoint
+from app.models.zone import Zone
 from app.services.anomaly import (
     ALM_CLOGGED,
     ALM_LEAK,
     AnomalyDetector,
     compute_baseline_from_samples,
     compute_baseline_stats,
-    ensure_zone_baseline_runs,
 )
+
+
+async def add_baseline_test_cycles(
+    db: AsyncSession,
+    zone_id: str,
+    n_runs: int = 3,
+) -> list[IrrigationCycle]:
+    """Create baseline fixtures in the isolated test database."""
+    res = await db.execute(
+        select(IrrigationCycle).where(
+            IrrigationCycle.zone_id == zone_id,
+            IrrigationCycle.outcome == "completed",
+        )
+    )
+    existing = list(res.scalars().all())
+    needed = n_runs - len(existing)
+    if needed <= 0:
+        return existing
+
+    zone_row = await db.get(Zone, zone_id)
+    flow = ((zone_row.flow_min_m3h + zone_row.flow_max_m3h) / 2.0) if zone_row else 10.0
+    pressure = ((zone_row.pressure_min_bar + zone_row.pressure_max_bar) / 2.0) if zone_row else 2.8
+
+    now = clock.farm_now()
+    created: list[IrrigationCycle] = []
+    for i in range(needed):
+        start = now - timedelta(days=needed - i, minutes=30)
+        end = now - timedelta(days=needed - i)
+        cyc = IrrigationCycle(
+            id=f"cyc_test_{zone_id[:8]}_{i}_{uuid4().hex[:6]}",
+            zone_id=zone_id,
+            source_mode="tank",
+            actual_start_at=start,
+            actual_end_at=end,
+            planned_duration_min=30,
+            actual_duration_min=30,
+            outcome="completed",
+            water_estimate_m3=round(flow * 0.5, 4),
+            water_is_estimate=False,
+            created_at=start,
+            updated_at=end,
+        )
+        db.add(cyc)
+        created.append(cyc)
+
+        for offset_s in (30, 300, 600, 900, 1200, 1500):
+            pt_ts = start + timedelta(seconds=offset_s)
+            db.add(
+                TelemetryPoint(
+                    metric_key="zone.flow_m3h",
+                    farm_id="farm_algaroshy",
+                    zone_id=zone_id,
+                    ts=pt_ts,
+                    value_numeric=flow,
+                    value_text="1.0",
+                    source="simulator",
+                )
+            )
+            db.add(
+                TelemetryPoint(
+                    metric_key="zone.pressure_bar",
+                    farm_id="farm_algaroshy",
+                    zone_id=zone_id,
+                    ts=pt_ts,
+                    value_numeric=pressure,
+                    value_text="1.0",
+                    source="simulator",
+                )
+            )
+
+    await db.commit()
+    # Invalidate cache so new cycles are loaded
+    return existing + created
+
 
 # ── 1. Statistical Math Unit Tests ──────────────────────────────────────────
 
@@ -259,7 +338,7 @@ async def test_ensure_baseline_runs_and_db_computation(client):
         assert bl is None
 
         # Seed baseline runs
-        cycles = await ensure_zone_baseline_runs(db, zone_id, n_runs=3)
+        cycles = await add_baseline_test_cycles(db, zone_id, n_runs=3)
         assert len(cycles) >= 3
 
         # Now baseline is successfully computed
@@ -271,6 +350,11 @@ async def test_ensure_baseline_runs_and_db_computation(client):
         assert bl.flow.median > 0
         assert bl.pressure.median > 0
 
+        for cycle in cycles:
+            cycle.id = cycle.id.replace("cyc_test_", "cyc_base_", 1)
+        await db.commit()
+        assert await detector.compute_zone_baseline_from_db(db, zone_id) is None
+
 
 # ── 5. Integration with State Sync & AlarmEngine ────────────────────────────
 
@@ -281,7 +365,7 @@ async def test_normal_cycle_does_not_trigger_leak_or_clogged_alarms(client):
 
     # Establish baseline
     async with async_session_factory() as db:
-        await ensure_zone_baseline_runs(db, zone_id, n_runs=3)
+        await add_baseline_test_cycles(db, zone_id, n_runs=3)
 
     # Push state with normal flow and pressure while zone is running
     push_state(
@@ -308,7 +392,7 @@ async def test_state_sync_triggers_alm046_on_leak(client):
 
     # Establish baseline
     async with async_session_factory() as db:
-        await ensure_zone_baseline_runs(db, zone_id, n_runs=3)
+        await add_baseline_test_cycles(db, zone_id, n_runs=3)
 
     # Set alarm debounce to 0 in detector for direct test
     from app.services.anomaly import anomaly_detector
@@ -415,7 +499,7 @@ async def test_state_sync_triggers_alm047_on_clogged_emitters(client):
     zone_id = "zone_rumman_2"
 
     async with async_session_factory() as db:
-        await ensure_zone_baseline_runs(db, zone_id, n_runs=3)
+        await add_baseline_test_cycles(db, zone_id, n_runs=3)
 
     from app.services.anomaly import anomaly_detector
 
@@ -480,11 +564,10 @@ async def test_state_sync_triggers_alm047_on_clogged_emitters(client):
 def test_scenario_definitions_for_anomaly_alarms():
     from app.services.scenarios import SCENARIOS
 
-    # mainline_leak must expect both PLC ALM-013 and anomaly ALM-046
+    # The PLC protection scenario works without a statistical baseline.
     assert "mainline_leak" in SCENARIOS
     leak_scen = SCENARIOS["mainline_leak"]
-    assert "ALM-046" in leak_scen.expect
-    assert "ALM-013" in leak_scen.expect
+    assert leak_scen.expect == ["ALM-013"]
 
     # normal_cycle must NOT expect ALM-046 or ALM-047
     assert "normal_cycle" in SCENARIOS
@@ -497,7 +580,7 @@ def test_scenario_definitions_for_anomaly_alarms():
 async def test_leak_scenario_flow_triggers_alm046_and_normal_does_not(client):
     zone_id = "zone_zaytoun"
     async with async_session_factory() as db:
-        await ensure_zone_baseline_runs(db, zone_id, n_runs=3)
+        await add_baseline_test_cycles(db, zone_id, n_runs=3)
 
     from app.services.anomaly import anomaly_detector
 

@@ -108,7 +108,7 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
           ) : (
             <div className="hidden sm:flex items-center gap-1.5">
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/20 font-medium">
-                {briefing.provider || 'APInex'}
+                {briefing.provider || '—'}
               </span>
               {activeModel && (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-[#bac9cc] border border-white/10">
@@ -150,8 +150,11 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
             <div className="min-w-0">
               <div className="text-[11px] text-[#849396]">{t('briefing.waterYesterday')}</div>
               <div className="text-lg font-bold font-mono text-[#e5e2e1]">
+                {briefing.water_is_estimate && briefing.water_used_yesterday_m3 !== null ? '≈ ' : ''}
                 {fmtNum(briefing.water_used_yesterday_m3, 1)}{' '}
-                <span className="text-xs font-normal text-[#849396]">m³</span>
+                {briefing.water_used_yesterday_m3 !== null && (
+                  <span className="text-xs font-normal text-[#849396]">m³</span>
+                )}
               </div>
             </div>
           </div>
@@ -174,7 +177,7 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
                   )}
                 </div>
               ) : (
-                <div className="text-xs text-[#849396]">{t('briefing.noPrograms')}</div>
+                <div className="text-xs text-[#849396]">{briefing.schedules_today === null ? '—' : t('briefing.noPrograms')}</div>
               )}
             </div>
           </div>
@@ -182,11 +185,11 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
           {/* 3. Weather Forecast at Farm Site */}
           <div className="p-3 rounded-xl bg-black/25 border border-white/5 flex items-center gap-3">
             <span className="p-2.5 rounded-xl bg-[#00e5ff]/10 text-[#00e5ff]">
-              <WeatherIcon condition={forecast.condition} size={20} />
+              <WeatherIcon condition={forecast?.condition} size={20} />
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] text-[#849396]">{t('briefing.forecast')}</div>
-              <div className="flex items-center gap-2 text-xs font-bold text-[#e5e2e1]">
+              {forecast ? <div className="flex items-center gap-2 text-xs font-bold text-[#e5e2e1]">
                 <span className="font-mono">{fmtNum(forecast.temp_max_c)}° / {fmtNum(forecast.temp_min_c)}°C</span>
                 {forecast.rain_prob_pct > 0 && (
                   <span className="flex items-center gap-0.5 text-[11px] text-[#00e5ff] font-mono">
@@ -194,7 +197,7 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
                     {forecast.rain_prob_pct}%
                   </span>
                 )}
-              </div>
+              </div> : <span className="text-xs text-[#849396]">—</span>}
             </div>
           </div>
         </div>

@@ -57,7 +57,7 @@ describe('AI API endpoints client', () => {
     });
   });
 
-  it('sendAiChat posts messages to /api/v1/ai/chat with latency and fallback_reason support', async () => {
+  it('sendAiChat posts messages and preserves source references and diagnostics', async () => {
     const mockChatRes = {
       message: 'Zone 1 and Zone 3 are currently running.',
       provider: 'APInex',
@@ -66,6 +66,7 @@ describe('AI API endpoints client', () => {
       is_fallback: false,
       latency_ms: 850,
       fallback_reason: undefined,
+      references: ['get_zone_state'],
     };
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -83,7 +84,7 @@ describe('AI API endpoints client', () => {
     expect(init?.signal).toBe(controller.signal);
     expect(JSON.parse(String(init?.body))).toMatchObject({
       message: 'What is running?',
-      lang: 'en',
+      language: 'en',
     });
   });
 
@@ -154,7 +155,7 @@ describe('AI API endpoints client', () => {
     const briefing = await fetchDailyBriefing('2026-11-20');
     expect(briefing.date).toBe('2026-11-20');
     expect(briefing.water_used_yesterday_m3).toBe(38.4);
-    expect(briefing.weather_forecast.condition).toBe('sunny');
+    expect(briefing.weather_forecast?.condition).toBe('sunny');
     expect(briefing.model_used).toBe('free/deepseek-v4-pro-0813');
   });
 

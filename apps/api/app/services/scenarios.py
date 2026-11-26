@@ -19,6 +19,7 @@ Steps
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
@@ -67,6 +68,7 @@ class Scenario:
     expect: list[str]
     steps: list[tuple]
     prep: bool = True
+    requires_virtual_clock: bool = False
 
 
 SCENARIOS: dict[str, Scenario] = {
@@ -195,17 +197,16 @@ SCENARIOS: dict[str, Scenario] = {
             "Mainline leak",
             "تسريب في الخط الرئيسي",
             "Pipe bursts while Olives run → high flow detected, zone stopped.",
-            ["ALM-013", "ALM-046"],
+            ["ALM-013"],
             [
-                ("ensure_baseline", "zone_zaytoun"),
-                ("cmd", "start_zone", "zone", "zone_zaytoun", {"duration_min": 20}),
+                ("cmd", "start_zone", "zone", "zone_zaytoun", {"duration_min": 2}),
                 ("wait_zone", "zone_zaytoun", RUNNING, 60),
                 ("wait", 6),
-                ("fault", "system", None, "mainline_leak"),
-                ("wait_alarm", "ALM-013", 60),
-                ("wait_alarm", "ALM-046", 60),
-                ("wait", 6),
-                ("fault", "system", None, "clear_leak"),
+                ("check_mainline_leak",),
+                ("cmd", "start_zone", "zone", "zone_zaytoun", {"duration_min": 1}),
+                ("wait_zone", "zone_zaytoun", RUNNING, 60),
+                ("cmd", "stop_zone", "zone", "zone_zaytoun"),
+                ("wait_idle", 60),
             ],
         ),
         Scenario(
@@ -290,6 +291,7 @@ SCENARIOS: dict[str, Scenario] = {
                 ("clock_speed", 1.0),
                 ("note", "Program completed all 3 zones with water > 0. Returned to 1×."),
             ],
+            requires_virtual_clock=True,
         ),
         Scenario(
             "scheduled_blocked_start",
@@ -317,6 +319,7 @@ SCENARIOS: dict[str, Scenario] = {
                 ("fault", "tank", None, "set_level", 80),
                 ("clock_speed", 1.0),
             ],
+            requires_virtual_clock=True,
         ),
         Scenario(
             "reset_farm",
@@ -420,6 +423,9 @@ class ScenarioRunner:
                 "description": s.description,
                 "expect": s.expect,
                 "steps": len(s.steps) + (len(PREP) if s.prep else 0),
+                "unavailable_reason": "requires_virtual_clock"
+                if s.requires_virtual_clock and clock.is_locked_real
+                else None,
             }
             for s in SCENARIOS.values()
         ]
@@ -432,6 +438,8 @@ class ScenarioRunner:
         scenario = SCENARIOS.get(name)
         if not scenario:
             raise HTTPException(404, f"Unknown scenario '{name}'")
+        if scenario.requires_virtual_clock and clock.is_locked_real:
+            raise HTTPException(409, "This scenario requires a virtual clock. The PLC runs at 1×.")
         if self.busy:
             raise HTTPException(409, f"Scenario '{self.state.name}' is still running")
         steps = (PREP if scenario.prep else []) + scenario.steps
@@ -536,12 +544,8 @@ class ScenarioRunner:
         elif kind == "wait_alarm":
             await self._wait_alarm(step[1], step[2])
             await self._publish(f"Alarm raised: {step[1]}")
-        elif kind == "ensure_baseline":
-            from app.services.anomaly import ensure_zone_baseline_runs
-
-            async with async_session_factory() as db:
-                await ensure_zone_baseline_runs(db, step[1])
-            await self._publish(f"Baseline confirmed for {step[1]}")
+        elif kind == "check_mainline_leak":
+            await self._check_mainline_leak()
         elif kind == "reset_alarms":
             # a PLC holds a zone fault in its report for ~30 s: wait for the last critical alarm
             # to clear (it cannot be reset while its condition is active), resetting as they do
@@ -722,12 +726,54 @@ class ScenarioRunner:
             await asyncio.sleep(self.poll_s)
         raise ScenarioFailed(f"The controller did not come back within {timeout}s")
 
-    async def _wait_alarm(self, code: str, timeout: float) -> None:
+    async def _check_mainline_leak(self) -> None:
+        """Check the PLC alarm and shutdown with simulated inputs and live controller state."""
+        since = clock.farm_now()
+        try:
+            await self._step(("fault", "system", None, "mainline_leak"))
+            await self._wait_alarm("ALM-013", 60, raised_since=since)
+            await self._wait_zone("zone_zaytoun", {"faulted"}, 30)
+            await self._wait_leak_outputs_off()
+            await self._publish(
+                "ALM-013 raised, olive zone faulted, valve closed and booster stopped"
+            )
+        finally:
+            await self._step(("fault", "system", None, "clear_leak"))
+
+    async def _wait_leak_outputs_off(self) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 30
+        expected = {
+            "valve_valve_zaytoun": ("status", "closed"),
+            "pump_pump_booster_01": ("state", "stopped"),
+        }
+        while loop.time() < deadline:
+            async with async_session_factory() as db:
+                snaps = await load_snapshots(db)
+            if all(
+                key in snaps
+                and snaps[key].updated_at > self._picked_up_at
+                and snaps[key].state.get(field) == value
+                for key, (field, value) in expected.items()
+            ):
+                return
+            await asyncio.sleep(self.poll_s)
+        raise ScenarioFailed("Leak did not close the olive valve and stop the booster")
+
+    async def _wait_alarm(
+        self, code: str, timeout: float, *, raised_since: datetime | None = None
+    ) -> None:
         from sqlalchemy import and_, or_, select
 
         from app.services.alarms import OPEN
 
-        started = self._started_farm
+        raised_during_run = Alarm.triggered_at >= (raised_since or self._started_farm)
+        condition = raised_during_run
+        if raised_since is None:
+            # A condition such as ALM-036 can remain genuinely active across several runs.
+            condition = or_(
+                raised_during_run, and_(Alarm.status.in_(OPEN), Alarm.cleared_at.is_(None))
+            )
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         while True:
@@ -736,12 +782,7 @@ class ScenarioRunner:
                     await db.execute(
                         select(Alarm.id).where(
                             Alarm.alarm_code.in_(code.split(" / ")),
-                            # raised during this run, or still genuinely active
-                            # (e.g. ALM-036's 24 h window spans several runs)
-                            or_(
-                                Alarm.triggered_at >= started,
-                                and_(Alarm.status.in_(OPEN), Alarm.cleared_at.is_(None)),
-                            ),
+                            condition,
                         )
                     )
                 ).first()

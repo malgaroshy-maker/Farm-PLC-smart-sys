@@ -322,11 +322,11 @@ def get_model_metadata(model_id: str) -> ModelCatalogEntry:
         return ModelCatalogEntry(
             model_id=model_id,
             quota_multiplier=1,
-            supports_tools=True,
+            supports_tools=False,
             supports_vision=False,
-            verdict="recommended" if is_avail else "unavailable",
-            verdict_badge="✓" if is_avail else "⛔",
-            description="Dynamic model from APInex",
+            verdict="mixing" if is_avail else "unavailable",
+            verdict_badge="?" if is_avail else "⛔",
+            description="Listed by APInex. Capabilities and account access are unverified.",
             available=is_avail,
             unavailable_reason=_RUNTIME_UNAVAILABLE_MODELS.get(model_id),
         )

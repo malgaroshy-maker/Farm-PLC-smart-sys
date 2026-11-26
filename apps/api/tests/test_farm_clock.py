@@ -458,7 +458,8 @@ def test_command_sync_at_360x_stamps_farm_time(client):
 
 
 @pytest.mark.asyncio
-async def test_water_today_at_1x_drops_10min_outage(client):
+async def test_water_today_at_1x_drops_10min_outage(client, monkeypatch):
+    monkeypatch.setattr("app.core.clock.utcnow", lambda: datetime(2026, 11, 24, 12, tzinfo=UTC))
     clock.reset_to_real()
     now = clock.farm_now()
     async with async_session_factory() as db:
@@ -487,7 +488,9 @@ async def test_water_today_at_1x_drops_10min_outage(client):
 
 
 @pytest.mark.asyncio
-async def test_water_today_at_360x_integrates_normal_spacing(client):
+async def test_water_today_at_360x_integrates_normal_spacing(client, monkeypatch):
+    monkeypatch.setattr("app.core.clock.utcnow", lambda: datetime(2026, 11, 24, 12, tzinfo=UTC))
+    clock.reset_to_real()
     clock.set_speed(360.0)
     now = clock.farm_now()
     async with async_session_factory() as db:

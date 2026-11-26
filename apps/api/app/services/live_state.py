@@ -86,6 +86,7 @@ def build_map_state(
             for z in zones
         ]
     last = last_update(snapshots)
+    farm_clock = clock.as_dict()
     return FarmMapState(
         system_mode=system_mode,
         power_ok=power_ok,
@@ -102,10 +103,11 @@ def build_map_state(
         active_alarms=active_alarms or [],
         data_fresh=is_fresh(snapshots),
         last_snapshot_ts=last,
-        farm_now=clock.farm_now(),
-        speed=clock.speed,
-        clock_mode=clock.mode,
-        clock_paused=clock.is_paused,
+        farm_now=farm_clock["farm_now"],
+        speed=farm_clock["speed"],
+        clock_mode=farm_clock["mode"],
+        clock_paused=farm_clock["paused"],
+        locked_real=farm_clock["locked_real"],
     )
 
 

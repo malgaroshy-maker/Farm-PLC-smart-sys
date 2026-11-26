@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
-**Last Updated:** 2026-11-23
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ (satellite map, weather, UI polish) → **Milestone G** in progress (G1 performance & reliability ✅ · G2 AI ✅ · G3 extensibility ✅ · G4 UI polish ✅ · G6 docs ✅ · hardware research ✅ · G7 field readiness ✅ (owner review pending) · G5 PLC + HMI built and tested in PLCSIM, Arabic HMI texts and the remaining scenarios open): hardening, AI, polish, PLC design, hardware research, demo video ([plan](docs/MILESTONE_G_PLAN.md))
+**Last Updated:** 2026-11-26
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ → **Milestone G**. G1–G4, G6, hardware research, and the Arabic demo are done. G7 field readiness is built and awaiting owner review. The G5 leak, clock, and alarm-flashing checks passed on the PLCSIM bench. Arabic HMI localization and HMI permissions are deferred. [Milestone G plan](docs/MILESTONE_G_PLAN.md) · [G5 acceptance record](docs/MILESTONE_G5_CLOSEOUT_PLAN.md#acceptance-record-for-2026-11-26)
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -14,7 +14,7 @@
 | Area | Status | Notes |
 |------|--------|-------|
 | Monorepo, contracts, docs | ✅ | pnpm + Turborepo. `@algaroshy/contracts` is used by the web app as the single source of types. |
-| Database + migrations | ✅ | 26 SQLAlchemy models (including `FarmClockModel`, `Program`, `ProgramStep`, `SchedulerState`, `IrrigationCycle`). Alembic migrations up to head (`4e1f8d2a3c5b` adding `water_is_estimate`). `alembic check` clean. Fresh DB upgrade verified. |
+| Database + migrations | ✅ | Alembic head `e4f5a6b7c8d9` makes the AI usage and push-failure counters non-nullable. Fresh and upgraded test databases passed `alembic check`. |
 | Seed data | ✅ | Starting point only; the owner edits zones in Settings. 12 zones, 12 valves, 2 pumps, 2 sources, 15 sensors, admin user with a bcrypt-hashed password. |
 | Auth | ✅ | `POST /auth/login` (JWT), `GET /auth/me`. Roles owner_admin / operator / viewer enforced on every endpoint. Operator+ can toggle schedules; Admin creates/edits/deletes. The simulator uses a service token. |
 | Virtual Farm Clock | ✅ | Single source of truth in API (`app/core/clock.py`), persisted, monotonic. Live speed control (pause, 1×, 10×, 60×, 360×), jump to time (presets + custom HH:MM), step (+1 min), WS `clock.changed` broadcasts, amber SIMULATED TIME badge (`#ff9f43`) with speed in AR+EN, presenter header chip (desktop) collapsing to badge on mobile, full Simulator page panel, and "Back to real time" with reset confirmation. Telemetry, event times, alarm windows, and map lighting/season follow farm time; link staleness and command timeouts stay on real wall clock. Locked to real time unless `CONTROLLER_MODE=simulator`. |
@@ -26,7 +26,7 @@
 | Real-time | ✅ | `/ws?token=` sends `state.snapshot` on connect (with `farm_now` and `speed`), then `zone.state.changed`, `pump.state.changed`, `system.mode.changed`, `command.updated`, `telemetry.stale`, `clock.changed`, `schedule.fired`, `schedule.skipped`, `schedule.missed`, `program.started`, `program.finished`, `cycle.started`, `cycle.completed`, `cycle.skipped`, `cycle.aborted`. The web app uses one shared connection and falls back to polling. |
 | Simulator | ✅ | Plays the PLC and the farm. Follows API clock dynamically via WS. Physics `dt = real_dt × speed` with sub-stepping; pause suspends physics while publishing; jumps stop active zones and apply closed-form soil drying and tank balance. Protection for pump trip/failed start, valve stuck closed/open, no flow, leak, critical tank, e-stop and sensor fault. **Hydraulic constants are placeholders until the site survey.** |
 | Alarm engine | ✅ | 20 codes from ALARM_MATRIX with AR/EN guidance, kept in sync with contracts by a test. Lifecycle ack → latched → reset → history. A "maintenance done" sign-off clears repeated-fault alarm (ALM-036). 24 h window follows farm time; debounce timers and staleness checks follow real wall-clock time. |
-| Scenarios | ✅ | 15 scripted scenarios (SIMULATION_PLAN §5), run through normal command path. Includes `scheduled_day` (3 zones at 60×) and `scheduled_blocked_start` (low tank interlock skipping). Run from Simulator page or `/sim/scenarios`. |
+| Scenarios | ✅ | 15 scripted scenarios run through the normal command path from the Simulator page or `/sim/scenarios`. PLCSIM runs the 13 real-time cases at 1×. `scheduled_day` and `scheduled_blocked_start` require a virtual clock. |
 | Telemetry history | ✅ | Persisted every 10 s farm time, at most 1/s real, farm timestamps, retention in farm time. `/telemetry/series` and `/telemetry/water-today` drive zone and dashboard charts. |
 | Farm map | ✅ | **Traced from Esri satellite imagery (z17), north-up**, 0.5035 m per map unit (`tools/map-geometry/satellite_retrace.py`); the owner's sketch is kept as an area cross-check. Owner-confirmed layout: block 8 strips (rumman ummahat with big mother trees, enab trellis rows, zaytoun_2 as three rows of big old olives), mixed-fruit strip (almond, lemon, orange; not irrigated), one connected building (barn, brooder, workers' rooms), the farm rest house inside the boundary, and the underground well just north of the control room. Thousands of individual trees at real row spacing, fruit following the season. Fly-to on zone select and on new S2/S3 alarms, alarm rings, farm-life sprites (tractor, birds, worker), buried mainline + laterals, tank, booster, control room. Animations follow flow and farm-local day/night; each can be switched off in Settings. |
 | Arabic-first UI | ✅ | Arabic by default with full RTL and an English toggle. Bundled IBM Plex Sans Arabic font (works offline). Logo + مزرعة الجروشي branding. Farm-local clock. Numbers stay Western digits. |
@@ -46,9 +46,11 @@
 | Field readiness (G7) | ✅ | Manual mode (panel switches, hand icon, banner, ALM-042), unexpected flow (ALM-021), power cut with the 30-minute resume rule (ALM-033), fallback program, pump health (kW, current, well level, filter, ALM-027/039), soil moisture with per-crop levels and soil logic (levels proposed until the owner confirms). Shown in the simulator; the PLC side is G5. |
 | Farm server & backups | ✅ | `start.mjs server` (headless, restarts crashed parts), Windows/Linux service installers, daily backups (local, USB, Google Drive via rclone) with restore on restart in Settings → Backups, Tailscale HTTPS guide ([FARM_SERVER](docs/FARM_SERVER.md)). The installers have not been run on the farm PC yet. |
 | Operator guide | ✅ | Arabic + English guide in two parts (daily operation, administration): in-app Help page, [docs/OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md) and a printable A4 PDF. |
-| Tests + CI | ✅ | 250 API + 41 simulator + 107 web + 7 map-model + 11 launcher tests (416 total). GitHub Actions: ruff, pytest, migrations, eslint, typecheck, build, vitest. |
+| Tests + CI | ✅ | G5 verification passed 256 API, 60 simulator, 108 web, 7 map-model, and 12 launcher tests (443 total). GitHub Actions runs lint, tests, migrations, type checks, and builds. |
 
-## Live scenario suite (2026-11-19, re-run over the PLC path 2026-11-24)
+## Live scenario suite
+
+**2026-11-26, PLCSIM Advanced** (`run.bat demo plcsim`): all **13/13 eligible scenarios** passed via Modbus at 1×. A separate one-minute schedule completed at 1×. The launcher and API exclude the two accelerated schedule scenarios in this mode. Both passed in the software simulator and virtual PLC. Sustained high flow raised ALM-013 in the app and WebRH and stopped the simulated valve and booster. WebRH verified the flashing, acknowledgement, and clear behavior of ALM-005 and ALM-013. [G5 acceptance record](docs/MILESTONE_G5_CLOSEOUT_PLAN.md#acceptance-record-for-2026-11-26)
 
 **2026-11-24, virtual-PLC mode** (`run.bat demo plc`): all **15/15** pass. Here the app drives the farm through the production Modbus adapter and the PLC's register map, with the simulator playing the PLC.
 - **The first pass found five problems that would also have hit a real PLC:**
@@ -64,13 +66,14 @@
 
 **2026-11-19, simulator mode:**
 
-All **15/15** scenarios pass against the running API + simulator (timescale 1× and 60×): normal cycle, direct-well cycle, tank critical during a run, booster failed start, pump trip mid-cycle, valve failed open, no flow, valve failed close, mainline leak (verifying ALM-046 anomaly trigger), emergency stop, comms loss, repeated fault, reset farm, scheduled day (3 sequential zones with water > 0), scheduled blocked start (low tank interlock skip + S1 alarm + continuation).
+All **15/15** scenarios passed against the running API and software simulator at 1× and 60×. That older suite exercised ALM-046 using inserted history. The G5 leak scenario now verifies ALM-013 using controller data.
 
 ## Known gaps (not done — don't demo these as real)
 
 | Gap | Planned in |
 |-----|-----------|
-| PLC program and PLCSIM Advanced test | G5 ✅ (12 of 15 scenarios pass; HMI with six screens tested live) |
+| Arabic HMI localization and HMI permissions | Deferred by the owner. |
+| Live Siemens OPC UA and field commissioning | The G5 bench used PLCSIM over Modbus. Measure and approve field flow bands before commissioning. |
 | Phone push on phones needs HTTPS: Tailscale `serve` is documented but not set up yet | Farm PC setup |
 | PostgreSQL in production, SMS/escalation | Production track |
 | Per-crop soil levels are proposed values; soil logic waits for the owner to confirm them | Owner input |
@@ -89,7 +92,7 @@ All **15/15** scenarios pass against the running API + simulator (timescale 1× 
 | **D: Simulation time, schedules, cycles, reports** | ✅ Done 2026-11-19 |
 | **E: AI (alarm assistant, weather advisor, anomaly detection, daily briefing)** | ✅ Done 2026-11-19 |
 | **F: Map weather & UI polish, satellite map** | ✅ Done 2026-11-23 |
-| **G: Hardening, AI, polish, PLC design, research, demo video** | 🔄 G1–G4, G6, G7 and the hardware research done; G5 next ([plan](docs/MILESTONE_G_PLAN.md)) |
+| **G: Hardening, AI, polish, PLC design, research, demo video** | G5 bench checks passed. G7 owner review, the two deferred HMI items, and field commissioning remain open. [Acceptance record](docs/MILESTONE_G5_CLOSEOUT_PLAN.md) |
 | Production track (PLC adapter, hosting, hardening) | ⬜ After the demo |
 
 ## Decisions

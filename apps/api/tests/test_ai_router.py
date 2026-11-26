@@ -1,5 +1,7 @@
 """Tests for AI Router Endpoints (/api/v1/ai and /health) (Milestone E)."""
 
+from datetime import UTC, datetime
+
 from conftest import login
 from pydantic_ai import models
 
@@ -105,6 +107,16 @@ def test_suggestions_lifecycle_endpoints(client):
 
     admin = login(client, "admin")
 
+    schedule = client.post(
+        "/api/v1/schedules",
+        headers=admin,
+        json={
+            "name": "Advisor fixture",
+            "start_time_local": "06:00",
+            "steps": [{"zone_id": "zone_rumman_1", "step_order": 1, "duration_min": 15}],
+        },
+    )
+    assert schedule.status_code in (200, 201), schedule.text
     # 1. Trigger evaluation
     eval_resp = client.post("/api/v1/ai/suggestions/evaluate", headers=admin)
     assert eval_resp.status_code == 200, eval_resp.text
@@ -112,6 +124,11 @@ def test_suggestions_lifecycle_endpoints(client):
     sug_id = eval_data.get("id")
     assert sug_id is not None
     assert eval_data.get("status") == "pending"
+
+    before_approval = client.get("/api/v1/ai/briefing", headers=admin)
+    assert before_approval.status_code == 200
+    planned = before_approval.json()
+    assert [item["program_name"] for item in planned["schedules_today"]] == ["Advisor fixture"]
 
     # 2. List suggestions
     list_resp = client.get("/api/v1/ai/suggestions?status=pending", headers=admin)
@@ -125,6 +142,11 @@ def test_suggestions_lifecycle_endpoints(client):
     app_data = app_resp.json()
     assert app_data["status"] == "approved"
     assert "override_id" in app_data
+
+    after_approval = client.get("/api/v1/ai/briefing", headers=admin)
+    assert after_approval.status_code == 200
+    assert after_approval.json()["id"] == planned["id"]
+    assert after_approval.json()["schedules_today"] == []
 
     # 4. Rejecting already approved suggestion returns 400
     rej_fail = client.post(f"/api/v1/ai/suggestions/{sug_id}/reject", headers=admin)
@@ -144,12 +166,48 @@ def test_daily_briefing_endpoints(client):
     assert "summary" in d1
     assert "weather_summary" in d1
     assert "irrigation_overview" in d1
+    assert d1["schedules_today"] is None
 
     # Contract alias /insights/daily
     r2 = client.get("/api/v1/ai/insights/daily?date=2026-11-20", headers=operator)
     assert r2.status_code == 200
     d2 = r2.json()
     assert d2["id"] == d1["id"]
+
+
+def test_briefing_schedule_uses_the_farm_calendar_day(client, monkeypatch):
+    # Thursday 00:35 in Tripoli still falls on Wednesday in UTC.
+    monkeypatch.setattr(clock, "farm_now", lambda: datetime(2030, 11, 27, 22, 35, tzinfo=UTC))
+    _set_dummy_weather()
+    admin = login(client, "admin")
+    for name, weekday, enabled, start in (
+        ("Tonight", "4", True, "18:00"),
+        ("Early", "4", True, "00:10"),
+        ("Wednesday only", "3", True, "12:00"),
+        ("Disabled", "4", False, "10:00"),
+    ):
+        result = client.post(
+            "/api/v1/schedules",
+            headers=admin,
+            json={
+                "name": name,
+                "enabled": enabled,
+                "start_time_local": start,
+                "weekday_mask": weekday,
+                "steps": [{"zone_id": "zone_rumman_1", "step_order": 1, "duration_min": 10}],
+            },
+        )
+        assert result.status_code == 201, result.text
+
+    response = client.get("/api/v1/ai/briefing", headers=admin)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["date"] == "2030-11-28"
+    assert [(item["program_name"], item["start_time"]) for item in data["schedules_today"]] == [
+        ("Early", "00:10"),
+        ("Tonight", "18:00"),
+    ]
+    assert client.get("/api/v1/ai/briefing?date=invalid", headers=admin).status_code == 422
 
 
 def test_weather_and_settings_endpoints(client):

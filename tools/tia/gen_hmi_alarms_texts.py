@@ -50,6 +50,10 @@ def pick(lang: str, en: str, ar: str) -> str:
     return ar if lang.lower().startswith("ar") else en
 
 
+def hmi_alarm_class(severity: str) -> str:
+    return {"S3": "Alarm", "S2": "Major"}.get(severity, "Warning")
+
+
 def alarms() -> None:
     wb = openpyxl.load_workbook(HMI / "sample_alarms.xlsx")
     ws = wb["DiscreteAlarms"]
@@ -70,7 +74,7 @@ def alarms() -> None:
         for i, lang in info.items():
             guide = pick(lang, spec.guidance_en or "", spec.guidance_ar or "")
             row[i] = guide or "<No value>"
-        row[col["Class"]] = "Alarm" if spec.severity == "S3" else "Warning"
+        row[col["Class"]] = hmi_alarm_class(spec.severity)
         row[col["Trigger tag"]] = f"Alarm_Word{(n - 1) // 16}"
         row[col["Trigger bit"]] = (n - 1) % 16
         ws.append(row)

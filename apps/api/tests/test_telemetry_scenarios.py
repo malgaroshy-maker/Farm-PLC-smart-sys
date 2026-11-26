@@ -40,6 +40,36 @@ def test_scenario_catalog(client):
     assert r.json()["run"]["status"] == "idle"
 
 
+def test_plc_catalog_and_clock_reject_accelerated_scenarios_before_prep(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "controller_mode", "plc")
+    headers = login(client, "admin")
+    paths = ("/api/v1/sim/clock", "/api/v1/state/map")
+    for path in paths:
+        response = client.get(path, headers=headers)
+        assert response.status_code == 200
+        assert response.json()["locked_real"] is True
+        assert response.json()["speed"] == 1
+    assert client.post(paths[0], json={"speed": 60}, headers=headers).status_code == 409
+
+    path = "/api/v1/sim/scenarios"
+    before = client.get(path, headers=headers).json()
+    blocked = {
+        scenario["name"]
+        for scenario in before["scenarios"]
+        if scenario["unavailable_reason"] == "requires_virtual_clock"
+    }
+    assert blocked == {"scheduled_day", "scheduled_blocked_start"}
+    for name in blocked:
+        assert client.post(f"{path}/{name}/run", headers=headers).status_code == 409
+    assert client.get(path, headers=headers).json()["run"] == before["run"]
+
+    monkeypatch.setattr(settings, "controller_mode", "simulator")
+    catalog = client.get(path, headers=headers).json()["scenarios"]
+    assert all(scenario["unavailable_reason"] is None for scenario in catalog)
+
+
 def test_only_admin_runs_scenarios(client):
     assert (
         client.post(

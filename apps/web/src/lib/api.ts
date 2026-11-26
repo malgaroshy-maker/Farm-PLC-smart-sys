@@ -138,6 +138,7 @@ export interface ChatMessage {
   is_fallback?: boolean;
   latency_ms?: number;
   fallback_reason?: string;
+  references?: string[];
 }
 
 export interface ChatResponse {
@@ -148,6 +149,7 @@ export interface ChatResponse {
   is_fallback?: boolean;
   latency_ms?: number;
   fallback_reason?: string;
+  references?: string[];
 }
 
 export interface AdvisorSuggestion {
@@ -185,7 +187,8 @@ export interface DailyBriefing {
   date: string;
   morning_recap: string;
   morning_recap_ar?: string;
-  water_used_yesterday_m3: number;
+  water_used_yesterday_m3: number | null;
+  water_is_estimate?: boolean;
   schedules_today: Array<{
     program_id?: string;
     program_name: string;
@@ -193,7 +196,7 @@ export interface DailyBriefing {
     start_time: string;
     zones: string[];
     action?: string;
-  }>;
+  }> | null;
   weather_forecast: {
     condition: string;
     temp_min_c: number;
@@ -201,7 +204,7 @@ export interface DailyBriefing {
     rain_prob_pct: number;
     precipitation_mm: number;
     et0_mm?: number;
-  };
+  } | null;
   alarms_summary?: {
     active_count: number;
     anomalies_count?: number;
@@ -322,12 +325,12 @@ export async function explainAlarm(
     likely_causes_ar: Array.isArray(raw.likely_causes_ar) ? (raw.likely_causes_ar as string[]) : Array.isArray(raw.probable_causes_ar) ? (raw.probable_causes_ar as string[]) : [],
     steps: Array.isArray(raw.steps) ? (raw.steps as string[]) : Array.isArray(raw.suggested_actions) ? (raw.suggested_actions as string[]) : [],
     steps_ar: Array.isArray(raw.steps_ar) ? (raw.steps_ar as string[]) : Array.isArray(raw.suggested_actions_ar) ? (raw.suggested_actions_ar as string[]) : [],
-    safety_note: raw.safety_note ? String(raw.safety_note) : raw.safety_critical ? 'Critical PLC interlock active' : '',
-    safety_note_ar: raw.safety_note_ar ? String(raw.safety_note_ar) : raw.safety_critical ? 'تنبيه سلامة: حماية PLC نشطة — لا تتجاوز قواطع الحماية' : '',
-    confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.95,
+    safety_note: raw.safety_note ? String(raw.safety_note) : raw.safety_critical ? 'Keep PLC protection enabled and verify the cause before restarting.' : '',
+    safety_note_ar: raw.safety_note_ar ? String(raw.safety_note_ar) : raw.safety_critical ? 'أبقِ حماية المتحكم مفعّلة، وتحقّق من السبب قبل إعادة التشغيل.' : '',
+    confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
     language: raw.language ? String(raw.language) : lang,
-    provider: raw.provider ? String(raw.provider) : raw.provider_used ? String(raw.provider_used) : 'APInex',
-    model: raw.model ? String(raw.model) : raw.provider_used ? String(raw.provider_used) : 'free/deepseek-v4-pro-0813',
+    provider: raw.provider ? String(raw.provider) : raw.provider_used ? String(raw.provider_used) : undefined,
+    model: raw.model ? String(raw.model) : raw.model_used ? String(raw.model_used) : undefined,
     model_used: raw.model_used ? String(raw.model_used) : raw.model ? String(raw.model) : undefined,
     is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based')),
     latency_ms: typeof raw.latency_ms === 'number' ? raw.latency_ms : typeof raw.latency === 'number' ? Math.round(raw.latency * 1000) : elapsed,
@@ -342,7 +345,7 @@ export async function sendAiChat(
 ): Promise<ChatResponse> {
   const startTime = performance.now();
   const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-  const history = messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
+  const history = messages.slice(0, -1).slice(-12).map((m) => ({ role: m.role, content: m.content.slice(0, 3000) }));
 
   const raw = await apiFetch<Record<string, unknown>>('/api/v1/ai/chat', {
     method: 'POST',
@@ -350,22 +353,21 @@ export async function sendAiChat(
     body: JSON.stringify({
       message: lastUserMsg,
       language: lang,
-      messages,
-      lang,
       history,
     }),
   });
   const elapsed = Math.round(performance.now() - startTime);
 
-  const replyText = String(raw.message ?? (lang === 'ar' ? raw.reply_ar || raw.reply : raw.reply || raw.reply_ar) ?? '');
+  const replyText = String((lang === 'ar' ? raw.reply_ar : raw.reply) || raw.message || '');
   return {
     message: replyText,
-    provider: raw.provider ? String(raw.provider) : raw.provider_used ? String(raw.provider_used) : 'APInex',
-    model: raw.model ? String(raw.model) : raw.provider_used ? String(raw.provider_used) : 'free/deepseek-v4-pro-0813',
+    provider: raw.provider ? String(raw.provider) : raw.provider_used ? String(raw.provider_used) : undefined,
+    model: raw.model ? String(raw.model) : raw.model_used ? String(raw.model_used) : undefined,
     model_used: raw.model_used ? String(raw.model_used) : raw.model ? String(raw.model) : undefined,
-    is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based')),
+    is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based' && raw.model_used !== 'farm_records')),
     latency_ms: typeof raw.latency_ms === 'number' ? raw.latency_ms : typeof raw.latency === 'number' ? Math.round(raw.latency * 1000) : elapsed,
     fallback_reason: raw.fallback_reason ? String(raw.fallback_reason) : undefined,
+    references: Array.isArray(raw.references) ? raw.references.filter((reference) => typeof reference === 'string') : undefined,
   };
 }
 
@@ -381,7 +383,7 @@ export async function fetchAiSuggestions(): Promise<AdvisorSuggestion[]> {
 
     return {
       id: String(s.id),
-      program_id: String(s.program_id ?? payload.program_id ?? 'prog_01'),
+      program_id: typeof (s.program_id ?? payload.program_id) === 'string' ? String(s.program_id ?? payload.program_id) : undefined,
       program_name: String(s.title ?? s.program_name ?? 'Irrigation Program'),
       program_name_ar: String(s.title_ar ?? s.program_name_ar ?? s.title ?? 'برنامج الري'),
       zone_id: s.zone_id ? String(s.zone_id) : Array.isArray(payload.affected_zone_ids) ? String(payload.affected_zone_ids[0]) : undefined,
@@ -394,13 +396,11 @@ export async function fetchAiSuggestions(): Promise<AdvisorSuggestion[]> {
       // G7 soil suggestions carry their explanation in the description
       reason: String((payload.action === 'extra_run' ? s.description : s.reasoning) ?? s.description ?? s.reason ?? ''),
       reason_ar: String((payload.action === 'extra_run' ? s.description_ar : s.reasoning_ar) ?? s.description_ar ?? s.reason_ar ?? ''),
-      weather_summary: (s.weather_summary ?? payload.weather_summary ?? {
-        condition: 'partly_cloudy',
-      }) as AdvisorSuggestion['weather_summary'],
+      weather_summary: (s.weather_summary ?? payload.weather_summary) as AdvisorSuggestion['weather_summary'],
       effective_date: String(s.effective_date ?? payload.target_date ?? (typeof s.created_at === 'string' ? s.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10))),
       status: (s.status as AdvisorSuggestion['status']) ?? 'pending',
-      provider: String(s.provider ?? s.provider_used ?? 'APInex'),
-      model: String(s.model ?? 'free/deepseek-v4-pro-0813'),
+      provider: (s.provider ?? s.provider_used ?? payload.provider_used) as string | undefined,
+      model: (s.model ?? payload.model_used) as string | undefined,
       model_used: s.model_used ? String(s.model_used) : s.model ? String(s.model) : undefined,
       is_fallback: Boolean(s.is_fallback ?? (s.provider_used === 'rule_based')),
       created_at: String(s.created_at ?? new Date().toISOString()),
@@ -431,20 +431,13 @@ export async function fetchDailyBriefing(date?: string): Promise<DailyBriefing> 
     date: String(raw.date ?? new Date().toISOString().slice(0, 10)),
     morning_recap: String(raw.morning_recap ?? raw.summary ?? ''),
     morning_recap_ar: String(raw.morning_recap_ar ?? raw.summary_ar ?? ''),
-    water_used_yesterday_m3: typeof raw.water_used_yesterday_m3 === 'number' ? raw.water_used_yesterday_m3 : 0,
-    schedules_today: (raw.schedules_today as DailyBriefing['schedules_today']) ?? [],
-    weather_forecast: (raw.weather_forecast as DailyBriefing['weather_forecast']) ?? {
-      condition: 'sunny',
-      temp_min_c: 18,
-      temp_max_c: 28,
-      rain_prob_pct: 0,
-      precipitation_mm: 0,
-    },
-    alarms_summary: (raw.alarms_summary as DailyBriefing['alarms_summary']) ?? {
-      active_count: 0,
-    },
-    provider: String(raw.provider ?? raw.provider_used ?? 'APInex'),
-    model: String(raw.model ?? raw.provider_used ?? 'free/deepseek-v4-pro-0813'),
+    water_used_yesterday_m3: typeof raw.water_used_yesterday_m3 === 'number' ? raw.water_used_yesterday_m3 : null,
+    water_is_estimate: raw.water_is_estimate === true,
+    schedules_today: (raw.schedules_today as DailyBriefing['schedules_today']) ?? null,
+    weather_forecast: (raw.weather_forecast as DailyBriefing['weather_forecast']) ?? null,
+    alarms_summary: raw.alarms_summary as DailyBriefing['alarms_summary'],
+    provider: (raw.provider ?? raw.provider_used) as string | undefined,
+    model: (raw.model ?? raw.model_used) as string | undefined,
     model_used: raw.model_used ? String(raw.model_used) : raw.model ? String(raw.model) : undefined,
     is_fallback: Boolean(raw.is_fallback ?? (raw.provider_used === 'rule_based')),
     generated_at: String(raw.generated_at ?? raw.created_at ?? new Date().toISOString()),
@@ -453,29 +446,36 @@ export async function fetchDailyBriefing(date?: string): Promise<DailyBriefing> 
 
 export async function fetchAiSettings(): Promise<AiSettingsData> {
   const raw = await apiFetch<Record<string, unknown>>('/api/v1/ai/settings');
+  return normalizeAiSettings(raw);
+}
+
+function normalizeAiSettings(raw: Record<string, unknown>): AiSettingsData {
   const weatherCoords = raw.weather_coordinates as { latitude?: number; longitude?: number } | undefined;
+  const primary = String(raw.primary_provider ?? 'apinex');
+  const fallback = String(raw.fallback_provider ?? 'gemini');
+  const gatewayModel = String(raw.apinex_model ?? raw.primary_model ?? '');
 
   return {
-    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
-    primary_provider: String(raw.primary_provider ?? 'apinex'),
-    fallback_provider: String(raw.fallback_provider ?? 'gemini'),
-    provider_order: Array.isArray(raw.provider_order) ? (raw.provider_order as string[]) : ['apinex', 'gemini', 'rule_based'],
-    primary_model: String(raw.apinex_model ?? raw.primary_model ?? 'free/gemini-3.8-flash'),
-    fallback_model: String(raw.gemini_model ?? raw.fallback_model ?? 'gemini-2.5-flash'),
+    enabled: Boolean(raw.global_enabled ?? raw.enabled ?? true),
+    primary_provider: primary,
+    fallback_provider: fallback,
+    provider_order: Array.isArray(raw.provider_order) ? (raw.provider_order as string[]) : [...new Set([primary, fallback, 'rule_based'])],
+    primary_model: gatewayModel,
+    fallback_model: String(raw.gemini_model ?? raw.fallback_model ?? ''),
     feature_models: (raw.feature_models as AiSettingsData['feature_models']) ?? {
-      alarm_assistant: String(raw.apinex_model ?? 'free/gemini-3.8-flash'),
-      weather_advisor: String(raw.apinex_model ?? 'free/gemini-3.8-flash'),
-      daily_briefing: String(raw.apinex_model ?? 'free/gemini-3.8-flash'),
+      alarm_assistant: String(raw.model_alarm || gatewayModel),
+      weather_advisor: String(raw.model_advisor || gatewayModel),
+      daily_briefing: String(raw.model_briefing || gatewayModel),
     },
     features_enabled: (raw.features_enabled as AiSettingsData['features_enabled']) ?? {
-      alarm_assistant: true,
-      weather_advisor: true,
-      anomaly_detection: true,
-      daily_briefing: true,
+      alarm_assistant: Boolean(raw.alarm_assistant_enabled ?? true),
+      weather_advisor: Boolean(raw.weather_advisor_enabled ?? true),
+      anomaly_detection: Boolean(raw.anomaly_detection_enabled ?? true),
+      daily_briefing: Boolean(raw.daily_insights_enabled ?? true),
     },
-    keys_status: (raw.keys_status as AiSettingsData['keys_status']) ?? {
-      apinex: Boolean(raw.apinex_base_url),
-      gemini: Boolean(raw.gemini_model),
+    keys_status: ((raw.key_status ?? raw.keys_status) as AiSettingsData['keys_status']) ?? {
+      apinex: false,
+      gemini: false,
     },
     farm_location: weatherCoords
       ? {
@@ -507,10 +507,24 @@ export async function fetchAiSettings(): Promise<AiSettingsData> {
 }
 
 export async function updateAiSettings(data: Partial<AiSettingsData>): Promise<AiSettingsData> {
-  return apiFetch<AiSettingsData>('/api/v1/ai/settings', {
+  const raw = await apiFetch<Record<string, unknown>>('/api/v1/ai/settings', {
     method: 'PUT',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      global_enabled: data.enabled,
+      primary_provider: data.primary_provider,
+      fallback_provider: data.fallback_provider,
+      apinex_model: data.primary_model,
+      gemini_model: data.fallback_model,
+      model_alarm: data.feature_models?.alarm_assistant,
+      model_advisor: data.feature_models?.weather_advisor,
+      model_briefing: data.feature_models?.daily_briefing,
+      alarm_assistant_enabled: data.features_enabled?.alarm_assistant,
+      weather_advisor_enabled: data.features_enabled?.weather_advisor,
+      anomaly_detection_enabled: data.features_enabled?.anomaly_detection,
+      daily_insights_enabled: data.features_enabled?.daily_briefing,
+    }),
   });
+  return normalizeAiSettings(raw);
 }
 
 export const KNOWN_AI_MODELS: Record<string, Partial<AiModelOption>> = {

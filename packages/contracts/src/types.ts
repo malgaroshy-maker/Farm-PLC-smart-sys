@@ -448,6 +448,7 @@ export interface FarmMapState {
   speed?: number;
   clock_mode?: "real" | "sim";
   clock_paused?: boolean;
+  locked_real?: boolean;
   /** G7: mains power at the panel */
   power_ok?: boolean;
   /** G7: the PLC is running its own copy of today's program (app unreachable) */
@@ -464,6 +465,7 @@ export interface FarmClockState {
   mode: "real" | "sim";
   speed: number;
   paused: boolean;
+  locked_real?: boolean;
   farm_now: string;
   real_now: string;
   action?: string;
@@ -573,6 +575,7 @@ export interface ScenarioInfo {
   description: string;
   expect: string[];
   steps: number;
+  unavailable_reason?: "requires_virtual_clock" | null;
 }
 
 export interface ScenarioRun {

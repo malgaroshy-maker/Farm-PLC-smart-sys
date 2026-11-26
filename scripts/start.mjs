@@ -101,21 +101,20 @@ function setEnvValue(text, key, value) {
 
 const secret = (n) => randomBytes(n).toString('base64url');
 
-function ensureEnv() {
-  const envPath = path.join(ROOT, '.env');
-  if (existsSync(envPath)) return { env: parseEnv(readFileSync(envPath, 'utf8')), generated: null };
-  let text = readFileSync(path.join(ROOT, '.env.example'), 'utf8');
-  const generated = { ADMIN_PASSWORD: secret(9) };
+function ensureEnv(root = ROOT) {
+  const envPath = path.join(root, '.env');
+  if (existsSync(envPath)) return parseEnv(readFileSync(envPath, 'utf8'));
+  let text = readFileSync(path.join(root, '.env.example'), 'utf8');
   text = setEnvValue(text, 'SECRET_KEY', secret(48));
   text = setEnvValue(text, 'SIMULATOR_TOKEN', secret(24));
-  text = setEnvValue(text, 'ADMIN_PASSWORD', generated.ADMIN_PASSWORD);
+  text = setEnvValue(text, 'ADMIN_PASSWORD', secret(9));
   if (process.env.API_PORT) text = setEnvValue(text, 'API_PORT', process.env.API_PORT);
-  writeFileSync(envPath, text);
+  writeFileSync(envPath, text, { mode: 0o600, flag: 'wx' });
   log('setup', 'Created .env with generated secrets.');
-  if (existsSync(path.join(API_DIR, 'farm.db'))) {
+  if (existsSync(path.join(root, 'apps', 'api', 'farm.db'))) {
     log('setup', 'Note: an existing farm.db keeps its old admin password (the seed never overwrites users).');
   }
-  return { env: parseEnv(text), generated };
+  return parseEnv(text);
 }
 
 // ── prerequisites & setup ───────────────────────────────────────────────
@@ -396,7 +395,7 @@ async function main() {
   log('info', `Algaroshy Farm — ${SERVER ? 'farm server' : MODE + ' mode'}${SMOKE ? ' (smoke test)' : ''}`);
 
   if (!existsSync(path.join(ROOT, '.env')) && !existsSync(path.join(ROOT, '.env.example'))) die('.env.example missing.');
-  const { env, generated } = ensureEnv();
+  const env = ensureEnv();
   ensurePython();
   ensureNode();
 
@@ -415,7 +414,10 @@ async function main() {
     }
   }
   const apiBase = `http://127.0.0.1:${apiPort}`;
-  const shared = { API_PORT: String(apiPort), API_URL: `${apiBase}/api/v1`, VITE_PROXY_TARGET: apiBase };
+  const shared = {
+    API_PORT: String(apiPort), API_URL: `${apiBase}/api/v1`, VITE_PROXY_TARGET: apiBase,
+    ...(PLCSIM ? { CONTROLLER_MODE: 'plc' } : VIRTUAL_PLC ? { CONTROLLER_MODE: 'simulator' } : {}),
+  };
 
   applyPendingRestore(dbPaths(env));
   log('setup', 'Migrating database…');
@@ -472,7 +474,7 @@ async function main() {
   await waitFor(webUrl, 'Web app');
 
   // wait until the simulator is feeding live data through the web proxy
-  const token = `Bearer ${env.SIMULATOR_TOKEN || 'dev-simulator-token'}`;
+  const token = `Bearer ${process.env.SIMULATOR_TOKEN || env.SIMULATOR_TOKEN || 'dev-simulator-token'}`;
   await waitFor(`${webUrl}/api/v1/zones`, 'Simulator link', 60_000, async () => {
     const r = await fetch(`${webUrl}/api/v1/state/map`, { headers: { Authorization: token } });
     return r.ok && (await r.json()).data_fresh === true;
@@ -481,7 +483,7 @@ async function main() {
   console.log('');
   log('info', color(32, `Ready → ${webUrl}`));
   if (MODE === 'demo') for (const u of lanUrls(webPort)) log('info', `Phone on the same Wi-Fi → ${u}  (install: browser menu → "Add to Home screen")`);
-  log('info', `Login: ${env.ADMIN_USERNAME || 'admin'} / ${generated ? generated.ADMIN_PASSWORD + '  (generated now — saved in .env)' : 'ADMIN_PASSWORD from .env'}`);
+  log('info', 'Sign in with the configured admin account. First-run credentials are saved in .env.');
   log('info', 'Press Ctrl+C to stop everything.');
 
   if (SMOKE) {
@@ -506,4 +508,4 @@ if (isEntrypoint()) {
   main().catch((e) => die(e?.stack || String(e)));
 }
 
-export { applyPendingRestore, dbPaths, isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls, restartDelay };
+export { applyPendingRestore, dbPaths, ensureEnv, isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls, restartDelay };

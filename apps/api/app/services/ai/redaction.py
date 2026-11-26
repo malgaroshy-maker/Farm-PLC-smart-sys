@@ -15,12 +15,13 @@ from typing import Any
 RE_IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 RE_IPV6 = re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b")
 RE_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+RE_PHONE = re.compile(r"(?<!\w)\+\d{1,3}(?:[ ().-]?\d){8,13}(?!\w)")
 RE_JWT = re.compile(r"\beyJ[A-Za-z0-9-_]{8,}\.eyJ[A-Za-z0-9-_]{8,}\.[A-Za-z0-9-_]{8,}\b")
 RE_BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9\-._~+/]+=*")
 RE_SECRET_ASSIGN = re.compile(
     r"(?i)\b(password|secret|token|api[_-]?key|credentials?|simulator_token)\b\s*[:=]\s*['\"]?([A-Za-z0-9\-._~+/]{4,})['\"]?"
 )
-RE_SENSITIVE_NAMES = re.compile(r"(?i)\b(admin|operator|ahmed|mohamed|ali|tariq|owner)\b")
+RE_SENSITIVE_NAMES = re.compile(r"(?i)\b(ahmed|mohamed|ali|tariq)\b")
 
 
 def redact_text(text: str) -> str:
@@ -37,6 +38,7 @@ def redact_text(text: str) -> str:
 
     # Redact Emails
     redacted = RE_EMAIL.sub("[REDACTED_EMAIL]", redacted)
+    redacted = RE_PHONE.sub("[REDACTED_PHONE]", redacted)
 
     # Redact IP addresses
     redacted = RE_IPV4.sub("[REDACTED_IP]", redacted)
@@ -63,6 +65,8 @@ def redact_payload(data: Any) -> Any:
                 result[k] = "[REDACTED_SECRET]"
             elif any(s in key_lower for s in ("email",)):
                 result[k] = "[REDACTED_EMAIL]"
+            elif key_lower in {"actor_name", "operator_name", "owner_name", "username", "phone"}:
+                result[k] = "[REDACTED_PERSONAL_DATA]"
             else:
                 result[k] = redact_payload(v)
         return result

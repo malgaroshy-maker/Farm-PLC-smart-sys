@@ -19,9 +19,8 @@ Key capabilities:
 import logging
 import statistics
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
-from uuid import uuid4
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +29,6 @@ from app.core.clock import clock
 from app.core.timeutil import as_utc, utcnow
 from app.models.irrigation_cycle import IrrigationCycle
 from app.models.telemetry import TelemetryPoint
-from app.models.zone import Zone
 from app.services.alarms import Condition
 from app.services.live_state import Snapshot
 
@@ -175,14 +173,15 @@ class AnomalyDetector:
         max_cycles: int = 20,
     ) -> ZoneBaseline | None:
         """
-        Query completed cycles for zone_id and compute median + MAD baselines
-        from telemetry or cycle integrated water volume.
+        Query completed cycles and train on paired flow and pressure telemetry.
         """
         res = await db.execute(
             select(IrrigationCycle)
             .where(
                 IrrigationCycle.zone_id == zone_id,
                 IrrigationCycle.outcome == "completed",
+                # Legacy demo scenarios inserted cycles with this reserved prefix.
+                ~IrrigationCycle.id.startswith("cyc_base_", autoescape=True),
             )
             .order_by(desc(IrrigationCycle.actual_end_at))
             .limit(max_cycles)
@@ -190,12 +189,6 @@ class AnomalyDetector:
         completed = res.scalars().all()
         if len(completed) < self.min_baseline_runs:
             return None
-
-        # Fetch zone to get nominal fallback pressure if individual sensor missing
-        zone_row = await db.get(Zone, zone_id)
-        nominal_press = (
-            (zone_row.pressure_min_bar + zone_row.pressure_max_bar) / 2.0 if zone_row else 2.5
-        )
 
         flows: list[float] = []
         pressures: list[float] = []
@@ -231,20 +224,9 @@ class AnomalyDetector:
                 if k in ("zone.pressure_bar", "main_pressure_bar") and v is not None and v > 0
             ]
 
-            if cycle_flows:
+            if cycle_flows and cycle_press:
                 flows.append(float(statistics.median(cycle_flows)))
-            elif (
-                cycle.water_estimate_m3 is not None
-                and cycle.actual_duration_min
-                and cycle.actual_duration_min > 0
-            ):
-                duration_hours = cycle.actual_duration_min / 60.0
-                flows.append(cycle.water_estimate_m3 / duration_hours)
-
-            if cycle_press:
                 pressures.append(float(statistics.median(cycle_press)))
-            else:
-                pressures.append(nominal_press)
 
         baseline = compute_baseline_from_samples(
             zone_id, flows, pressures, min_runs=self.min_baseline_runs
@@ -456,80 +438,3 @@ class AnomalyDetector:
 
 # Global anomaly detector instance
 anomaly_detector = AnomalyDetector()
-
-
-async def ensure_zone_baseline_runs(
-    db: AsyncSession,
-    zone_id: str,
-    n_runs: int = 3,
-) -> list[IrrigationCycle]:
-    """
-    Ensure a zone has at least n_runs completed cycles with telemetry in the database,
-    seeding historical completed cycles if fewer exist.
-    """
-    res = await db.execute(
-        select(IrrigationCycle).where(
-            IrrigationCycle.zone_id == zone_id,
-            IrrigationCycle.outcome == "completed",
-        )
-    )
-    existing = list(res.scalars().all())
-    needed = n_runs - len(existing)
-    if needed <= 0:
-        return existing
-
-    zone_row = await db.get(Zone, zone_id)
-    flow = ((zone_row.flow_min_m3h + zone_row.flow_max_m3h) / 2.0) if zone_row else 10.0
-    pressure = ((zone_row.pressure_min_bar + zone_row.pressure_max_bar) / 2.0) if zone_row else 2.8
-
-    now = clock.farm_now()
-    created: list[IrrigationCycle] = []
-    for i in range(needed):
-        start = now - timedelta(days=needed - i, minutes=30)
-        end = now - timedelta(days=needed - i)
-        cyc = IrrigationCycle(
-            id=f"cyc_base_{zone_id[:8]}_{i}_{uuid4().hex[:6]}",
-            zone_id=zone_id,
-            source_mode="tank",
-            actual_start_at=start,
-            actual_end_at=end,
-            planned_duration_min=30,
-            actual_duration_min=30,
-            outcome="completed",
-            water_estimate_m3=round(flow * 0.5, 4),
-            water_is_estimate=False,
-            created_at=start,
-            updated_at=end,
-        )
-        db.add(cyc)
-        created.append(cyc)
-
-        for offset_s in (30, 300, 600, 900, 1200, 1500):
-            pt_ts = start + timedelta(seconds=offset_s)
-            db.add(
-                TelemetryPoint(
-                    metric_key="zone.flow_m3h",
-                    farm_id="farm_algaroshy",
-                    zone_id=zone_id,
-                    ts=pt_ts,
-                    value_numeric=flow,
-                    value_text="1.0",
-                    source="simulator",
-                )
-            )
-            db.add(
-                TelemetryPoint(
-                    metric_key="zone.pressure_bar",
-                    farm_id="farm_algaroshy",
-                    zone_id=zone_id,
-                    ts=pt_ts,
-                    value_numeric=pressure,
-                    value_text="1.0",
-                    source="simulator",
-                )
-            )
-
-    await db.commit()
-    # Invalidate cache so new cycles are loaded
-    anomaly_detector.clear_baseline(zone_id)
-    return existing + created

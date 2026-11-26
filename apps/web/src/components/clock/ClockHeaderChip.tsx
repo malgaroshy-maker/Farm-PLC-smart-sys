@@ -14,6 +14,7 @@ const PRESETS = [
 export default function ClockHeaderChip() {
   const { t } = useT();
   const speed = useClockStore((s) => s.speed);
+  const lockedReal = useClockStore((s) => s.lockedReal);
   const paused = useClockStore((s) => s.paused);
   const setSpeed = useClockStore((s) => s.setSpeed);
   const togglePause = useClockStore((s) => s.togglePause);
@@ -40,6 +41,15 @@ export default function ClockHeaderChip() {
     setShowJump(false);
     setCustomTime('');
   };
+
+  if (lockedReal) {
+    return (
+      <div className="hidden md:flex items-center gap-2 bg-[#18181b]/90 border border-white/10 rounded-xl px-2 py-1 text-xs text-[#bac9cc]">
+        <bdi className="font-mono font-bold">1×</bdi>
+        {t('clock.plcRealTime')}
+      </div>
+    );
+  }
 
   return (
     <div className="relative hidden md:flex items-center gap-1 bg-[#18181b]/90 border border-white/10 rounded-xl p-1 text-xs backdrop-blur-md shadow-inner">

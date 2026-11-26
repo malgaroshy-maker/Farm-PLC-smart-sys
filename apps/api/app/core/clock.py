@@ -134,6 +134,7 @@ class FarmClock:
                 "mode": "real",
                 "speed": 1.0,
                 "paused": False,
+                "locked_real": True,
                 "farm_now": now,
                 "real_now": now,
             }
@@ -141,6 +142,7 @@ class FarmClock:
             "mode": self.mode,
             "speed": self.speed,
             "paused": self.is_paused,
+            "locked_real": False,
             "farm_now": self.farm_now(now),
             "real_now": now,
         }
