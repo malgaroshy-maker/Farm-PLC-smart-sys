@@ -587,8 +587,6 @@ async def test_leak_scenario_flow_triggers_alm046_and_normal_does_not(client):
     anomaly_detector.debounce_sec = 0.0
     anomaly_detector.startup_grace_sec = 0.0
 
-    now_iso = utcnow().isoformat()
-
     # Step 1: Normal cycle run -> verify neither alarm triggers
     push_state(
         client,
@@ -605,6 +603,8 @@ async def test_leak_scenario_flow_triggers_alm046_and_normal_does_not(client):
         assert len(res.scalars().all()) == 0
 
     # Step 2: Leak occurs -> high mainline flow + low mainline pressure
+    # stamped now, not before step 1: the API ignores a reading older than the one it has
+    now_iso = utcnow().isoformat()
     payloads_leak = [
         {"device_key": "system_mode", "state_json": {"mode": "auto"}, "updated_at": now_iso},
         {
