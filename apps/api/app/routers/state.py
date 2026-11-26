@@ -10,12 +10,14 @@ from app.deps import Actor, get_actor, require_service
 from app.models.telemetry import DeviceStateSnapshot
 from app.schemas.state import FarmMapState, StateSyncPayload
 from app.services.alarms import engine as alarm_engine
+from app.services.cycles import record_cycle_end_for_zone, record_unattended_cycle_start
 from app.services.live_state import (
     current_map_state,
     diff_events,
     load_snapshots,
     upsert_snapshots,
 )
+from app.services.pump_history import record_pump_feedback
 from app.services.realtime import manager
 from app.services.telemetry import recorder
 
@@ -36,44 +38,34 @@ async def sync_state(
 ):
     """Simulator/PLC bridge pushes batch state; changes are broadcast over WebSocket."""
     before = await load_snapshots(db)
-    await upsert_snapshots(db, before, payloads)
+    accepted = await upsert_snapshots(db, payloads)
+    if not accepted:
+        return {"success": True, "processed": len(payloads), "accepted": 0}
+    await record_pump_feedback(db, accepted)
+
+    events = diff_events(before, accepted)
+    run_sources = {p.device_key: p.state_json.get("run_source") for p in accepted}
+    for event_type, payload in events:
+        zone_id = payload.get("zone_id")
+        if event_type != "zone.state.changed" or not zone_id:
+            continue
+        new_state = payload["current_state"]
+        if new_state in ACTIVE_ZONE_STATES:
+            run_source = run_sources.get(f"zone_{zone_id}")
+            if run_source in ("panel", "fallback"):
+                await record_unattended_cycle_start(db, zone_id, run_source)
+        elif new_state in ("off", "completed", "faulted"):
+            outcome = new_state if new_state != "off" else None
+            await record_cycle_end_for_zone(db, zone_id, outcome=outcome)
+
     await db.commit()
-
-    for event_type, payload in diff_events(before, payloads):
+    for event_type, payload in events:
         await manager.broadcast(event_type, payload)
-        if event_type == "zone.state.changed":
-            new_state = payload.get("current_state") or payload.get("state")
-            if new_state in ACTIVE_ZONE_STATES and payload.get("zone_id"):
-                live = next(
-                    (
-                        p.state_json
-                        for p in payloads
-                        if p.device_key == f"zone_{payload['zone_id']}"
-                    ),
-                    {},
-                )
-                if live.get("run_source") in ("panel", "fallback"):
-                    from app.services.cycles import record_unattended_cycle_start
-
-                    await record_unattended_cycle_start(db, payload["zone_id"], live["run_source"])
-                    await db.commit()
-            if new_state in ("off", "completed", "faulted"):
-                zid = payload.get("zone_id")
-                if zid:
-                    from app.services.cycles import record_cycle_end_for_zone
-
-                    outcome = None
-                    if new_state == "faulted":
-                        outcome = "faulted"
-                    elif new_state == "completed":
-                        outcome = "completed"
-                    await record_cycle_end_for_zone(db, zid, outcome=outcome)
-                    await db.commit()
     after = await load_snapshots(db)
     await alarm_engine.on_state_sync(db, after)
     await recorder.maybe_record(db, after)
     await manager.broadcast("state.snapshot", await current_map_state(db))
-    return {"success": True, "processed": len(payloads)}
+    return {"success": True, "processed": len(payloads), "accepted": len(accepted)}
 
 
 @router.delete("/sync")

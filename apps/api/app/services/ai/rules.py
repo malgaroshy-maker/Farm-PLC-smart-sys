@@ -258,7 +258,9 @@ class RuleBasedService:
         )
         if not water_entries:
             volume_en, volume_ar = "Water volume is unavailable.", "حجم المياه غير متاح."
-        elif len(water_entries) < len(c_list):
+        elif len(water_entries) < len(c_list) or any(
+            c.get("water_has_gaps") for c in water_entries
+        ):
             volume_en = f"Available records account for {total_water:.1f} m³{' (estimated)' if has_estimates else ''}. The total is unavailable."
             volume_ar = f"تغطي السجلات المتاحة {total_water:.1f} م³{' (تقديري)' if has_estimates else ''}. الإجمالي غير متاح."
         irr_en = f"Irrigation cycles: {len(c_list)} recorded, {len(completed)} completed, {len(aborted)} interrupted. {volume_en}"
@@ -383,6 +385,9 @@ class RuleBasedService:
             estimated = any(row["water_is_estimate"] is not False for row in cycles)
             en = f"{name} used {'an estimated ' if estimated else ''}{volume:.2f} m³ on {date_label} in completed cycles."
             ar = f"بلغ حجم المياه {'المقدّر ' if estimated else ''}لدورات الري المكتملة في {name_ar} ليوم {date_label} {volume:.2f} م³."
+            if any(row.get("water_has_gaps") for row in cycles):
+                en += " Some flow readings are missing. The full total is unavailable."
+                ar += " بعض قراءات التدفق غير متاحة، لذا يتعذّر تحديد الإجمالي الكامل."
         if history["deployment_mode"] == "simulation":
             en = f"Simulation. {en}"
             ar = f"محاكاة. {ar}"

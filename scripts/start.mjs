@@ -20,7 +20,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -218,17 +218,32 @@ function applyPendingRestore(paths, stamp = new Date()) {
   const marker = path.join(paths.backups, 'restore.pending');
   if (!existsSync(marker)) return null;
   const name = readFileSync(marker, 'utf8').trim();
-  rmSync(marker, { force: true });
   const src = path.join(paths.backups, name);
   if (!/^farm-\d{8}-\d{6}\.db$/.test(name) || !existsSync(src)) {
-    log('err', `Restore skipped: backup "${name}" not found.`);
+    rmSync(marker, { force: true });
+    log('err', 'Restore skipped: the selected backup was not found.');
     return null;
   }
   const ts = stamp.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-  if (existsSync(paths.db)) copyFileSync(paths.db, path.join(paths.backups, `pre-restore-${ts}.db`));
-  for (const ext of ['-wal', '-shm']) rmSync(paths.db + ext, { force: true });
-  copyFileSync(src, paths.db);
-  log('setup', `Restored the database from ${name} (the previous one is kept as pre-restore-${ts}.db).`);
+  const recovery = path.join(paths.backups, `pre-restore-${ts}.db`);
+  const python = existsSync(VENV_PY) ? [VENV_PY, []] : findPython();
+  const hadDatabase = existsSync(paths.db);
+  const result = python && spawnSync(python[0], [
+    ...python[1], '-m', 'app.restore_db', src, paths.db, recovery,
+  ], { cwd: API_DIR, stdio: 'ignore', timeout: 120_000, windowsHide: true });
+  if (result?.status === 2) {
+    rmSync(marker, { force: true });
+    log('err', 'Restore skipped: the selected backup is not a readable Farm-PLC database.');
+    return null;
+  }
+  if (result?.status !== 0) {
+    log('err', 'Restore did not complete. The request will be retried on the next start.');
+    return null;
+  }
+  rmSync(marker, { force: true });
+  log('setup', hadDatabase
+    ? `Restored the database from ${name}. Previous data saved as pre-restore-${ts}.db.`
+    : `Restored the database from ${name}.`);
   return name;
 }
 

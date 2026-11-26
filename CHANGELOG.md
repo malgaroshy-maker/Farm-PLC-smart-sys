@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Weather, backups, and reporting
+
+- Weather requires provider observations for current conditions and for each forecast row. Cold failures show unavailable weather, and expired cache entries are excluded from the map and irrigation advice.
+- Restores verify the selected SQLite backup and preserve a recovery copy of the latest committed farm data before applying it.
+- Report ranges follow the farm's calendar day and the 7- and 30-day presets include exactly that many dates. Reports exclude old generated baseline runs and export names as literal spreadsheet text.
+- Pump reports use observed run feedback, omit telemetry gaps, and show when history is partial or simulated.
+- Water totals preserve measured zero, show when readings are missing or estimated, and exclude legacy generated baselines. Water Today counts the portion of each run after farm-local midnight.
+- The dashboard aligns flow and pressure readings by minute and preserves gaps in each series.
+- The state sync API ignores older snapshots and exact retries before broadcasting live state changes.
+- PLC feedback and its cycle-history changes commit together so a failed write can be retried safely.
+- Communications alarms stay active while newly received controller data is still stale.
+- Invalid device snapshots are rejected before they can replace data on the live map.
+- A fresh soil-probe reading can no longer make a disconnected controller appear online or let an irrigation start pass the freshness check.
+
 ### AI audit and reliability (2026-11-26)
 
 - Audited the AI workflows and evaluated all 22 APInex entries advertised as free. The audit records account access, tool calling, factual grounding, Arabic quality, and latency.

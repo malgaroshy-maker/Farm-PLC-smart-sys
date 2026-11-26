@@ -24,7 +24,7 @@ from .feature_flag import FeatureFlag
 from .irrigation_cycle import IrrigationCycle
 from .notification import NotificationSettings, PushSubscription
 from .program import Program, ProgramStep, SchedulerState
-from .pump import Pump
+from .pump import Pump, PumpObservationSpan
 from .schedule import Schedule
 from .sensor import Sensor
 from .soil import CropMoistureLevel
@@ -46,6 +46,7 @@ __all__ = [
     "Zone",
     "ZoneCombination",
     "Pump",
+    "PumpObservationSpan",
     "Valve",
     "Sensor",
     "WaterSource",

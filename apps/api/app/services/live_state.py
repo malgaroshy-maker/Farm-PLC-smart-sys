@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -32,15 +34,28 @@ async def load_snapshots(db: AsyncSession) -> dict[str, Snapshot]:
     return {r.device_key: Snapshot(json.loads(r.state_json), as_utc(r.updated_at)) for r in rows}
 
 
-def last_update(snapshots: dict[str, Snapshot]) -> datetime | None:
-    return max((s.updated_at for s in snapshots.values()), default=None)
+def last_update(
+    snapshots: dict[str, Snapshot], *, controller_only: bool = False
+) -> datetime | None:
+    return max(
+        (
+            snapshot.updated_at
+            for key, snapshot in snapshots.items()
+            if not controller_only
+            or key in ("system_mode", "simulation_stats", "plc_alarms")
+            or key.startswith(("zone_", "pump_", "valve_"))
+        ),
+        default=None,
+    )
 
 
-def is_fresh(snapshots: dict[str, Snapshot], now: datetime | None = None) -> bool:
-    last = last_update(snapshots)
+def is_fresh(
+    snapshots: dict[str, Snapshot], now: datetime | None = None, *, controller_only: bool = False
+) -> bool:
+    last = last_update(snapshots, controller_only=controller_only)
     if last is None:
         return False
-    return ((now or utcnow()) - last).total_seconds() <= settings.state_stale_after_sec
+    return 0 <= ((now or utcnow()) - last).total_seconds() <= settings.state_stale_after_sec
 
 
 def build_map_state(
@@ -85,7 +100,7 @@ def build_map_state(
             else z
             for z in zones
         ]
-    last = last_update(snapshots)
+    last = last_update(snapshots, controller_only=True)
     farm_clock = clock.as_dict()
     return FarmMapState(
         system_mode=system_mode,
@@ -101,7 +116,7 @@ def build_map_state(
         well_level_m=stats.get("well_level_m"),
         filter_dp_bar=stats.get("filter_dp_bar"),
         active_alarms=active_alarms or [],
-        data_fresh=is_fresh(snapshots),
+        data_fresh=is_fresh(snapshots, controller_only=True),
         last_snapshot_ts=last,
         farm_now=farm_clock["farm_now"],
         speed=farm_clock["speed"],
@@ -112,32 +127,68 @@ def build_map_state(
 
 
 async def upsert_snapshots(
-    db: AsyncSession, existing: dict[str, Snapshot], payloads: list[StateSyncPayload]
-) -> None:
-    """Dialect-agnostic upsert (works on SQLite and PostgreSQL)."""
+    db: AsyncSession, payloads: list[StateSyncPayload]
+) -> list[StateSyncPayload]:
+    """Return newer or changed snapshots that were accepted, one per device."""
+    newest: dict[str, StateSyncPayload] = {}
+    for payload in payloads:
+        previous = newest.get(payload.device_key)
+        if previous is None or as_utc(payload.updated_at) >= as_utc(previous.updated_at):
+            newest[payload.device_key] = payload
+    if not newest:
+        return []
+
+    records = [
+        {
+            "device_key": key,
+            "state_json": json.dumps(newest[key].state_json, default=str, sort_keys=True),
+            "updated_at": as_utc(newest[key].updated_at),
+        }
+        for key in sorted(newest)
+    ]
+    insert = {"sqlite": sqlite_insert, "postgresql": postgres_insert}.get(
+        db.get_bind().dialect.name
+    )
+    if insert is not None:
+        statement = insert(DeviceStateSnapshot).values(records)
+        excluded = statement.excluded
+        statement = statement.on_conflict_do_update(
+            index_elements=[DeviceStateSnapshot.device_key],
+            set_={"state_json": excluded.state_json, "updated_at": excluded.updated_at},
+            where=or_(
+                DeviceStateSnapshot.updated_at < excluded.updated_at,
+                and_(
+                    DeviceStateSnapshot.updated_at == excluded.updated_at,
+                    DeviceStateSnapshot.state_json != excluded.state_json,
+                ),
+            ),
+        ).returning(DeviceStateSnapshot.device_key)
+        accepted = set(await db.scalars(statement))
+        return [payload for key, payload in newest.items() if key in accepted]
+
     rows = {
         r.device_key: r
         for r in (
             await db.execute(
-                select(DeviceStateSnapshot).where(
-                    DeviceStateSnapshot.device_key.in_([p.device_key for p in payloads])
-                )
+                select(DeviceStateSnapshot).where(DeviceStateSnapshot.device_key.in_(newest))
             )
         ).scalars()
     }
-    for p in payloads:
-        state_json = json.dumps(p.state_json, default=str)
-        updated_at = as_utc(p.updated_at)
-        row = rows.get(p.device_key)
+    accepted = []
+    for fields in records:
+        row = rows.get(fields["device_key"])
         if row is None:
-            db.add(
-                DeviceStateSnapshot(
-                    device_key=p.device_key, state_json=state_json, updated_at=updated_at
-                )
-            )
+            db.add(DeviceStateSnapshot(**fields))
+        elif fields["updated_at"] > as_utc(row.updated_at) or (
+            fields["updated_at"] == as_utc(row.updated_at)
+            and fields["state_json"] != row.state_json
+        ):
+            row.state_json = fields["state_json"]
+            row.updated_at = fields["updated_at"]
         else:
-            row.state_json = state_json
-            row.updated_at = updated_at
+            continue
+        accepted.append(newest[fields["device_key"]])
+    return accepted
 
 
 def diff_events(

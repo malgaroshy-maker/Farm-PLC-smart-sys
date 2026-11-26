@@ -9,6 +9,7 @@ from conftest import SIM, login, push_state
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.clock import clock
+from app.core.timeutil import utcnow
 from app.database import async_session_factory
 from app.models.soil import CropMoistureLevel
 from app.services import soil
@@ -120,6 +121,40 @@ def test_probe_registration_and_ingest_override_map_moisture(client):
     state = client.get("/api/v1/state/map", headers=op).json()
     z = next(z for z in state["zones"] if z["zone_id"] == "zone_enab")
     assert z["moisture_pct"] == 50.0  # probe wins over the controller's 40 %
+
+
+def test_fresh_soil_probe_does_not_hide_a_stale_controller(client):
+    admin, operator = login(client, "admin"), login(client, "operator")
+    registered = client.post(
+        "/api/v1/soil/probes",
+        headers=admin,
+        json={"external_id": "a840414bc1d2e3f4", "zone_id": "zone_enab", "depth_cm": 30},
+    )
+    assert registered.status_code == 201
+    push_state(client, updated_at=(utcnow() - timedelta(seconds=10)).isoformat())
+    received = client.post(
+        "/api/v1/ingest/soil",
+        headers=SIM,
+        json={"device_id": "a840414bc1d2e3f4", "vwc_pct": 12.5},
+    )
+    assert received.status_code == 200
+
+    state = client.get("/api/v1/state/map", headers=operator).json()
+    zone = next(item for item in state["zones"] if item["zone_id"] == "zone_enab")
+    assert zone["moisture_pct"] == 50.0
+    assert state["data_fresh"] is False
+    health = client.get("/api/v1/system/health", headers=operator).json()
+    link = next(check for check in health["checks"] if check["key"] == "controller")
+    assert link["code"] == "link_stale"
+    start = client.post(
+        "/api/v1/commands",
+        headers=operator,
+        json={"command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab"},
+    )
+    assert start.status_code == 409 and start.json()["code"] == "state_stale"
+
+    push_state(client)
+    assert client.get("/api/v1/state/map", headers=operator).json()["data_fresh"] is True
 
 
 def test_dry_zone_raises_alarm_and_suggests_an_extra_run_that_starts_it(client):

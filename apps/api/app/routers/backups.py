@@ -1,10 +1,13 @@
 """Backups — /api/v1/backups (Milestone G7). Owner/admin only."""
 
+import sqlite3
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import Actor, require_admin
+from app.restore_db import InvalidBackup
 from app.services import backup
 from app.services.events import log_event
 
@@ -39,9 +42,13 @@ async def restore_on_restart(
     name: str, actor: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ):
     try:
-        backup.request_restore(name)
+        await backup.request_restore(name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Backup not found") from None
+    except (InvalidBackup, sqlite3.Error):
+        raise HTTPException(
+            status_code=422, detail="Backup is not a readable Farm-PLC database"
+        ) from None
     await log_event(
         db, "restore_requested", "system", name, actor_type="user", actor_id=actor.actor_id
     )
@@ -51,8 +58,7 @@ async def restore_on_restart(
 
 @router.delete("/restore")
 async def cancel_restore(actor: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    name = backup.pending_restore()
-    backup.cancel_restore()
+    name = await backup.cancel_restore()
     if name:
         await log_event(
             db, "restore_cancelled", "system", name, actor_type="user", actor_id=actor.actor_id

@@ -245,7 +245,8 @@ class ModbusAdapter:
             )
         for pid in self.map["pumps"]:
             p = lambda k, d=0.0, _p=pid: v.get(f"pump.{_p}.{k}", d)  # noqa: E731
-            run, fault = bool(p("run_fb")), bool(p("fault"))
+            feedback = p("run_fb", None)
+            run, fault = bool(feedback), bool(p("fault"))
             out.append(
                 item(
                     f"pump_{pid}",
@@ -253,6 +254,7 @@ class ModbusAdapter:
                         "pump_id": pid,
                         "state": "faulted" if fault else ("running" if run else "stopped"),
                         "run_fb": run,
+                        "run_fb_observed": feedback is not None,
                         "fault": fault,
                         "runtime_hours": p("runtime_hours"),
                         "panel_mode": pc.PANEL_PUMP.get(int(p("panel_mode")), "auto"),

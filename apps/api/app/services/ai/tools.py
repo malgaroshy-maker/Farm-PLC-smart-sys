@@ -35,6 +35,7 @@ from app.models.telemetry import TelemetryPoint
 from app.models.zone import Zone
 from app.services.ai.redaction import redact_payload, redact_text
 from app.services.live_state import is_fresh, load_snapshots
+from app.services.telemetry import known_cycle_water
 from app.services.weather import is_usable_forecast, weather_service
 
 log = logging.getLogger(__name__)
@@ -290,22 +291,25 @@ async def read_cycles(
             res = await db.execute(stmt)
             cycles = list(res.scalars().all())
 
-            records = [
-                {
-                    "cycle_id": c.id,
-                    "zone_id": c.zone_id,
-                    "program_id": c.program_id,
-                    "outcome": c.outcome,
-                    "started_at": (c.actual_start_at or c.created_at).isoformat(),
-                    "duration_min": c.actual_duration_min,
-                    "water_volume_m3": c.water_estimate_m3,
-                    "water_is_estimate": c.water_is_estimate
-                    if c.water_estimate_m3 is not None
-                    else None,
-                    "failure_reason": redact_text(c.failure_reason) if c.failure_reason else None,
-                }
-                for c in cycles[:100]
-            ]
+            records = []
+            for c in cycles[:100]:
+                volume = known_cycle_water(c.water_estimate_m3, c.water_is_estimate)
+                records.append(
+                    {
+                        "cycle_id": c.id,
+                        "zone_id": c.zone_id,
+                        "program_id": c.program_id,
+                        "outcome": c.outcome,
+                        "started_at": (c.actual_start_at or c.created_at).isoformat(),
+                        "duration_min": c.actual_duration_min,
+                        "water_volume_m3": volume,
+                        "water_is_estimate": c.water_is_estimate if volume is not None else None,
+                        "water_has_gaps": c.water_has_gaps or volume is None,
+                        "failure_reason": redact_text(c.failure_reason)
+                        if c.failure_reason
+                        else None,
+                    }
+                )
             return {
                 "local_date": local_date,
                 "deployment_mode": settings.deployment_mode,
@@ -394,9 +398,12 @@ async def get_forecast(ctx: RunContext[AIDeps], days: int = 3) -> dict[str, Any]
         )
         async with factory() as db:
             forecast = await weather_service.get_forecast(db=db)
-        if not is_usable_forecast(forecast):
-            return {"available": False, "source": forecast.source, "days": []}
-        today = forecast.daily[0] if forecast.daily else None
+        if not forecast or not is_usable_forecast(forecast):
+            return {"available": False, "source": forecast.source if forecast else None, "days": []}
+        today_date = (
+            clock.farm_now().astimezone(ZoneInfo(settings.farm_timezone)).date().isoformat()
+        )
+        today = next((day for day in forecast.daily if day.date == today_date), None)
 
         return {
             "available": True,

@@ -20,6 +20,7 @@ class IrrigationCycleResponse(BaseModel):
     outcome: str | None = None
     water_estimate_m3: float | None = None
     water_is_estimate: bool = False
+    water_has_gaps: bool = False
     initiated_by_type: str = "user"
     initiated_by_id: str | None = None
     alarms_json: str | None = None

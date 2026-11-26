@@ -73,10 +73,9 @@ async def test_tools_keep_missing_telemetry_and_synthetic_forecast_unavailable(c
     assert zone["flow_m3h"] is None and zone["pressure_bar"] is None
     assert zone["valve_open"] is None and zone["updated_at"] is None
     assert zone["data_fresh"] is False
-    stub = weather_service._build_default_fallback(clock.farm_now())
-    with patch.object(weather_service, "get_forecast", AsyncMock(return_value=stub)):
+    with patch.object(weather_service, "get_forecast", AsyncMock(return_value=None)):
         forecast = await get_forecast(ctx)
-    assert forecast == {"available": False, "source": "offline_fallback", "days": []}
+    assert forecast == {"available": False, "source": None, "days": []}
 
 
 def test_provider_key_cannot_be_redirected_from_ai_settings(client):

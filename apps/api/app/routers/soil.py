@@ -220,7 +220,6 @@ async def ingest_soil(
     }
     await upsert_snapshots(
         db,
-        await load_snapshots(db),
         [StateSyncPayload(device_key=f"sensor_{probe.id}", state_json=state, updated_at=now)],
     )
     db.add(

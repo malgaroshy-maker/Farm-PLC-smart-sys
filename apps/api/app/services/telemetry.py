@@ -7,17 +7,22 @@ Metric keys
   zone:    zone.moisture_pct, zone.flow_m3h, zone.pressure_bar   (zone_id set)
 """
 
+from collections import defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from math import isfinite
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.clock import clock
 from app.core.timeutil import as_utc, utcnow
+from app.models.irrigation_cycle import IrrigationCycle
 from app.models.telemetry import TelemetryPoint
-from app.services.live_state import Snapshot
+from app.services.live_state import Snapshot, is_fresh
 
 SYSTEM_METRICS = (
     "tank_level_pct",
@@ -61,7 +66,7 @@ class Recorder:
         points: list[TelemetryPoint] = []
 
         def add(metric: str, value, zone_id: str | None = None) -> None:
-            if isinstance(value, int | float):
+            if isinstance(value, int | float) and not isinstance(value, bool) and isfinite(value):
                 points.append(
                     TelemetryPoint(
                         metric_key=metric,
@@ -75,10 +80,16 @@ class Recorder:
                 )
 
         stats = snapshots.get("simulation_stats")
-        if stats:
+        if stats and is_fresh({"simulation_stats": stats}, now_real):
             for m in SYSTEM_METRICS:
                 add(m, stats.state.get(m))
         for key, snap in snapshots.items():
+            if (
+                not 0
+                <= (now_real - as_utc(snap.updated_at)).total_seconds()
+                <= settings.state_stale_after_sec
+            ):
+                continue
             if key.startswith("zone_"):
                 zid = snap.state.get("zone_id")
                 for m in ZONE_METRICS:
@@ -92,14 +103,20 @@ class Recorder:
 
 
 async def series(
-    db: AsyncSession, metric_key: str, zone_id: str | None, minutes: int, points: int
+    db: AsyncSession,
+    metric_key: str,
+    zone_id: str | None,
+    minutes: int,
+    points: int,
+    *,
+    end: datetime | None = None,
 ) -> list[dict]:
     """Bucket-averaged series, oldest first: [{ts, value, min, max}].
 
     The averaging happens in the database (GROUP BY time bucket), so a 60-point chart
     reads ~60 rows instead of every raw sample (Milestone G1).
     """
-    end = clock.farm_now()
+    end = end or clock.farm_now()
     start = end - timedelta(minutes=minutes)
     bucket_s = max(1.0, minutes * 60 / max(1, points))
     sqlite = db.bind.dialect.name == "sqlite"
@@ -146,6 +163,26 @@ async def series(
     ]
 
 
+async def flow_pressure_series(db: AsyncSession) -> list[dict]:
+    end = clock.farm_now()
+    flow = await series(db, "main_flow_m3h", None, 60, 60, end=end)
+    pressure = await series(db, "main_pressure_bar", None, 60, 60, end=end)
+    flow_by_time = {point["ts"]: point["value"] for point in flow}
+    pressure_by_time = {point["ts"]: point["value"] for point in pressure}
+    observed = flow_by_time.keys() | pressure_by_time.keys()
+    if not observed:
+        return []
+    first = datetime.fromisoformat(min(observed))
+    last = datetime.fromisoformat(max(observed))
+    points = []
+    for minute in range(int((last - first).total_seconds() // 60) + 1):
+        ts = (first + timedelta(minutes=minute)).isoformat()
+        points.append(
+            {"ts": ts, "flow": flow_by_time.get(ts), "pressure": pressure_by_time.get(ts)}
+        )
+    return points
+
+
 MAX_GAP_S = 60.0  # default/base gap limit at 1x speed
 
 
@@ -160,6 +197,77 @@ def max_gap_s(speed: float) -> float:
     return max(60.0, 3.0 * max(10.0, speed * 1.0))
 
 
+FlowSample = tuple[datetime, float | None, str | None, str]
+_GENERATED_BASELINE_OFFSETS = (30, 300, 600, 900, 1200, 1500)
+
+
+@dataclass
+class FlowVolume:
+    m3: float | None = None
+    covered_seconds: float = 0.0
+    first_rate: float | None = None
+    rate_count: int = 0
+
+
+def integrate_flow(samples: Iterable[FlowSample], start: datetime, stop: datetime) -> FlowVolume:
+    """Integrate confirmed intervals, clipping a pair at midnight or a cycle boundary."""
+    total = FlowVolume()
+    previous: tuple[datetime, float, float] | None = None
+    for timestamp, rate, speed_text, quality in samples:
+        timestamp = as_utc(timestamp)
+        if quality != "good" or rate is None or not isfinite(rate) or rate < 0:
+            previous = None
+            continue
+        try:
+            speed = float(speed_text or "1")
+        except (ValueError, TypeError):
+            speed = 1.0
+        speed = speed if isfinite(speed) and speed >= 0 else 1.0
+        if start <= timestamp <= stop:
+            total.rate_count += 1
+            if total.first_rate is None:
+                total.first_rate = rate
+
+        if previous:
+            prior_time, prior_rate, prior_speed = previous
+            duration = (timestamp - prior_time).total_seconds()
+            left, right = max(start, prior_time), min(stop, timestamp)
+            if left < right and 0 < duration <= max_gap_s(max(speed, prior_speed)):
+                seconds = (right - left).total_seconds()
+                slope = (rate - prior_rate) / duration
+                left_rate = prior_rate + slope * (left - prior_time).total_seconds()
+                right_rate = prior_rate + slope * (right - prior_time).total_seconds()
+                total.m3 = (total.m3 or 0) + (left_rate + right_rate) * seconds / 7200
+                total.covered_seconds += seconds
+        previous = (timestamp, rate, speed)
+    return total
+
+
+def known_cycle_water(value: float | None, estimated: bool) -> float | None:
+    # Older cycle rows used estimated zero as a placeholder when no flow was recorded.
+    if value is None or not isfinite(value) or value < 0 or (estimated and value == 0):
+        return None
+    return value
+
+
+async def generated_flow_timestamps(
+    db: AsyncSession, start: datetime, stop: datetime, zone_id: str | None = None
+) -> set[tuple[str, datetime]]:
+    """Locate samples inserted by the retired anomaly demo alongside its baseline cycles."""
+    query = select(IrrigationCycle.zone_id, IrrigationCycle.actual_start_at).where(
+        IrrigationCycle.id.startswith("cyc_base_", autoescape=True),
+        IrrigationCycle.actual_start_at <= stop,
+        IrrigationCycle.actual_end_at >= start,
+    )
+    if zone_id is not None:
+        query = query.where(IrrigationCycle.zone_id == zone_id)
+    return {
+        (zone, as_utc(begin) + timedelta(seconds=offset))
+        for zone, begin in await db.execute(query)
+        for offset in _GENERATED_BASELINE_OFFSETS
+    }
+
+
 def farm_midnight_utc(now: datetime | None = None) -> datetime:
     tz = ZoneInfo(settings.farm_timezone)
     local = (now or clock.farm_now()).astimezone(tz)
@@ -167,104 +275,83 @@ def farm_midnight_utc(now: datetime | None = None) -> datetime:
 
 
 async def water_today(db: AsyncSession) -> list[dict]:
-    """m³ delivered per zone since farm-local midnight.
-
-    Primary source: irrigation_cycles (closed runs + live integration for running cycle).
-    Fallback: direct telemetry trapezoidal integration if no cycles exist.
-    """
-    from app.models.irrigation_cycle import IrrigationCycle
-
-    since = farm_midnight_utc()
-    now_farm = clock.farm_now()
-
-    # 1. Closed cycles today
-    cycles_res = await db.execute(
-        select(IrrigationCycle.zone_id, IrrigationCycle.water_estimate_m3).where(
-            IrrigationCycle.actual_end_at >= since,
-            IrrigationCycle.water_estimate_m3.is_not(None),
-        )
-    )
-    cycle_rows = cycles_res.all()
-    totals: dict[str, float] = {}
-    has_cycles = False
-    for zid, m3 in cycle_rows:
-        has_cycles = True
-        totals[zid] = totals.get(zid, 0.0) + (m3 or 0.0)
-
-    # 2. Open cycles in progress
-    open_res = await db.execute(
-        select(IrrigationCycle.zone_id, IrrigationCycle.actual_start_at).where(
-            IrrigationCycle.actual_end_at.is_(None),
-            IrrigationCycle.actual_start_at >= since,
-        )
-    )
-    for zid, start_at in open_res.all():
-        has_cycles = True
-        # Integrate live flow for running cycle
-        run_rows = (
-            await db.execute(
-                select(TelemetryPoint.ts, TelemetryPoint.value_numeric, TelemetryPoint.value_text)
-                .where(
-                    TelemetryPoint.metric_key == "zone.flow_m3h",
-                    TelemetryPoint.zone_id == zid,
-                    TelemetryPoint.ts >= start_at,
-                    TelemetryPoint.ts <= now_farm,
-                )
-                .order_by(TelemetryPoint.ts)
-            )
-        ).all()
-        live_m3 = 0.0
-        prev_p = None
-        for ts, v, val_text in run_rows:
-            ts = as_utc(ts)
-            v = v or 0.0
-            try:
-                s_speed = float(val_text) if val_text else 1.0
-            except (ValueError, TypeError):
-                s_speed = 1.0
-            if prev_p:
-                pts, pv, p_speed = prev_p
-                dt = (ts - pts).total_seconds()
-                limit = max_gap_s(max(s_speed, p_speed))
-                if 0 < dt <= limit:
-                    live_m3 += (pv + v) / 2 * dt / 3600.0
-            prev_p = (ts, v, s_speed)
-        totals[zid] = totals.get(zid, 0.0) + live_m3
-
-    if has_cycles:
-        return [{"zone_id": z, "m3": round(m3, 3)} for z, m3 in sorted(totals.items())]
-
-    # Fallback to pure telemetry trapezoid integration
-    rows = (
+    """Summarize evidence for each zone between farm-local midnight and the farm clock."""
+    now_farm = as_utc(clock.farm_now())
+    since = farm_midnight_utc(now_farm)
+    cycles = (
         await db.execute(
             select(
-                TelemetryPoint.zone_id,
-                TelemetryPoint.ts,
-                TelemetryPoint.value_numeric,
-                TelemetryPoint.value_text,
+                IrrigationCycle.zone_id,
+                IrrigationCycle.actual_start_at,
+                IrrigationCycle.actual_end_at,
+                IrrigationCycle.water_estimate_m3,
+                IrrigationCycle.water_is_estimate,
+                IrrigationCycle.water_has_gaps,
+            ).where(
+                IrrigationCycle.actual_start_at <= now_farm,
+                or_(IrrigationCycle.actual_end_at.is_(None), IrrigationCycle.actual_end_at > since),
+                ~IrrigationCycle.id.startswith("cyc_base_", autoescape=True),
             )
-            .where(TelemetryPoint.metric_key == "zone.flow_m3h", TelemetryPoint.ts >= since)
-            .order_by(TelemetryPoint.zone_id, TelemetryPoint.ts)
         )
     ).all()
-    prev: dict[str, tuple[datetime, float, float]] = {}
-    for zone_id, ts, value, val_text in rows:
-        ts = as_utc(ts)
-        v = value or 0.0
-        try:
-            s_speed = float(val_text) if val_text else 1.0
-        except (ValueError, TypeError):
-            s_speed = 1.0
-        if zone_id in prev:
-            pts, pv, p_speed = prev[zone_id]
-            dt = (ts - pts).total_seconds()
-            effective_speed = max(s_speed, p_speed)
-            limit = max_gap_s(effective_speed)
-            if 0 < dt <= limit:
-                totals[zone_id] = totals.get(zone_id, 0.0) + (pv + v) / 2 * dt / 3600.0
-        totals.setdefault(zone_id, 0.0)
-        prev[zone_id] = (ts, v, s_speed)
-    return [{"zone_id": z, "m3": round(m3, 3)} for z, m3 in sorted(totals.items())]
+    totals: dict[str, dict] = {}
+    windows: dict[str, list[tuple[datetime, datetime]]] = defaultdict(list)
+
+    def add(zone_id: str, m3: float | None, estimated: bool, has_gaps: bool) -> None:
+        row = totals.setdefault(
+            zone_id,
+            {"zone_id": zone_id, "m3": None, "water_is_estimate": False, "water_has_gaps": False},
+        )
+        if m3 is not None:
+            row["m3"] = (row["m3"] or 0) + m3
+            row["water_is_estimate"] |= estimated
+        row["water_has_gaps"] |= has_gaps or m3 is None
+
+    for zone, started, ended, amount, estimate, has_gaps in cycles:
+        started = as_utc(started)
+        ended = as_utc(ended) if ended else None
+        known = known_cycle_water(amount, estimate)
+        if since <= started and ended is not None and ended <= now_farm and known is not None:
+            add(zone, known, estimate, has_gaps)
+        else:
+            windows[zone].append((max(since, started), min(now_farm, ended or now_farm)))
+
+    # An observation just before midnight can support interpolation into today's range.
+    cutoff = since - timedelta(seconds=max_gap_s(360))
+    query = select(
+        TelemetryPoint.zone_id,
+        TelemetryPoint.ts,
+        TelemetryPoint.value_numeric,
+        TelemetryPoint.value_text,
+        TelemetryPoint.quality,
+        TelemetryPoint.source,
+    ).where(
+        TelemetryPoint.metric_key == "zone.flow_m3h",
+        TelemetryPoint.zone_id.is_not(None),
+        TelemetryPoint.ts >= cutoff,
+        TelemetryPoint.ts <= now_farm,
+    )
+    recorded_only = totals.keys() - windows.keys()
+    if recorded_only:
+        query = query.where(TelemetryPoint.zone_id.not_in(recorded_only))
+    generated = await generated_flow_timestamps(db, cutoff, now_farm)
+    samples: dict[str, list[FlowSample]] = defaultdict(list)
+    for zone, stamp, rate, speed, quality, source in await db.execute(
+        query.order_by(TelemetryPoint.zone_id, TelemetryPoint.ts, TelemetryPoint.id)
+    ):
+        if source == "simulator" and (zone, as_utc(stamp)) in generated:
+            continue
+        samples[zone].append((stamp, rate, speed, quality))
+
+    for zone in windows.keys() | samples.keys():
+        for start, stop in windows.get(zone, [(since, now_farm)]):
+            volume = integrate_flow(samples[zone], start, stop)
+            duration = (stop - start).total_seconds()
+            add(zone, volume.m3, False, volume.covered_seconds + 0.001 < duration)
+    for row in totals.values():
+        if row["m3"] is not None:
+            row["m3"] = round(row["m3"], 3)
+    return sorted(totals.values(), key=lambda row: row["zone_id"])
 
 
 async def prune_old(db: AsyncSession) -> None:

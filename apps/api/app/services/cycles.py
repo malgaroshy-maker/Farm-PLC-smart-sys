@@ -7,6 +7,7 @@ links alarm codes raised during the run, and determines cycle outcome.
 import json
 import logging
 from datetime import datetime
+from typing import NamedTuple
 from uuid import uuid4
 
 from sqlalchemy import desc, select
@@ -20,73 +21,62 @@ from app.models.command import Command
 from app.models.irrigation_cycle import IrrigationCycle
 from app.models.telemetry import TelemetryPoint
 from app.models.zone import Zone
-from app.services.telemetry import max_gap_s
+from app.services.telemetry import generated_flow_timestamps, integrate_flow
 
 log = logging.getLogger(__name__)
 
 
+class CycleWater(NamedTuple):
+    m3: float | None
+    is_estimate: bool
+    has_gaps: bool
+
+
 async def integrate_zone_water_m3(
     db: AsyncSession, zone_id: str, start_time: datetime, end_time: datetime
-) -> tuple[float, bool]:
-    """Trapezoidal integration of zone.flow_m3h telemetry points between start and end time.
-
-    Returns (water_m3, is_estimate):
-    - With >= 2 real samples: calculates trapezoidal integration; is_estimate = False.
-    - With < 2 samples: estimates water from available sample or nominal flow × duration; is_estimate = True.
-    """
+) -> CycleWater:
+    """Total for observed intervals, a labeled single-reading estimate, or an unknown volume."""
     start_utc = as_utc(start_time)
     end_utc = as_utc(end_time)
     if end_utc <= start_utc:
-        return 0.0, False
+        return CycleWater(0.0, is_estimate=False, has_gaps=False)
 
     res = await db.execute(
-        select(TelemetryPoint.ts, TelemetryPoint.value_numeric, TelemetryPoint.value_text)
+        select(
+            TelemetryPoint.ts,
+            TelemetryPoint.value_numeric,
+            TelemetryPoint.value_text,
+            TelemetryPoint.quality,
+            TelemetryPoint.source,
+        )
         .where(
             TelemetryPoint.metric_key == "zone.flow_m3h",
             TelemetryPoint.zone_id == zone_id,
             TelemetryPoint.ts >= start_utc,
             TelemetryPoint.ts <= end_utc,
         )
-        .order_by(TelemetryPoint.ts)
+        .order_by(TelemetryPoint.ts, TelemetryPoint.id)
     )
-    rows = res.all()
-
-    # If 2 or more samples exist, compute trapezoidal integration
-    if len(rows) >= 2:
-        total_m3 = 0.0
-        prev_ts: datetime | None = None
-        prev_val = 0.0
-        prev_speed = 1.0
-
-        for ts, val, val_text in rows:
-            ts = as_utc(ts)
-            v = val or 0.0
-            try:
-                speed = float(val_text) if val_text else 1.0
-            except (ValueError, TypeError):
-                speed = 1.0
-
-            if prev_ts is not None:
-                dt = (ts - prev_ts).total_seconds()
-                effective_speed = max(speed, prev_speed)
-                gap_limit = max_gap_s(effective_speed)
-                if 0 < dt <= gap_limit:
-                    total_m3 += (prev_val + v) / 2.0 * dt / 3600.0
-
-            prev_ts = ts
-            prev_val = v
-            prev_speed = speed
-
-        # Measured: a run with zero flow (e.g. valve never opened) used no water.
-        return round(total_m3, 4), False
-
-    # Fewer than 2 samples: extrapolate the single measured flow, flagged as an
-    # estimate. Never invent water from the zone's nominal flow.
-    dt_hours = max(0.0, (end_utc - start_utc).total_seconds() / 3600.0)
-    if rows and dt_hours > 0:
-        return round((rows[0][1] or 0.0) * dt_hours, 4), True
-    # No samples at all: unknown, recorded as 0 and flagged so the UI shows ≈.
-    return 0.0, dt_hours > 0
+    generated = await generated_flow_timestamps(db, start_utc, end_utc, zone_id)
+    observed = integrate_flow(
+        (
+            (ts, rate, speed, quality)
+            for ts, rate, speed, quality, source in res
+            if source != "simulator" or (zone_id, as_utc(ts)) not in generated
+        ),
+        start_utc,
+        end_utc,
+    )
+    duration = (end_utc - start_utc).total_seconds()
+    if observed.m3 is not None:
+        return CycleWater(
+            round(observed.m3, 4),
+            is_estimate=False,
+            has_gaps=observed.covered_seconds + 0.001 < duration,
+        )
+    if observed.rate_count == 1 and observed.first_rate:
+        return CycleWater(observed.first_rate * duration / 3600, is_estimate=True, has_gaps=True)
+    return CycleWater(None, is_estimate=False, has_gaps=True)
 
 
 async def get_linked_alarms_json(
@@ -220,10 +210,8 @@ async def record_cycle_end_for_zone(
     duration_min = max(0, int((end_at - start_at).total_seconds() // 60))
     cycle.actual_duration_min = duration_min
 
-    # Calculate water used and flag whether estimated
-    water_m3, is_estimate = await integrate_zone_water_m3(db, zone_id, start_at, end_at)
-    cycle.water_estimate_m3 = water_m3
-    cycle.water_is_estimate = is_estimate
+    volume = await integrate_zone_water_m3(db, zone_id, start_at, end_at)
+    cycle.water_estimate_m3, cycle.water_is_estimate, cycle.water_has_gaps = volume
 
     # Link alarm codes
     alarms = await get_linked_alarms_json(db, zone_id, start_at, end_at)
@@ -294,9 +282,8 @@ async def record_cycles_aborted_on_jump(
         end_at = max(jump_utc, start_at)
         cycle.actual_end_at = end_at
         cycle.actual_duration_min = max(0, int((end_at - start_at).total_seconds() // 60))
-        water_m3, is_estimate = await integrate_zone_water_m3(db, cycle.zone_id, start_at, end_at)
-        cycle.water_estimate_m3 = water_m3
-        cycle.water_is_estimate = is_estimate
+        volume = await integrate_zone_water_m3(db, cycle.zone_id, start_at, end_at)
+        cycle.water_estimate_m3, cycle.water_is_estimate, cycle.water_has_gaps = volume
         cycle.outcome = "aborted"
         cycle.failure_reason = "clock jump"
         cycle.updated_at = jump_utc

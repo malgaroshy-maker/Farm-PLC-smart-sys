@@ -66,14 +66,20 @@ async def system_health(actor: Actor = Depends(get_actor), db: AsyncSession = De
 
     # 2. live link to the controller (simulator now, PLC later): age of the newest state
     snapshots = await load_snapshots(db)
-    last = last_update(snapshots)
-    age = round((utcnow() - last).total_seconds(), 1) if last else None
+    last = last_update(snapshots, controller_only=True)
+    age = (utcnow() - last).total_seconds() if last else None
     stale_after = settings.state_stale_after_sec
     if age is None:
         checks.append(_check("controller", "fail", "link_never", source=settings.controller_mode))
-    elif age <= stale_after:
+    elif 0 <= age <= stale_after:
         checks.append(
-            _check("controller", "ok", "link_ok", age_sec=age, source=settings.controller_mode)
+            _check(
+                "controller",
+                "ok",
+                "link_ok",
+                age_sec=round(age, 1),
+                source=settings.controller_mode,
+            )
         )
     else:
         checks.append(
@@ -81,7 +87,7 @@ async def system_health(actor: Actor = Depends(get_actor), db: AsyncSession = De
                 "controller",
                 "fail",
                 "link_stale",
-                age_sec=age,
+                age_sec=round(age, 1),
                 stale_after_sec=stale_after,
                 source=settings.controller_mode,
             )

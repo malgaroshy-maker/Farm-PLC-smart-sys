@@ -33,7 +33,7 @@ class Monitor:
             from app.services.scheduler import scheduler
 
             await scheduler.tick(db, snapshots)
-            fresh = is_fresh(snapshots)
+            fresh = is_fresh(snapshots, controller_only=True)
             if self._was_fresh and not fresh:
                 await manager.broadcast("telemetry.stale", {})
                 await manager.broadcast("state.snapshot", await current_map_state(db))

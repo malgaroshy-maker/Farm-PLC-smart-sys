@@ -288,6 +288,7 @@ export interface IrrigationCycle {
   outcome: CycleOutcome | null;
   water_estimate_m3: number | null;
   water_is_estimate?: boolean;
+  water_has_gaps?: boolean;
   initiated_by_type: ActorType;
   initiated_by_id: string | null;
   alarms_json?: string | null;
@@ -482,9 +483,19 @@ export interface ClockUpdateRequest {
 
 // ─── Reports ────────────────────────────────────────────
 
-export interface DailyIrrigationReportRow {
+export interface WaterCoverage {
+  water_is_estimate: boolean;
+  water_has_gaps: boolean;
+}
+
+export interface WaterToday extends WaterCoverage {
+  total_m3: number | null;
+  zones: (WaterCoverage & { zone_id: string; m3: number | null })[];
+}
+
+export interface DailyIrrigationReportRow extends WaterCoverage {
   date: string;
-  total_water_m3: number;
+  total_water_m3: number | null;
   cycle_count: number;
   completed_count: number;
   aborted_count: number;
@@ -494,12 +505,12 @@ export interface DailyIrrigationReportRow {
   total_duration_min: number;
 }
 
-export interface WaterUsageReportRow {
+export interface WaterUsageReportRow extends WaterCoverage {
   zone_id: string;
   zone_name: string;
   zone_name_ar: string;
   crop_type: CropType | string;
-  total_water_m3: number;
+  total_water_m3: number | null;
   cycle_count: number;
   completed_count: number;
   total_duration_min: number;
@@ -508,10 +519,14 @@ export interface WaterUsageReportRow {
 export interface PumpRuntimeReportRow {
   pump_id: string;
   pump_name: string;
-  pump_name_ar: string;
+  pump_name_ar: string | null;
   pump_type: string;
-  start_count: number;
-  runtime_hours: number;
+  start_count: number | null;
+  runtime_hours: number | null;
+  observed_seconds: number;
+  window_seconds: number;
+  history_status: "unavailable" | "partial" | "complete";
+  history_source: "simulation" | "controller";
   faults_count: number;
 }
 
@@ -564,6 +579,10 @@ export interface TelemetrySeries {
   zone_id: string | null;
   minutes: number;
   points: SeriesPoint[];
+}
+
+export interface FlowPressureSeries {
+  points: { ts: string; flow: number | null; pressure: number | null }[];
 }
 
 // ─── Simulation scenarios (GET /sim/scenarios) ─────────

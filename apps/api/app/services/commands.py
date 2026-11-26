@@ -146,7 +146,7 @@ async def _check_start_interlocks(
             "critical_alarm_active",
             f"Critical alarm {critical.alarm_code} must be cleared and reset first",
         )
-    if not is_fresh(snapshots):
+    if not is_fresh(snapshots, controller_only=True):
         raise _Interlock(
             "state_stale", "Live state is stale — cannot verify interlocks (is the simulator up?)"
         )

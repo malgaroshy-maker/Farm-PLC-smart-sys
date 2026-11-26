@@ -787,6 +787,7 @@ async def run_daily_briefing(
         f"{farm_context}\n"
         f"CRITICAL FACT & LANGUAGE RULES:\n"
         f"- Use only the zone count and zone names given in Farm Facts above. Never state any other count.\n"
+        "- Distinguish estimated water volume from observed volume. If readings are missing, describe supported volumes as partial and say the full total is unavailable.\n"
         f"- Format ET0 in Arabic strictly as 'التبخر-نتح المرجعي ET₀ = X.XX مم'. Never use garbled phrases like 'pent reference'.\n"
         f"- All Arabic text must be 100% pure standard Arabic without mixed English words or foreign characters.\n"
         f"Produce bilingual executive summary, water delivered, active warnings, and operations plan."

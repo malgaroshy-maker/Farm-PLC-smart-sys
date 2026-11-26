@@ -768,10 +768,10 @@ export interface WeatherData {
   wind_direction?: string | number;
   wind_direction_10m?: number;
   precipitation_mm?: number;
-  precipitation_probability_pct?: number;
+  precipitation_probability_pct?: number | null;
   cloud_cover_pct?: number;
-  uv_index?: number;
-  et0_mm?: number;
+  uv_index?: number | null;
+  et0_mm?: number | null;
   condition?: string;
   description?: string;
   description_ar?: string;
@@ -781,7 +781,7 @@ export interface WeatherDaySummary {
   date: string;
   temp_min_c: number;
   temp_max_c: number;
-  humidity_avg_pct?: number;
+  humidity_avg_pct?: number | null;
   precipitation_total_mm?: number;
   precipitation_probability_pct?: number;
   et0_mm?: number;

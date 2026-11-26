@@ -20,11 +20,13 @@ import sqlite3
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
 from app.config import settings
 from app.core.timeutil import utcnow
 from app.database import _is_sqlite
+from app.restore_db import open_readonly, validate_backup
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +109,7 @@ def status() -> dict:
 
 def _copy_db(src: Path, dst: Path) -> None:
     tmp = dst.with_suffix(".part")
-    s = sqlite3.connect(str(src))
+    s = open_readonly(src)
     try:
         d = sqlite3.connect(str(tmp))
         try:
@@ -119,10 +121,12 @@ def _copy_db(src: Path, dst: Path) -> None:
     tmp.replace(dst)
 
 
-def _prune(d: Path, keep: int) -> list[str]:
+def _prune(d: Path, keep: int, preserve: str | None = None) -> list[str]:
     files = [f for f in sorted(d.glob("farm-*.db"), reverse=True) if NAME_RE.match(f.name)]
     removed = []
     for f in files[max(1, keep) :]:
+        if f.name == preserve:
+            continue
         f.unlink(missing_ok=True)
         removed.append(f.name)
     return removed
@@ -145,7 +149,7 @@ def _make(reason: str) -> dict:
         "usb": "off",
         "drive": "off",
     }
-    result["pruned"] = _prune(d, settings.backup_keep)
+    result["pruned"] = _prune(d, settings.backup_keep, preserve=pending_restore())
 
     if settings.backup_usb_dir:
         usb = Path(settings.backup_usb_dir)
@@ -185,14 +189,27 @@ async def make_backup(reason: str = "manual") -> dict:
     return result
 
 
-def request_restore(name: str) -> None:
-    if not NAME_RE.match(name) or not (backup_dir() / name).exists():
+def _request_restore(name: str) -> None:
+    selected = backup_dir() / name
+    if not NAME_RE.fullmatch(name) or not selected.is_file():
         raise FileNotFoundError(name)
-    (backup_dir() / PENDING).write_text(name, encoding="utf-8")
+    validate_backup(selected)
+    with TemporaryDirectory(dir=selected.parent, prefix=".restore-request-") as directory:
+        marker = Path(directory) / PENDING
+        marker.write_text(name, encoding="utf-8")
+        marker.replace(selected.parent / PENDING)
 
 
-def cancel_restore() -> None:
-    (backup_dir() / PENDING).unlink(missing_ok=True)
+async def request_restore(name: str) -> None:
+    async with _lock:
+        await asyncio.to_thread(_request_restore, name)
+
+
+async def cancel_restore() -> str | None:
+    async with _lock:
+        name = pending_restore()
+        (backup_dir() / PENDING).unlink(missing_ok=True)
+        return name
 
 
 def _due(now_local: datetime, last_iso: str | None) -> bool:

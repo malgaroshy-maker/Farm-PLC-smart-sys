@@ -19,6 +19,7 @@ from app.services import commands as cmd_svc
 from app.services import events as event_svc
 from app.services import telemetry as telem_svc
 from app.services.alarms import Condition
+from app.services.live_state import Snapshot
 
 
 def test_clock_formula_and_reanchoring():
@@ -172,7 +173,7 @@ async def test_timestamps_use_farm_clock(client, monkeypatch):
 
         # 3. Telemetry points
         snaps = {
-            "simulation_stats": type("Snap", (), {"state": {"tank_level_pct": 55.0}})(),
+            "simulation_stats": Snapshot({"tank_level_pct": 55.0}, utcnow()),
         }
         telem_svc.recorder._last_real = None
         telem_svc.recorder._last_farm = None

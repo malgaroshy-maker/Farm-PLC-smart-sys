@@ -377,7 +377,7 @@ class AlarmEngine:
 
     @staticmethod
     def staleness_conditions(snapshots: dict[str, Snapshot], now: datetime) -> list[Condition]:
-        last = last_update(snapshots)
+        last = last_update(snapshots, controller_only=True)
         if last is None:
             return []
         age = (now - last).total_seconds()
@@ -500,8 +500,9 @@ class AlarmEngine:
         events += await self.reconcile(
             db, await self.derived_conditions(db, snapshots, farm_now, real_now), derived_codes
         )
-        # fresh data just arrived → staleness alarms clear
-        events += await self.reconcile(db, [], {"ALM-029", "ALM-044"})
+        events += await self.reconcile(
+            db, self.staleness_conditions(snapshots, real_now), {"ALM-029", "ALM-044"}
+        )
         await self._publish(db, events)
 
     async def on_monitor_tick(self, db: AsyncSession, snapshots: dict[str, Snapshot]) -> None:

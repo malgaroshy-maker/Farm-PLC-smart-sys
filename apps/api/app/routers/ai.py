@@ -63,7 +63,7 @@ from app.services.ai.redaction import redact_text
 from app.services.anomaly import anomaly_detector
 from app.services.features import clear_cache as clear_feature_cache
 from app.services.realtime import manager
-from app.services.weather import WeatherForecast, weather_service
+from app.services.weather import WeatherForecast, is_usable_forecast, weather_service
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 require_operator = require_roles("owner_admin", "operator")
@@ -427,7 +427,7 @@ async def api_get_weather_forecast(
 ):
     """Retrieve 7-day weather forecast from Open-Meteo with 3h caching."""
     forecast = await weather_service.get_forecast(db=db, force_refresh=force_refresh)
-    if forecast.source == "offline_fallback":
+    if not is_usable_forecast(forecast):
         raise HTTPException(status_code=503, detail="Verified weather forecast is unavailable")
     return forecast
 
@@ -439,7 +439,7 @@ async def api_get_current_weather(
 ):
     """Retrieve current weather conditions for Algaroshy Farm."""
     fc = await weather_service.get_forecast(db=db)
-    if fc.source == "offline_fallback":
+    if not fc or not is_usable_forecast(fc):
         raise HTTPException(status_code=503, detail="Verified weather conditions are unavailable")
     return fc.current
 

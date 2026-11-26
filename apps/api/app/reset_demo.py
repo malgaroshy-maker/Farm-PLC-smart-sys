@@ -21,6 +21,7 @@ from app.models.command import Command
 from app.models.event_log import EventLog
 from app.models.irrigation_cycle import IrrigationCycle
 from app.models.program import Program, SchedulerState
+from app.models.pump import PumpObservationSpan
 from app.models.telemetry import DeviceStateSnapshot, TelemetryPoint
 
 # Operating history models to clear.
@@ -32,6 +33,7 @@ HISTORY = [
     Command,
     EventLog,
     TelemetryPoint,
+    PumpObservationSpan,
     DeviceStateSnapshot,
     IrrigationCycle,
     SchedulerState,

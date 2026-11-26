@@ -3,12 +3,15 @@
 import asyncio
 from datetime import timedelta
 
+from conftest import login
 from sqlalchemy import func, select, text
 
 from app.core.clock import clock
+from app.core.timeutil import utcnow
 from app.database import async_session_factory, engine
 from app.models.telemetry import TelemetryPoint
-from app.services.telemetry import downsample_old
+from app.services.live_state import Snapshot
+from app.services.telemetry import Recorder, downsample_old
 
 
 def test_chart_query_uses_composite_index(client):
@@ -34,6 +37,27 @@ def test_sqlite_runs_in_wal_mode(client):
             return (await conn.execute(text("PRAGMA journal_mode"))).scalar()
 
     assert asyncio.run(mode()).lower() == "wal"
+
+
+async def test_recorder_keeps_fresh_readings_and_skips_expired_cached_flow(client):
+    wall_now = utcnow()
+    recorder = Recorder()
+    async with async_session_factory() as db:
+        count = await recorder.maybe_record(
+            db,
+            {
+                "zone_zone_enab": Snapshot(
+                    {"zone_id": "zone_enab", "flow_m3h": 8.0},
+                    wall_now - timedelta(days=1),
+                ),
+                "simulation_stats": Snapshot(
+                    {"tank_level_pct": 70.0, "main_flow_m3h": float("inf")}, wall_now
+                ),
+            },
+        )
+        rows = (await db.execute(select(TelemetryPoint))).scalars().all()
+    assert count == 1
+    assert [(row.metric_key, row.value_numeric) for row in rows] == [("tank_level_pct", 70.0)]
 
 
 def test_downsample_keeps_recent_full_and_thins_old(client):
@@ -155,3 +179,34 @@ def test_series_ignores_samples_after_farm_now(client):
     pts = asyncio.run(run())
     assert 1 <= len(pts) <= 61
     assert all(p["max"] == 2.0 for p in pts)
+
+
+async def test_flow_pressure_preserves_unpaired_minutes(client, monkeypatch):
+    now = clock.farm_now().replace(second=0, microsecond=0)
+    monkeypatch.setattr(clock, "farm_now", lambda: now)
+    async with async_session_factory() as db:
+        readings = (
+            ("main_pressure_bar", 205, 2.0),
+            ("main_flow_m3h", 145, 3.0),
+            ("main_flow_m3h", 25, 4.0),
+            ("main_pressure_bar", 25, 2.5),
+            ("main_pressure_bar", -10, 99.0),
+        )
+        db.add_all(
+            TelemetryPoint(
+                metric_key=metric,
+                farm_id="farm_algaroshy",
+                ts=now - timedelta(seconds=age),
+                value_numeric=value,
+            )
+            for metric, age, value in readings
+        )
+        await db.commit()
+    response = client.get("/api/v1/telemetry/flow-pressure", headers=login(client, "viewer"))
+    assert response.status_code == 200
+    assert response.json()["points"] == [
+        {"ts": (now - timedelta(seconds=210)).isoformat(), "flow": None, "pressure": 2.0},
+        {"ts": (now - timedelta(seconds=150)).isoformat(), "flow": 3.0, "pressure": None},
+        {"ts": (now - timedelta(seconds=90)).isoformat(), "flow": None, "pressure": None},
+        {"ts": (now - timedelta(seconds=30)).isoformat(), "flow": 4.0, "pressure": 2.5},
+    ]

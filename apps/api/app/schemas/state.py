@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 
 class ZoneLiveState(BaseModel):
@@ -83,3 +83,19 @@ class StateSyncPayload(BaseModel):
     device_key: str
     state_json: dict[str, Any]
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_live_device(self) -> "StateSyncPayload":
+        model = {
+            "zone": ZoneLiveState,
+            "pump": PumpLiveState,
+            "valve": ValveLiveState,
+            "sensor": SensorReading,
+        }.get(self.device_key.partition("_")[0])
+        if model is not None:
+            try:
+                model.model_validate(self.state_json)
+            except ValidationError as exc:
+                fields = ", ".join(".".join(map(str, err["loc"])) for err in exc.errors())
+                raise ValueError(f"Invalid {model.__name__} fields: {fields}") from None
+        return self

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, wr
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { applyPendingRestore, dbPaths, isVirtualOrLinkLocal, keepViteLine, lanAddresses, lanUrls, restartDelay } from './start.mjs';
 
 test('first-run credentials are saved without appearing in launcher output', () => {
@@ -136,19 +137,50 @@ test('applyPendingRestore swaps the chosen backup in and keeps the old database'
   const backups = path.join(dir, 'backups');
   mkdirSync(backups);
   const db = path.join(dir, 'farm.db');
-  writeFileSync(db, 'current');
-  writeFileSync(db + '-wal', 'wal');
-  writeFileSync(path.join(backups, 'farm-20261120-030000.db'), 'old-good');
-  writeFileSync(path.join(backups, 'restore.pending'), 'farm-20261120-030000.db');
-  const name = applyPendingRestore({ db, backups }, new Date('2026-11-24T10:00:00Z'));
-  assert.equal(name, 'farm-20261120-030000.db');
-  assert.equal(readFileSync(db, 'utf8'), 'old-good');
-  assert.equal(existsSync(db + '-wal'), false);
-  assert.equal(existsSync(path.join(backups, 'restore.pending')), false);
-  assert.equal(readFileSync(path.join(backups, 'pre-restore-20261124-100000.db'), 'utf8'), 'current');
-  // a bad marker is dropped without touching the database
-  writeFileSync(path.join(backups, 'restore.pending'), '../farm.db');
-  assert.equal(applyPendingRestore({ db, backups }), null);
-  assert.equal(readFileSync(db, 'utf8'), 'old-good');
-  rmSync(dir, { recursive: true, force: true });
+  const marker = path.join(backups, 'restore.pending');
+  const validBackup = 'farm-20261120-030000.db';
+  const invalidBackup = 'farm-20261121-030000.db';
+  const isWindows = process.platform === 'win32';
+  const venvPython = fileURLToPath(new URL(isWindows
+    ? '../apps/api/.venv/Scripts/python.exe'
+    : '../apps/api/.venv/bin/python', import.meta.url));
+  const [cmd, prefix] = existsSync(venvPython) ? [venvPython, []]
+    : isWindows ? ['py', ['-3']] : ['python3', []];
+  const python = (code, ...args) => {
+    const result = spawnSync(cmd, [...prefix, '-c', code, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  const createDb = (file, name) => python(`
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.executescript("CREATE TABLE farms(name); CREATE TABLE zones(id); CREATE TABLE users(id);")
+    db.execute("INSERT INTO farms VALUES (?)", [sys.argv[2]])
+`, file, name);
+  const readName = (file) => python(`
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    print(db.execute("SELECT name FROM farms").fetchone()[0])
+`, file);
+
+  try {
+    createDb(db, 'current');
+    createDb(path.join(backups, validBackup), 'old-good');
+    writeFileSync(marker, validBackup);
+    const name = applyPendingRestore({ db, backups }, new Date('2026-11-24T10:00:00Z'));
+    assert.equal(name, validBackup);
+    assert.equal(readName(db), 'old-good');
+    assert.equal(existsSync(marker), false);
+    assert.equal(readName(path.join(backups, 'pre-restore-20261124-100000.db')), 'current');
+
+    writeFileSync(path.join(backups, invalidBackup), 'not a database');
+    for (const invalid of [invalidBackup, '../farm.db']) {
+      writeFileSync(marker, invalid);
+      assert.equal(applyPendingRestore({ db, backups }), null);
+      assert.equal(existsSync(marker), false);
+      assert.equal(readName(db), 'old-good');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

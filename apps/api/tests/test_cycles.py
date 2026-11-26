@@ -87,6 +87,7 @@ async def test_cycle_lifecycle_and_water_integration(client):
             assert closed.actual_duration_min == 30
             assert closed.water_estimate_m3 > 0
             assert closed.water_is_estimate is False
+            assert closed.water_has_gaps is True  # Only a short part of the run was observed.
             await db.commit()
         finally:
             clock.farm_now = original_fn
@@ -108,7 +109,7 @@ async def test_cycle_lifecycle_and_water_integration(client):
 
 
 @pytest.mark.asyncio
-async def test_water_estimate_flag_with_fewer_than_two_samples(client):
+async def test_missing_water_with_no_samples(client):
     push_state(client)
     admin = login(client, "admin")
 
@@ -120,18 +121,20 @@ async def test_water_estimate_flag_with_fewer_than_two_samples(client):
     assert start_resp.status_code == 201
 
     async with async_session_factory() as db:
-        # Close without telemetry samples (< 2 samples)
+        # Close without flow telemetry.
         closed = await record_cycle_end_for_zone(db, "zone_zaytoun", outcome="completed")
         assert closed is not None
         assert closed.outcome == "completed"
-        assert closed.water_is_estimate is True
+        assert closed.water_is_estimate is False
+        assert closed.water_has_gaps is True
+        assert closed.water_estimate_m3 is None
         await db.commit()
 
-    # GET /api/v1/cycles must return water_is_estimate == True
     resp = client.get("/api/v1/cycles?zone_id=zone_zaytoun", headers=admin)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["items"][0]["water_is_estimate"] is True
+    assert data["items"][0]["water_is_estimate"] is False
+    assert data["items"][0]["water_has_gaps"] is True
 
 
 @pytest.mark.asyncio
@@ -246,17 +249,17 @@ async def test_zero_flow_run_uses_no_water(client):
                     metric_key="zone.flow_m3h",
                     farm_id="farm_01",
                     zone_id="zone_enab",
-                    ts=start + timedelta(seconds=10 * (i + 1)),
+                    ts=start + timedelta(seconds=10 * i),
                     value_numeric=0.0,
                     value_text="1.0",
                     source="simulator",
                 )
             )
         await db.commit()
-        water, estimate = await integrate_zone_water_m3(
-            db, "zone_enab", start, start + timedelta(minutes=2)
+        volume = await integrate_zone_water_m3(
+            db, "zone_enab", start, start + timedelta(seconds=20)
         )
-    assert water == 0.0 and estimate is False
+    assert volume.m3 == 0.0 and not volume.is_estimate and not volume.has_gaps
 
 
 @pytest.mark.asyncio
@@ -277,7 +280,7 @@ async def test_single_sample_is_flagged_estimate(client):
             )
         )
         await db.commit()
-        water, estimate = await integrate_zone_water_m3(
+        volume = await integrate_zone_water_m3(
             db, "zone_rumman_1", start, start + timedelta(minutes=30)
         )
-    assert estimate is True and water == pytest.approx(3.0)
+    assert volume.is_estimate and volume.has_gaps and volume.m3 == pytest.approx(3.0)

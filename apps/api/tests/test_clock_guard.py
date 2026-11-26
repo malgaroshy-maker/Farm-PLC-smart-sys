@@ -30,6 +30,7 @@ def test_guard_no_forbidden_utcnow_in_services():
         "live_state.py": [
             "((now or utcnow()) - last).total_seconds() <= settings.state_stale_after_sec",  # link staleness
         ],
+        "pump_history.py": ["wall_now = utcnow()"],  # Validate the wall-clock age of run feedback.
         "realtime.py": [
             '{"type": event_type, "ts": utcnow().isoformat(), "payload": jsonable_encoder(payload)}',  # real-time WS envelope timestamp
         ],

@@ -224,7 +224,8 @@ def test_maintenance_done_clears_repeated_fault_alarm(client):
 
 def test_stale_then_comms_lost_then_recovered(client):
     op = login(client, "operator")
-    old = (utcnow() - timedelta(seconds=60)).isoformat()
+    receipt = utcnow()
+    old = (receipt - timedelta(minutes=3)).isoformat()
     push_state(client, updated_at=old)
 
     async def tick():
@@ -232,6 +233,9 @@ def test_stale_then_comms_lost_then_recovered(client):
             await alarm_engine.on_monitor_tick(db, await load_snapshots(db))
 
     asyncio.run(tick())
+    codes = {a["alarm_code"] for a in active(client, op)}
+    assert {"ALM-044", "ALM-029"} <= codes
+    push_state(client, updated_at=(receipt - timedelta(minutes=2)).isoformat())
     codes = {a["alarm_code"] for a in active(client, op)}
     assert {"ALM-044", "ALM-029"} <= codes
     push_state(client)  # data flows again

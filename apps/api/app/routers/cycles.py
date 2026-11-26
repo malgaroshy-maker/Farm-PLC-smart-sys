@@ -7,12 +7,23 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import as_utc
 from app.database import get_db
 from app.deps import Actor, get_actor
 from app.models.irrigation_cycle import IrrigationCycle
 from app.schemas.cycle import CyclesPageResponse, IrrigationCycleResponse
+from app.services.telemetry import known_cycle_water
 
 router = APIRouter(prefix="/cycles", tags=["Cycles"])
+
+
+def _as_response(cycle: IrrigationCycle) -> IrrigationCycleResponse:
+    item = IrrigationCycleResponse.model_validate(cycle)
+    item.water_estimate_m3 = known_cycle_water(item.water_estimate_m3, item.water_is_estimate)
+    if item.water_estimate_m3 is None and item.actual_end_at is not None:
+        item.water_is_estimate = False
+        item.water_has_gaps = True
+    return item
 
 
 @router.get("", response_model=CyclesPageResponse)
@@ -28,7 +39,9 @@ async def list_cycles(
     db: AsyncSession = Depends(get_db),
 ):
     """List irrigation cycles with pagination and filters."""
-    query = select(IrrigationCycle)
+    query = select(IrrigationCycle).where(
+        ~IrrigationCycle.id.startswith("cyc_base_", autoescape=True)
+    )
 
     if zone_id:
         query = query.where(IrrigationCycle.zone_id == zone_id)
@@ -37,9 +50,9 @@ async def list_cycles(
     if program_id:
         query = query.where(IrrigationCycle.program_id == program_id)
     if from_date:
-        query = query.where(IrrigationCycle.actual_start_at >= from_date)
+        query = query.where(IrrigationCycle.actual_start_at >= as_utc(from_date))
     if to_date:
-        query = query.where(IrrigationCycle.actual_start_at <= to_date)
+        query = query.where(IrrigationCycle.actual_start_at <= as_utc(to_date))
 
     # Count total
     count_stmt = select(func.count()).select_from(query.subquery())
@@ -55,7 +68,7 @@ async def list_cycles(
     cycles = result.scalars().all()
 
     pages = max(1, math.ceil(total / page_size))
-    items = [IrrigationCycleResponse.model_validate(c) for c in cycles]
+    items = [_as_response(c) for c in cycles]
     return CyclesPageResponse(
         items=items,
         total=total,
@@ -75,8 +88,11 @@ async def get_recent_zone_cycles(
     """Recent irrigation cycles for a specific zone (for ZoneDrawer history)."""
     res = await db.execute(
         select(IrrigationCycle)
-        .where(IrrigationCycle.zone_id == zone_id)
+        .where(
+            IrrigationCycle.zone_id == zone_id,
+            ~IrrigationCycle.id.startswith("cyc_base_", autoescape=True),
+        )
         .order_by(desc(IrrigationCycle.actual_start_at))
         .limit(limit)
     )
-    return [IrrigationCycleResponse.model_validate(c) for c in res.scalars().all()]
+    return [_as_response(c) for c in res.scalars().all()]

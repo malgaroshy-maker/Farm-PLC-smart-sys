@@ -26,9 +26,11 @@ from app.services.alarms import OPEN
 from app.services.conflicts import parse_time_minutes, parse_weekday_mask
 from app.services.events import log_event
 from app.services.realtime import manager
+from app.services.telemetry import known_cycle_water
 from app.services.weather import is_usable_forecast, weather_service
 
 log = logging.getLogger(__name__)
+WATER_FACTS_VERSION = 4
 
 
 async def get_briefing_schedule(db: AsyncSession, briefing_date: str) -> list[dict] | None:
@@ -106,7 +108,11 @@ async def get_or_generate_daily_briefing(
         )
         res = await db.execute(stmt)
         existing = res.scalar_one_or_none()
-        if existing and json.loads(existing.payload_json or "{}").get("facts_version") == 2:
+        if (
+            existing
+            and json.loads(existing.payload_json or "{}").get("facts_version")
+            == WATER_FACTS_VERSION
+        ):
             # briefings stored before the G2 normalizer may hold Arabic-Indic digits
             for field in ("summary_ar", "weather_summary_ar"):
                 val = getattr(existing, field, None)
@@ -136,8 +142,9 @@ async def get_or_generate_daily_briefing(
             "id": c.id,
             "zone_id": c.zone_id,
             "outcome": c.outcome,
-            "water_volume_m3": c.water_estimate_m3,
+            "water_volume_m3": known_cycle_water(c.water_estimate_m3, c.water_is_estimate),
             "water_is_estimate": c.water_is_estimate,
+            "water_has_gaps": c.water_has_gaps,
             "duration_minutes": c.actual_duration_min,
         }
         for c in cycles_models
@@ -176,7 +183,9 @@ async def get_or_generate_daily_briefing(
     ]
     metrics = {
         "water_used_yesterday_m3": sum(known_volumes)
-        if known_volumes and len(known_volumes) == len(cycles_dicts)
+        if known_volumes
+        and len(known_volumes) == len(cycles_dicts)
+        and not any(row["water_has_gaps"] for row in cycles_dicts)
         else None,
         "water_is_estimate": any(
             row["water_is_estimate"] for row in cycles_dicts if row["water_volume_m3"] is not None
@@ -222,7 +231,7 @@ async def get_or_generate_daily_briefing(
         alarms_overview_ar=briefing_data.alarms_overview_ar,
         recommendations_json=json.dumps(briefing_data.recommendations),
         payload_json=json.dumps(
-            {**briefing_data.model_dump(), "facts_version": 2, "metrics": metrics}
+            {**briefing_data.model_dump(), "facts_version": WATER_FACTS_VERSION, "metrics": metrics}
         ),
         provider_used=briefing_data.provider_used,
         created_at=now_farm,

@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { ZONE_BY_ID, useZoneCatalog, zoneList } from '../../lib/zones';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { Alarm, FarmMapState, TelemetrySeries } from '@algaroshy/contracts';
+import type { Alarm, FarmMapState, FlowPressureSeries, TelemetrySeries, WaterToday } from '@algaroshy/contracts';
 import { usePoll } from '../../lib/poll';
 import { SEVERITY, sortAlarms } from '../../lib/alarms';
 import { fmtNum, pickName, useT, type MsgKey } from '../../lib/i18n';
 import { AlarmIcon, PumpIcon, TankIcon } from '../icons/FarmIcons';
 import { parseUtcDate, useClockStore } from '../../lib/clock';
+import WaterCoverageNote from '../WaterCoverageNote';
 
 const CYAN = '#00e5ff';
 const SEED = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
@@ -138,13 +139,12 @@ export function TrendsCard() {
   const fast = speed >= 60 ? 3_000 : speed >= 10 ? 8_000 : 30_000;
   const fastLong = speed >= 60 ? 5_000 : speed >= 10 ? 15_000 : 60_000;
   const tank = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=tank_level_pct&minutes=1440&points=72', fastLong);
-  const flow = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=main_flow_m3h&minutes=60&points=60', fast);
-  const pres = usePoll<TelemetrySeries>('/api/v1/telemetry/series?metric_key=main_pressure_bar&minutes=60&points=60', fast);
-  const water = usePoll<{ zones: { zone_id: string; m3: number }[]; total_m3: number }>('/api/v1/telemetry/water-today', fast);
+  const flowPressure = usePoll<FlowPressureSeries>('/api/v1/telemetry/flow-pressure', fast);
+  const water = usePoll<WaterToday>('/api/v1/telemetry/water-today', fast);
 
-  const flowRows = (flow?.points ?? []).map((p, i) => ({ time: hhmm(p.ts), flow: p.value, pressure: pres?.points[i]?.value }));
+  const flowRows = (flowPressure?.points ?? []).map(({ ts, flow, pressure }) => ({ time: hhmm(ts), flow, pressure }));
   const waterRows = (water?.zones ?? [])
-    .filter((z) => z.m3 > 0)
+    .filter((z) => z.m3 !== null && z.m3 > 0)
     .map((z) => ({ name: pickName(lang, SEED[z.zone_id]?.name, SEED[z.zone_id]?.name_ar), m3: z.m3 }));
 
   return (
@@ -187,7 +187,9 @@ export function TrendsCard() {
         )}
         {tab === 'water' &&
           (waterRows.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-xs text-[#849396]">{t('dash.noWater')}</div>
+            <div className="h-full flex items-center justify-center text-xs text-[#849396]">
+              {t(water?.total_m3 === 0 && !water.water_has_gaps ? 'dash.noWater' : 'water.unavailable')}
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={waterRows} layout="vertical" margin={{ left: 8 }}>
@@ -199,9 +201,10 @@ export function TrendsCard() {
             </ResponsiveContainer>
           ))}
       </div>
-      {tab === 'water' && water && (
+      {tab === 'water' && water && water.total_m3 !== null && (
         <div className="text-xs text-[#849396]">
           {t('dash.waterTotal')}: <bdi className="font-mono text-[#e5e2e1]">{fmtNum(water.total_m3, 2)} m³</bdi>
+          <WaterCoverageNote coverage={water} />
         </div>
       )}
     </div>

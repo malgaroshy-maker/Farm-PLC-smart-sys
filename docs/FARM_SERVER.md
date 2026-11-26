@@ -47,7 +47,7 @@ The API copies the database:
 - every day at `BACKUP_TIME` (default 03:00, farm time);
 - whenever an admin presses **Back up now** in Settings → Backups.
 
-The copy is taken with SQLite's online backup, so it is safe while the farm is running. The newest `BACKUP_KEEP` copies (default 14) are kept in `apps/api/backups/`.
+The copy is taken with SQLite's online backup, so it is safe while the farm is running. The newest `BACKUP_KEEP` copies (default 14) are kept in `apps/api/backups/`. A backup selected for restore is kept until the request is applied or cancelled.
 
 Two optional extra copies, set in `.env`:
 
@@ -59,9 +59,12 @@ Two optional extra copies, set in `.env`:
 Restart the server after changing `.env`.
 
 **Restore.** In Settings → Backups, press **Restore** next to a backup and confirm. Nothing changes until the next server restart. Then, before the database opens, the launcher:
-1. saves the current database as `backups/pre-restore-<date>.db`;
-2. puts the chosen backup in its place;
-3. starts as usual.
+
+1. verifies the selected file is a readable Farm-PLC database;
+2. saves the current database, including committed changes still in SQLite's write-ahead log, as `backups/pre-restore-<date>.db`;
+3. restores through SQLite and clears the request after the restore succeeds.
+
+If the current database is unreadable, the launcher preserves the damaged file and its SQLite sidecars before replacing it with the verified backup.
 
 You can cancel a pending restore before the restart. To restart:
 - Windows: restart the PC, or run `stop.bat` then `Start-ScheduledTask AlgaroshyFarmServer`.

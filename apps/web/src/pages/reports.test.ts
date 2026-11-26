@@ -9,49 +9,48 @@ import { computeReportDateRange } from '../lib/reportsHelper';
 import ModelBadge from '../components/ai/ModelBadge';
 import { getBottomNavItems } from '../lib/nav';
 import InstallPrompt from '../components/InstallPrompt';
+import WaterCoverageNote from '../components/WaterCoverageNote';
 import { isInstallDismissed, INSTALL_STORAGE_KEY } from '../lib/installPrompt';
 import { useI18nStore } from '../lib/i18n';
 import { reorderSteps, getDayInitial } from '../lib/schedulesHelper';
 
 describe('Reports page unit tests', () => {
+  it('shows coverage notes in English and missing readings in Arabic', async () => {
+    const language = useI18nStore.getState().lang;
+    const div = document.createElement('div');
+    const root = createRoot(div);
+    try {
+      await act(async () => {
+        useI18nStore.getState().setLang('en');
+        root.render(React.createElement(WaterCoverageNote, {
+          coverage: { water_is_estimate: true, water_has_gaps: true },
+        }));
+      });
+      expect(div.textContent).toBe('Includes estimates · Some readings are missing');
+      await act(async () => {
+        useI18nStore.getState().setLang('ar');
+        root.render(React.createElement(WaterCoverageNote, { unavailable: true }));
+      });
+      expect(div.textContent).toBe('قراءات المياه غير متاحة');
+    } finally {
+      await act(async () => {
+        root.unmount();
+        useI18nStore.getState().setLang(language);
+      });
+    }
+  });
+
   it('computes inclusive farm-local dates correctly for presets', () => {
     // Reference date: 2026-11-19
     const testDate = new Date('2026-11-19T10:00:00Z');
 
-    const computeRange = (preset: 'today' | 'week' | 'month', now: Date) => {
-      const to = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Africa/Tripoli',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(now);
-
-      const d = new Date(now);
-      if (preset === 'today') {
-        return { fromDate: to, toDate: to };
-      }
-      if (preset === 'week') {
-        d.setDate(d.getDate() - 6);
-      } else {
-        d.setDate(d.getDate() - 29);
-      }
-      const from = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Africa/Tripoli',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(d);
-
-      return { fromDate: from, toDate: to };
-    };
-
     // Today: 1 day
-    const todayRange = computeRange('today', testDate);
+    const todayRange = computeReportDateRange('today', testDate);
     expect(todayRange.fromDate).toBe('2026-11-19');
     expect(todayRange.toDate).toBe('2026-11-19');
 
     // 7 Days: exactly 7 inclusive dates (13, 14, 15, 16, 17, 18, 19)
-    const weekRange = computeRange('week', testDate);
+    const weekRange = computeReportDateRange('week', testDate);
     expect(weekRange.fromDate).toBe('2026-11-13');
     expect(weekRange.toDate).toBe('2026-11-19');
     const weekDiff =
@@ -62,7 +61,7 @@ describe('Reports page unit tests', () => {
     expect(weekDiff).toBe(7);
 
     // 30 Days: exactly 30 inclusive dates
-    const monthRange = computeRange('month', testDate);
+    const monthRange = computeReportDateRange('month', testDate);
     expect(monthRange.toDate).toBe('2026-11-19');
     const monthDiff =
       Math.round(
@@ -72,10 +71,18 @@ describe('Reports page unit tests', () => {
     expect(monthDiff).toBe(30);
   });
 
+  it('computes the inclusive range when the farm day and UTC day differ', () => {
+    expect(computeReportDateRange('week', new Date('2026-12-31T22:05:00Z'))).toEqual({
+      fromDate: '2026-12-26', toDate: '2027-01-01',
+    });
+  });
+
   it('aggregates daily row counts without ever producing NaN', () => {
     const row: DailyIrrigationReportRow = {
       date: '2026-11-19',
       total_water_m3: 12.5,
+      water_is_estimate: false,
+      water_has_gaps: false,
       cycle_count: 5,
       completed_count: 3,
       aborted_count: 1,
@@ -133,12 +140,12 @@ describe('Reports page unit tests', () => {
       const testDate = new Date('2026-11-20T10:00:00Z');
       const range = computeReportDateRange('week', testDate);
       expect(range.toDate).toBe('2026-11-20');
-      expect(range.fromDate).toBe('2026-11-13');
+      expect(range.fromDate).toBe('2026-11-14');
 
       const diffDays = Math.round(
         (new Date(range.toDate).getTime() - new Date(range.fromDate).getTime()) / (1000 * 60 * 60 * 24)
       );
-      expect(diffDays).toBe(7);
+      expect(diffDays + 1).toBe(7);
     });
 
     it('Phone nav has exactly 4 bottom items', () => {

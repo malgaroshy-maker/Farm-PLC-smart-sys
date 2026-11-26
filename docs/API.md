@@ -162,6 +162,14 @@ Admin only.
 ### GET /api/v1/telemetry/current
 Returns summarized live values.
 
+### GET /api/v1/telemetry/flow-pressure
+
+Returns main-line flow in m³/h and pressure in bar in shared one-minute buckets from the past hour. A missing measurement is `null`.
+
+### GET /api/v1/telemetry/water-today
+
+Returns `total_m3` and `zones` from farm-local midnight through the current farm time. Each zone has its `zone_id` and `m3` volume. The total and zone entries include `water_is_estimate` and `water_has_gaps`. A value is `null` when the volume is unknown and `0` when measured as zero. A run spanning midnight contributes only the volume supported by flow readings within today's portion.
+
 ### GET /api/v1/telemetry/history
 Query params:
 - metric_key
@@ -199,7 +207,7 @@ Filters:
 Aggregated operational reports grounded in farm local time (`Africa/Tripoli`).
 
 Query Parameters for all reports:
-- `from_date` (YYYY-MM-DD): Start date in farm local time (default: today - 7 days)
+- `from_date` (YYYY-MM-DD): Start date in farm local time. By default the report includes the last seven calendar dates through `to_date`.
 - `to_date` (YYYY-MM-DD): End date in farm local time (default: today)
 - `format` (json | csv): Data format (default: json). When `format=csv`, returns a CSV file with `text/csv; charset=utf-8` header and UTF-8 Byte Order Mark (`\ufeff`) so Excel renders Arabic characters cleanly.
 - `lang` (ar | en): Language for CSV column headers. When `ar`, column headers are Arabic.
@@ -210,8 +218,13 @@ Aggregated daily water usage (m³) and cycle counts (total, completed, aborted, 
 ### GET /api/v1/reports/water-usage
 Aggregated water consumption and total runtimes per zone.
 
+Both water reports group cycles by their farm-local start date. `total_water_m3` is `null` when no volume is known for the row and appears blank in CSV. A measured zero stays numeric. `water_is_estimate` indicates that the total includes an extrapolated cycle volume. `water_has_gaps` indicates incomplete or missing cycle readings. Both flags appear in JSON and CSV.
+
 ### GET /api/v1/reports/pump-runtime
-Cumulative runtime hours and start counts per pump.
+
+Observed runtime hours and starts per pump. Runtime covers continuous intervals between fresh run-feedback samples. A start counts only when an observed stopped pump changes to running. An interruption in feedback breaks the interval, so the report leaves that time out of the totals. Dates use the farm calendar.
+
+`history_status` is `complete`, `partial`, or `unavailable`, with `observed_seconds` and `window_seconds` giving the coverage. Missing totals are `null` in JSON and blank in CSV. `history_source` identifies simulation or controller history. The report keeps those histories separate. Pump faults count alarms with the corresponding pump's recorded device ID.
 
 ### GET /api/v1/reports/alarm-history
 Historical alarm occurrences grouped by alarm code, severity, and bilingual title.

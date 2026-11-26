@@ -6,6 +6,7 @@ a full extra LLM request. Only real values are included; anything missing is sai
 """
 
 import logging
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -139,15 +140,18 @@ async def build_live_snapshot_block(
         lines.append("LIVE FARM SNAPSHOT: unavailable")
 
     fc = weather_service._cached_forecast  # cached only: never block the answer on the network
-    if fc and fc.daily and is_usable_forecast(fc):
-        parts = []
-        for label, d in zip(("today", "tomorrow"), fc.daily[:2], strict=False):
-            parts.append(
-                f"{label} max {_f(d.temp_max_c, 0)}°C min {_f(d.temp_min_c, 0)}°C, rain {_f(d.precipitation_total_mm)} mm "
-                f"({_f(d.precipitation_probability_pct, 0)} %), ET₀ {_f(d.et0_mm, 2)} mm"
+    today = clock.farm_now().astimezone(ZoneInfo(settings.farm_timezone)).date()
+    daily = {d.date: d for d in fc.daily} if fc and is_usable_forecast(fc) else {}
+    for label, day in (("today", today), ("tomorrow", today + timedelta(days=1))):
+        d = daily.get(day.isoformat())
+        if d is not None:
+            lines.append(
+                f"- Weather {label}: max {_f(d.temp_max_c, 0)}°C min {_f(d.temp_min_c, 0)}°C, "
+                f"rain {_f(d.precipitation_total_mm)} mm ({_f(d.precipitation_probability_pct, 0)} %), "
+                f"ET₀ {_f(d.et0_mm, 2)} mm"
             )
-        lines.append("- Weather: " + "; ".join(parts))
-        d0 = fc.daily[0]
+    d0 = daily.get(today.isoformat())
+    if d0 is not None:
         facts["weather"] = {
             "max": d0.temp_max_c,
             "rain_mm": d0.precipitation_total_mm,
@@ -155,5 +159,5 @@ async def build_live_snapshot_block(
             "et0": d0.et0_mm,
         }
     else:
-        lines.append("- Weather: forecast not loaded yet (say so if asked)")
+        lines.append("- Weather today: forecast unavailable (say so if asked)")
     return "\n".join(lines)

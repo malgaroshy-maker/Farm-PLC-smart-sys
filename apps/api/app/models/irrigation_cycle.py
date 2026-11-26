@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, IdentityMixin, TimestampMixin
@@ -34,6 +34,7 @@ class IrrigationCycle(Base, IdentityMixin, TimestampMixin):
     initiated_by_id: Mapped[str | None] = mapped_column(String(64))
     water_estimate_m3: Mapped[float | None] = mapped_column(Float)
     water_is_estimate: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    water_has_gaps: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
     alarms_json: Mapped[str | None] = mapped_column(Text)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)

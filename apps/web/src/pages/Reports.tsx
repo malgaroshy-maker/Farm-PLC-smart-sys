@@ -18,6 +18,7 @@ import type {
   AlarmHistoryReportRow,
 } from '@algaroshy/contracts';
 import { ErrorState } from '../components/EmptyState';
+import WaterCoverageNote from '../components/WaterCoverageNote';
 import { apiFetch, apiUrl, session } from '../lib/api';
 import { useFarmClock } from '../lib/clock';
 import { fmtNum, pickName, useT, type MsgKey } from '../lib/i18n';
@@ -32,11 +33,6 @@ const GREEN = '#7ee787';
 const RED = '#ff5449';
 
 type ReportTab = 'daily' | 'water' | 'pumps' | 'alarms';
-
-const PUMP_NAMES: Record<string, [string, string]> = {
-  pump_booster_01: ['Booster pump', 'مضخة التعزيز'],
-  pump_well_01: ['Well pump', 'مضخة البئر'],
-};
 
 export default function ReportsPage() {
   const { t, lang } = useT();
@@ -59,6 +55,7 @@ export default function ReportsPage() {
   const [waterData, setWaterData] = useState<WaterUsageReportRow[]>([]);
   const [pumpData, setPumpData] = useState<PumpRuntimeReportRow[]>([]);
   const [alarmData, setAlarmData] = useState<AlarmHistoryReportRow[]>([]);
+  const observedPumps = pumpData.filter((pump) => pump.history_status !== 'unavailable');
 
   useEffect(() => {
     let active = true;
@@ -130,11 +127,13 @@ export default function ReportsPage() {
   };
 
   // Summaries
-  const totalWater = useMemo(() => {
-    if (tab === 'daily') return dailyData.reduce((s, r) => s + (r.total_water_m3 ?? 0), 0);
-    if (tab === 'water') return waterData.reduce((s, r) => s + (r.total_water_m3 ?? 0), 0);
-    return 0;
-  }, [tab, dailyData, waterData]);
+  const waterRows = tab === 'daily' ? dailyData : waterData;
+  const knownWater = waterRows.flatMap((row) => row.total_water_m3 === null ? [] : [row.total_water_m3]);
+  const totalWater = knownWater.length ? knownWater.reduce((sum, volume) => sum + volume, 0) : null;
+  const waterCoverage = {
+    water_has_gaps: waterRows.some((row) => row.water_has_gaps),
+    water_is_estimate: waterRows.some((row) => row.water_is_estimate),
+  };
 
   const totalCycles = useMemo(() => {
     if (tab === 'daily') return dailyData.reduce((s, r) => s + (r.cycle_count ?? 0), 0);
@@ -212,8 +211,9 @@ export default function ReportsPage() {
           <div className="panel p-4">
             <div className="text-xs text-[#849396]">{t('reports.totalWater')}</div>
             <div className="text-2xl font-bold font-mono text-[#00e5ff] mt-1" dir="ltr">
-              {fmtNum(totalWater, 2)} <span className="text-xs text-[#849396]">m³</span>
+              {fmtNum(totalWater, 2)} {totalWater !== null && <span className="text-xs text-[#849396]">m³</span>}
             </div>
+            <WaterCoverageNote coverage={waterCoverage} unavailable={totalWater === null} />
           </div>
           <div className="panel p-4">
             <div className="text-xs text-[#849396]">{t('reports.totalCycles')}</div>
@@ -314,18 +314,15 @@ export default function ReportsPage() {
               </ResponsiveContainer>
             )
           ) : tab === 'pumps' ? (
-            pumpData.length === 0 ? (
-              <ChartEmpty text={t('reports.empty')} />
+            observedPumps.length === 0 ? (
+              <ChartEmpty text={t('reports.pumpHistoryMissing')} />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={pumpData.map((p) => {
-                    const [en, ar] = PUMP_NAMES[p.pump_id] ?? [p.pump_id, p.pump_id];
-                    return {
-                      ...p,
-                      name: lang === 'ar' ? ar : en,
-                    };
-                  })}
+                  data={observedPumps.map((pump) => ({
+                    ...pump,
+                    name: pickName(lang, pump.pump_name, pump.pump_name_ar),
+                  }))}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                   <XAxis dataKey="name" stroke="#849396" fontSize={11} tickLine={false} axisLine={false} />
@@ -398,7 +395,10 @@ export default function ReportsPage() {
                   dailyData.map((row) => (
                     <tr key={row.date} className="hover:bg-white/5">
                       <td className="p-3 font-mono text-[#e5e2e1]">{row.date}</td>
-                      <td className="p-3 text-end font-mono text-[#00e5ff]">{fmtNum(row.total_water_m3, 2)}</td>
+                      <td className="p-3 text-end text-[#00e5ff]">
+                        <bdi className="font-mono">{fmtNum(row.total_water_m3, 2)}</bdi>
+                        <WaterCoverageNote coverage={row} />
+                      </td>
                       <td className="p-3 text-end font-mono">{row.cycle_count ?? 0}</td>
                       <td className="p-3 text-end font-mono text-[#7ee787]">{row.completed_count ?? 0}</td>
                       <td className="p-3 text-end font-mono text-[#ff5449]">
@@ -442,7 +442,10 @@ export default function ReportsPage() {
                           {Crop && <Crop size={14} />}
                           <span>{seed ? t(`crop.${seed.crop_type}` as MsgKey) : '—'}</span>
                         </td>
-                        <td className="p-3 text-end font-mono text-[#00e5ff]">{fmtNum(row.total_water_m3, 2)}</td>
+                        <td className="p-3 text-end text-[#00e5ff]">
+                          <bdi className="font-mono">{fmtNum(row.total_water_m3, 2)}</bdi>
+                          <WaterCoverageNote coverage={row} />
+                        </td>
                         <td className="p-3 text-end font-mono">{row.cycle_count}</td>
                         <td className="p-3 text-end font-mono">{row.total_duration_min} {t('common.min')}</td>
                       </tr>
@@ -471,12 +474,18 @@ export default function ReportsPage() {
                   </tr>
                 ) : (
                   pumpData.map((row) => {
-                    const [en, ar] = PUMP_NAMES[row.pump_id] ?? [row.pump_id, row.pump_id];
+                    const notes = [];
+                    if (row.history_status === 'unavailable') notes.push(t('reports.pumpHistoryMissing'));
+                    if (row.history_status === 'partial') notes.push(t('reports.pumpHistoryPartial'));
+                    if (row.history_source === 'simulation') notes.push(t('reports.pumpHistorySimulated'));
                     return (
                       <tr key={row.pump_id} className="hover:bg-white/5">
-                        <td className="p-3 font-bold text-[#e5e2e1]">{lang === 'ar' ? ar : en}</td>
-                        <td className="p-3 text-end font-mono text-[#00e5ff]">{fmtNum(row.runtime_hours, 2)} h</td>
-                        <td className="p-3 text-end font-mono text-[#ffeb3b]">{row.start_count}</td>
+                        <td className="p-3 font-bold text-[#e5e2e1]">
+                          {pickName(lang, row.pump_name, row.pump_name_ar)}
+                          {notes.length > 0 && <div className="mt-1 font-normal text-[#849396]">{notes.join(' · ')}</div>}
+                        </td>
+                        <td className="p-3 text-end font-mono text-[#00e5ff]">{fmtNum(row.runtime_hours, 4)}</td>
+                        <td className="p-3 text-end font-mono text-[#ffeb3b]">{fmtNum(row.start_count)}</td>
                       </tr>
                     );
                   })
