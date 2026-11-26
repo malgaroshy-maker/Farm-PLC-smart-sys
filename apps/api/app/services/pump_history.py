@@ -57,7 +57,10 @@ async def record_pump_feedback(db: AsyncSession, payloads: list[StateSyncPayload
             .limit(1)
         )
         continuous = False
-        if previous:
+        # a last sample ahead of our clock means the clock was set back: start a new span
+        if previous and (as_utc(previous.last_sample_at) - wall_now).total_seconds() <= (
+            settings.state_stale_after_sec
+        ):
             seconds = (sampled_at - as_utc(previous.last_sample_at)).total_seconds()
             if seconds <= 0:
                 continue

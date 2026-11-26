@@ -88,7 +88,7 @@ run.bat reset      # clear alarms/commands/events/telemetry first (keeps users +
 ```
 That's all. On first run the launcher sets itself up:
 1. creates `.env` from `.env.example` and saves the generated credentials there
-2. creates the Python venv and installs the requirements (and reinstalls when `requirements.txt` changes)
+2. creates the Python venv and installs the requirements at the versions pinned in `requirements.lock` (and reinstalls when either file changes)
 3. runs `pnpm install` (and again when `pnpm-lock.yaml` changes)
 4. migrates and seeds the database
 

@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Safety and security audit fixes (2026-11-27)
+
+- **STOP ALL now ends a running irrigation program.** Before this fix the program started its next zone moments later.
+- Simultaneous start requests can no longer exceed the zone limit. The PLC source now counts starts accepted in the same scan (not yet compiled or tested in TIA/PLCSIM).
+- A program that comes due while another is still running is now recorded as missed.
+- Live data recovers when the gateway or server clock is set back.
+- A clean irrigation run is no longer reported as having missing flow readings.
+- Five wrong passwords pause sign-in for that username for up to 5 minutes. Failed sign-ins are logged.
+- Push subscriptions are accepted only for browser push services, and a user can remove only their own device (an admin can remove any).
+- Telegram messages are escaped, so `<` or `&` no longer makes sending fail.
+- JavaScript packages updated; `pnpm audit` reports no known vulnerabilities.
+- Python versions are pinned in `apps/api/requirements.lock`. Added the missing `tzdata` dependency (needed on a fresh Windows install) and removed unused packages.
+- Fixed tests that failed between 00:00 and 02:00 Tripoli time, and a scheduler test that could race the startup monitor tick.
+
 ### Weather, backups, and reporting
 
 - Weather requires provider observations for current conditions and for each forecast row. Cold failures show unavailable weather, and expired cache entries are excluded from the map and irrigation advice.

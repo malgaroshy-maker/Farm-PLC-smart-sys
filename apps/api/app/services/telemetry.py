@@ -207,6 +207,24 @@ class FlowVolume:
     covered_seconds: float = 0.0
     first_rate: float | None = None
     rate_count: int = 0
+    covered_from: datetime | None = None
+    covered_to: datetime | None = None
+    edge_allowance_s: float = 0.0
+
+    def has_gaps(self, start: datetime, stop: datetime) -> bool:
+        """True when readings are missing from start..stop.
+
+        Readings never fall exactly on a run's first and last second, so each end may be
+        short by one normal sampling interval. A break in the middle always counts.
+        """
+        if self.covered_from is None or self.covered_to is None:
+            return True
+        span = (self.covered_to - self.covered_from).total_seconds()
+        return (
+            span - self.covered_seconds > 0.001
+            or (self.covered_from - start).total_seconds() > self.edge_allowance_s
+            or (stop - self.covered_to).total_seconds() > self.edge_allowance_s
+        )
 
 
 def integrate_flow(samples: Iterable[FlowSample], start: datetime, stop: datetime) -> FlowVolume:
@@ -239,6 +257,11 @@ def integrate_flow(samples: Iterable[FlowSample], start: datetime, stop: datetim
                 right_rate = prior_rate + slope * (right - prior_time).total_seconds()
                 total.m3 = (total.m3 or 0) + (left_rate + right_rate) * seconds / 7200
                 total.covered_seconds += seconds
+                total.covered_from = total.covered_from or left
+                total.covered_to = right
+                # samples are 10 farm seconds apart, or one per real second when faster
+                interval = max(10.0, speed, prior_speed)
+                total.edge_allowance_s = max(total.edge_allowance_s, 1.5 * interval)
         previous = (timestamp, rate, speed)
     return total
 
@@ -346,8 +369,7 @@ async def water_today(db: AsyncSession) -> list[dict]:
     for zone in windows.keys() | samples.keys():
         for start, stop in windows.get(zone, [(since, now_farm)]):
             volume = integrate_flow(samples[zone], start, stop)
-            duration = (stop - start).total_seconds()
-            add(zone, volume.m3, False, volume.covered_seconds + 0.001 < duration)
+            add(zone, volume.m3, False, volume.has_gaps(start, stop))
     for row in totals.values():
         if row["m3"] is not None:
             row["m3"] = round(row["m3"], 3)

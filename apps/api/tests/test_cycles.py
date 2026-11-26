@@ -1,6 +1,6 @@
 """Tests for irrigation cycle logging and endpoints (/api/v1/cycles)."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from conftest import login, push_state
@@ -12,6 +12,9 @@ from app.models.irrigation_cycle import IrrigationCycle
 from app.models.telemetry import TelemetryPoint
 from app.services.cycles import (
     record_cycle_end_for_zone,
+)
+from app.services.telemetry import (
+    integrate_flow,
 )
 
 
@@ -284,3 +287,21 @@ async def test_single_sample_is_flagged_estimate(client):
             db, "zone_rumman_1", start, start + timedelta(minutes=30)
         )
     assert volume.is_estimate and volume.has_gaps and volume.m3 == pytest.approx(3.0)
+
+
+def test_only_real_breaks_count_as_missing_readings():
+    start = datetime(2026, 11, 27, 8, 0, tzinfo=UTC)
+    stop = start + timedelta(minutes=10)
+
+    def volume(seconds):
+        return integrate_flow(
+            [(start + timedelta(seconds=s), 6.0, "1", "good") for s in seconds], start, stop
+        )
+
+    # a clean run: sampled every 10 s, never exactly on the first or last second
+    assert not volume(range(7, 597, 10)).has_gaps(start, stop)
+    # a break in the middle, a late first reading and an early last reading all count
+    assert volume([*range(7, 200, 10), *range(400, 597, 10)]).has_gaps(start, stop)
+    assert volume(range(40, 597, 10)).has_gaps(start, stop)
+    assert volume(range(7, 560, 10)).has_gaps(start, stop)
+    assert volume([]).has_gaps(start, stop)

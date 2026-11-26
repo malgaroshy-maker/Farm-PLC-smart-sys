@@ -42,7 +42,9 @@ def _build_forecast_day(
     temp_max: float, precip_mm: float, precip_prob: float, et0: float, date_str: str | None = None
 ) -> WeatherForecast:
     now_iso = clock.farm_now().isoformat()
-    today_date = date_str or clock.farm_now().strftime("%Y-%m-%d")
+    today_date = date_str or clock.farm_now().astimezone(ZoneInfo(settings.farm_timezone)).strftime(
+        "%Y-%m-%d"
+    )
     cur = WeatherData(
         timestamp=now_iso,
         temperature_c=temp_max - 5.0,

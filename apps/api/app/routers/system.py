@@ -23,6 +23,7 @@ from app.deps import Actor, get_actor, require_admin
 from app.services.ai.agent import is_primary_degraded
 from app.services.live_state import last_update, load_snapshots
 from app.services.monitor import MONITOR_STATUS
+from app.services.push_endpoint import is_push_service_url
 from app.services.weather import weather_service
 
 router = APIRouter(prefix="/system", tags=["System"])
@@ -316,6 +317,8 @@ async def push_subscribe(
 
     if not body.keys.get("p256dh") or not body.keys.get("auth"):
         raise HTTPException(422, "subscription keys missing")
+    if not is_push_service_url(body.endpoint):
+        raise HTTPException(422, "not a browser push service address")
     row = (
         await db.execute(
             _select(PushSubscription).where(PushSubscription.endpoint == body.endpoint)
@@ -337,12 +340,15 @@ async def push_subscribe(
 
 @router.post("/push/unsubscribe")
 async def push_unsubscribe(
-    body: PushSubscriptionIn, _: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)
+    body: PushSubscriptionIn, actor: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)
 ):
     from sqlalchemy import delete as _delete
 
     from app.models.notification import PushSubscription
 
-    await db.execute(_delete(PushSubscription).where(PushSubscription.endpoint == body.endpoint))
+    query = _delete(PushSubscription).where(PushSubscription.endpoint == body.endpoint)
+    if actor.role != "owner_admin":  # only your own devices
+        query = query.where(PushSubscription.user_id == actor.actor_id)
+    await db.execute(query)
     await db.commit()
     return {"ok": True}

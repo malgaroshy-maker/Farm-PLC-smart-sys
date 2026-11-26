@@ -328,3 +328,10 @@ Error example:
 - expose reason codes for rejections
 - return last-known state with freshness metadata
 - keep `zone_id`, `device_id`, `alarm_id`, `command_id` stable across systems
+
+## Security rules (2026-11-27)
+
+- `POST /api/v1/auth/login`: after 5 failed attempts for a username within 5 minutes the API answers `429` with a `Retry-After` header.
+- `POST /api/v1/system/push/subscribe`: the endpoint must be an HTTPS address of a browser push service (Google, Mozilla, Apple or Microsoft); anything else gets `422`.
+- `POST /api/v1/system/push/unsubscribe`: removes only the caller's own device, unless the caller is an admin.
+- `stop_all` ends any irrigation program that is running. The event log records `program.cancelled`.

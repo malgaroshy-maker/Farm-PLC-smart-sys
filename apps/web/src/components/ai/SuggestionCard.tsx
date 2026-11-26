@@ -21,7 +21,7 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
   const [busy, setBusy] = useState(false);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [undoSeconds, setUndoSeconds] = useState(5);
-  const undoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     return () => {

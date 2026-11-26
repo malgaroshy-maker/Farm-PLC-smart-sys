@@ -72,7 +72,7 @@ async def integrate_zone_water_m3(
         return CycleWater(
             round(observed.m3, 4),
             is_estimate=False,
-            has_gaps=observed.covered_seconds + 0.001 < duration,
+            has_gaps=observed.has_gaps(start_utc, end_utc),
         )
     if observed.rate_count == 1 and observed.first_rate:
         return CycleWater(observed.first_rate * duration / 3600, is_estimate=True, has_gaps=True)

@@ -141,17 +141,20 @@ const hashFile = (f) => createHash('sha256').update(readFileSync(f)).digest('hex
 
 function ensurePython() {
   const req = path.join(API_DIR, 'requirements.txt');
+  // requirements.lock pins every version; to upgrade, see the header of requirements.txt
+  const lock = path.join(API_DIR, 'requirements.lock');
   const marker = path.join(API_DIR, '.venv', '.requirements.sha256');
+  const wanted = hashFile(req) + hashFile(lock);
   if (!existsSync(VENV_PY)) {
     const py = findPython();
     if (!py) die('Python 3.11+ not found. Install it from python.org (tick "Add to PATH"), then run again.');
     log('setup', 'Creating Python virtual environment (first run)…');
     if (!run(py[0], [...py[1], '-m', 'venv', path.join(API_DIR, '.venv')])) die('Could not create the Python venv.');
   }
-  if (!existsSync(marker) || readFileSync(marker, 'utf8') !== hashFile(req)) {
+  if (!existsSync(marker) || readFileSync(marker, 'utf8') !== wanted) {
     log('setup', 'Installing Python requirements…');
-    if (!run(VENV_PY, ['-m', 'pip', 'install', '-q', '-r', req])) die('pip install failed (see output above).');
-    writeFileSync(marker, hashFile(req));
+    if (!run(VENV_PY, ['-m', 'pip', 'install', '-q', '-r', req, '-c', lock])) die('pip install failed (see output above).');
+    writeFileSync(marker, wanted);
   }
 }
 

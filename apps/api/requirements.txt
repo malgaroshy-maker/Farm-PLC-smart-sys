@@ -1,4 +1,8 @@
-# Algaroshy Farm API — pip requirements (fallback from pyproject.toml)
+# Algaroshy Farm API — pip requirements (keep in step with pyproject.toml)
+# Exact versions are pinned in requirements.lock; the launcher and CI install with -c.
+# After changing this file, or to upgrade, run in apps/api and then run the tests:
+#   uv pip compile requirements.txt --universal --python-version 3.11 -o requirements.lock
+# (add --upgrade to move existing pins forward)
 fastapi>=0.136.0
 uvicorn[standard]>=0.34.0
 sqlalchemy[asyncio]>=2.0.40
@@ -7,21 +11,18 @@ alembic>=1.15.0
 pydantic>=2.11.0
 pydantic-settings>=2.8.0
 python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
+bcrypt>=4.0
+tzdata>=2025.2
 websockets>=15.0
 httpx>=0.28.0
 pywebpush>=2.0.0
-python-multipart>=0.0.20
 
 # AI / ML dependencies
 pydantic-ai-slim[openai,google]==2.71.0
 google-genai>=1.14.0
-numpy>=2.2.0
-jinja2>=3.1.6
 
 # Dev
 pytest>=8.3.0
 pytest-asyncio>=0.25.0
 respx>=0.23.1
 ruff>=0.9.0
-black>=25.1.0

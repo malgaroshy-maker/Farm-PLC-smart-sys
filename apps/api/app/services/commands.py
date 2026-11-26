@@ -11,9 +11,12 @@ The PLC remains the final safety authority; these checks stop obviously unsafe
 requests early and give the operator a clear reason.
 """
 
+import asyncio
 import json
+from datetime import datetime
 from itertools import combinations
 from uuid import uuid4
+from weakref import WeakKeyDictionary
 
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
@@ -47,6 +50,10 @@ class CommandRejected(Exception):
         self.code = code
         self.message = message
         self.command_id = command_id
+
+
+class ProgramStopped(Exception):
+    """STOP ALL was pressed after this program run began, so its next step must not start."""
 
 
 class _Interlock(Exception):
@@ -258,11 +265,45 @@ async def _supersede_starts(db: AsyncSession, req: CommandCreate) -> list[Comman
 
 # ── Public API ───────────────────────────────────────────
 
+# Interlocks read what is already open, then save the new command. Starts and stops take turns
+# so two starts cannot both pass, and a stop cannot miss a start that is being saved.
+# One lock per event loop; this covers the single API process the app runs as.
+_submit_locks: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = WeakKeyDictionary()
 
-async def submit_command(db: AsyncSession, req: CommandCreate, actor: Actor) -> Command:
+
+def _submit_lock() -> asyncio.Lock:
+    return _submit_locks.setdefault(asyncio.get_running_loop(), asyncio.Lock())
+
+
+async def stopped_all_since(db: AsyncSession, since: datetime) -> bool:
+    found = await db.scalar(
+        select(Command.id)
+        .where(Command.command_type == "stop_all", Command.requested_at_real >= as_utc(since))
+        .limit(1)
+    )
+    return found is not None
+
+
+async def submit_command(
+    db: AsyncSession,
+    req: CommandCreate,
+    actor: Actor,
+    *,
+    program_run_since: datetime | None = None,
+) -> Command:
     await _check_permission(db, req, actor)
     zone = await _validate_structure(db, req)
+    # release any SQLite write lock the caller holds before waiting for our turn
+    await db.commit()
+    async with _submit_lock():
+        if program_run_since and await stopped_all_since(db, program_run_since):
+            raise ProgramStopped
+        return await _check_and_save(db, req, actor, zone)
 
+
+async def _check_and_save(
+    db: AsyncSession, req: CommandCreate, actor: Actor, zone: Zone | None
+) -> Command:
     cmd = Command(
         id=uuid4().hex,
         command_type=req.command_type,

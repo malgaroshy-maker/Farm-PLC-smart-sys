@@ -1,6 +1,6 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
-**Last Updated:** 2026-11-26
+**Last Updated:** 2026-11-27
 **Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ → **Milestone G**. G1–G4, G6, hardware research, and the Arabic demo are done. G7 field readiness is built and awaiting owner review. The G5 leak, clock, and alarm-flashing checks passed on the PLCSIM bench. Arabic HMI localization and HMI permissions are deferred. [Milestone G plan](docs/MILESTONE_G_PLAN.md) · [G5 acceptance record](docs/MILESTONE_G5_CLOSEOUT_PLAN.md#acceptance-record-for-2026-11-26)
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
@@ -14,7 +14,7 @@
 | Area | Status | Notes |
 |------|--------|-------|
 | Monorepo, contracts, docs | ✅ | pnpm + Turborepo. `@algaroshy/contracts` is used by the web app as the single source of types. |
-| Database + migrations | ✅ | Alembic head `f5a6b7c8d9e0` adds durable pump observations. The preceding migration makes AI usage and push-failure counters non-nullable. Fresh and upgraded test databases passed `alembic check`. |
+| Database + migrations | ✅ | Alembic head `06a7b8c9d0e1` records gaps in cycle water readings; the one before it adds durable pump observations. Fresh and upgraded test databases passed `alembic check`. |
 | Seed data | ✅ | Starting point only; the owner edits zones in Settings. 12 zones, 12 valves, 2 pumps, 2 sources, 15 sensors, admin user with a bcrypt-hashed password. |
 | Auth | ✅ | `POST /auth/login` (JWT), `GET /auth/me`. Roles owner_admin / operator / viewer enforced on every endpoint. Operator+ can toggle schedules; Admin creates/edits/deletes. The simulator uses a service token. |
 | Virtual Farm Clock | ✅ | Single source of truth in API (`app/core/clock.py`), persisted, monotonic. Live speed control (pause, 1×, 10×, 60×, 360×), jump to time (presets + custom HH:MM), step (+1 min), WS `clock.changed` broadcasts, amber SIMULATED TIME badge (`#ff9f43`) with speed in AR+EN, presenter header chip (desktop) collapsing to badge on mobile, full Simulator page panel, and "Back to real time" with reset confirmation. Telemetry, event times, alarm windows, and map lighting/season follow farm time; link staleness and command timeouts stay on real wall clock. Locked to real time unless `CONTROLLER_MODE=simulator`. |
@@ -46,7 +46,7 @@
 | Field readiness (G7) | ✅ | Manual mode (panel switches, hand icon, banner, ALM-042), unexpected flow (ALM-021), power cut with the 30-minute resume rule (ALM-033), fallback program, pump health (kW, current, well level, filter, ALM-027/039), soil moisture with per-crop levels and soil logic (levels proposed until the owner confirms). Shown in the simulator; the PLC side is G5. |
 | Farm server & backups | ✅ | `start.mjs server` (headless, restarts crashed parts), Windows/Linux service installers, daily backups (local, USB, Google Drive via rclone) with restore on restart in Settings → Backups, Tailscale HTTPS guide ([FARM_SERVER](docs/FARM_SERVER.md)). The installers have not been run on the farm PC yet. |
 | Operator guide | ✅ | Arabic + English guide in two parts (daily operation, administration): in-app Help page, [docs/OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md) and a printable A4 PDF. |
-| Tests + CI | ✅ | G5 verification passed 256 API, 60 simulator, 108 web, 7 map-model, and 12 launcher tests (443 total). GitHub Actions runs lint, tests, migrations, type checks, and builds. |
+| Tests + CI | ✅ | 2026-11-27: 300 API, 57 simulator (2 skipped: optional OPC UA library), 113 web, 7 map-model and 12 launcher tests passed. GitHub Actions runs lint, tests, migrations, type checks, and builds. |
 
 ## Live scenario suite
 
@@ -72,6 +72,12 @@ All **15/15** scenarios passed against the running API and software simulator at
 
 | Gap | Planned in |
 |-----|-----------|
+| No way to create operator or viewer accounts or change a password; only the seeded admin exists | Deferred by the owner (2026-11-27) |
+| Phones on the LAN use plain HTTP in demo and server modes, so passwords can be read on that network | Decide with hosting (owner, 2026-11-27) |
+| The PLC zone-limit fix is source only: not compiled in TIA or tested in PLCSIM | Next PLCSIM session |
+| Stop all on the PLC HMI stops the zones but does not end a program the app is running | Owner decision |
+| PLC access protection is "full access" and Modbus TCP has no login; the PLC network must be isolated | Before commissioning |
+| Python packages have not had a vulnerability scan | Next audit |
 | Arabic HMI localization and HMI permissions | Deferred by the owner. |
 | Live Siemens OPC UA and field commissioning | The G5 bench used PLCSIM over Modbus. Measure and approve field flow bands before commissioning. |
 | Phone push on phones needs HTTPS: Tailscale `serve` is documented but not set up yet | Farm PC setup |

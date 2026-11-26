@@ -3,6 +3,7 @@
 import asyncio
 import os
 import tempfile
+import time
 from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp(prefix="farm-tests-"))
@@ -73,6 +74,8 @@ def client():
     from app.services.ai.agent import clear_ai_cache, reset_call_history
     from app.services.alarms import engine as alarm_engine
     from app.services.anomaly import anomaly_detector
+    from app.services.login_throttle import reset as reset_login_throttle
+    from app.services.monitor import MONITOR_STATUS
     from app.services.telemetry import recorder
     from app.services.weather import weather_service
 
@@ -83,10 +86,17 @@ def client():
     clear_ai_cache()
     reset_call_history()
     reset_ai_rate_limits()
+    reset_login_throttle()
     settings.apinex_api_key = ""
     settings.gemini_api_key = ""
     asyncio.run(_reset_db())
+    MONITOR_STATUS["last_ok"] = None
     with TestClient(app) as c:
+        # The monitor ticks once at startup. Let it finish, or it can run the scheduler with the
+        # real clock in the middle of a test that sets its own farm time.
+        deadline = time.monotonic() + 10
+        while MONITOR_STATUS["last_ok"] is None and time.monotonic() < deadline:
+            time.sleep(0.01)
         yield c
 
 

@@ -96,6 +96,8 @@ VERSION : 0.1
    END_VAR
    VAR_TEMP
       st : Int;
+      i : Int;
+      busy : Int;
    END_VAR
 BEGIN
    IF #Zone < 1 OR #Zone > "DB_Config".ZoneCount THEN
@@ -103,6 +105,15 @@ BEGIN
       RETURN;
    END_IF;
    #st := "DB_Zones".Zone[#Zone].State;
+   // count zones now, including starts accepted in this scan or the one before: DB_Farm.ZonesActive
+   // is updated later in the scan, so two channels could otherwise both pass
+   #busy := 0;
+   FOR #i := 1 TO "DB_Config".ZoneCount DO
+      IF #i <> #Zone AND (("DB_Zones".Zone[#i].State >= 1 AND "DB_Zones".Zone[#i].State <= 5)
+         OR "DB_Zones".Zone[#i].ReqStart) THEN
+         #busy := #busy + 1;
+      END_IF;
+   END_FOR;
    IF "DB_Farm".EStop THEN
       #FC_CanStart := 6;
    ELSIF NOT "DB_Farm".PowerOk THEN
@@ -113,7 +124,7 @@ BEGIN
       #FC_CanStart := 1;
    ELSIF #st >= 1 AND #st <= 5 THEN
       #FC_CanStart := 7;
-   ELSIF "DB_Farm".ZonesActive >= "DB_Config".MaxConcurrentZones THEN
+   ELSIF #busy >= "DB_Config".MaxConcurrentZones THEN
       #FC_CanStart := 1;
    ELSIF "DB_Farm".TankCritical THEN
       // tank too low: only a zone allowed to run straight from the well may start

@@ -29,7 +29,12 @@ from app.models.command import Command
 from app.models.program import Program, ProgramStep, SchedulerState
 from app.models.zone import Zone
 from app.schemas.command import CommandCreate
-from app.services.commands import CommandRejected, submit_command
+from app.services.commands import (
+    CommandRejected,
+    ProgramStopped,
+    stopped_all_since,
+    submit_command,
+)
 from app.services.cycles import record_cycle_skipped
 from app.services.events import log_event
 from app.services.live_state import Snapshot
@@ -328,6 +333,7 @@ class SchedulerService:
         prev_farm: datetime,
         now_farm: datetime,
         farm_tz: ZoneInfo,
+        reason: str = "clock jump or downtime",
     ) -> None:
         """Apply owner decision on clock jumps: skip and log 'missed'."""
         programs = await self._get_enabled_programs(db)
@@ -352,8 +358,9 @@ class SchedulerService:
 
                 if prev_local < prog_dt <= now_local:
                     log.warning(
-                        "Program '%s' was missed due to clock jump (%s -> %s)",
+                        "Program '%s' was missed (%s): %s -> %s",
                         prog.name,
+                        reason,
                         prev_farm.isoformat(),
                         now_farm.isoformat(),
                     )
@@ -368,6 +375,7 @@ class SchedulerService:
                             "scheduled_time": prog_dt.isoformat(),
                             "jump_from": prev_farm.isoformat(),
                             "jump_to": now_farm.isoformat(),
+                            "reason": reason,
                         },
                     )
                     await manager.broadcast(
@@ -376,7 +384,7 @@ class SchedulerService:
                             "program_id": prog.id,
                             "program_name": prog.name,
                             "scheduled_time": prog_dt.isoformat(),
-                            "reason": "clock jump or downtime",
+                            "reason": reason,
                         },
                     )
             curr_date += timedelta(days=1)
@@ -392,6 +400,10 @@ class SchedulerService:
         # Only start a new program if no program is currently executing
         active_prog_json = await self._get_state(db, STATE_ACTIVE_PROGRAM)
         if active_prog_json:
+            # a run that overruns (e.g. extended for heat) must not make the next one vanish
+            await self._handle_missed_runs(
+                db, prev_farm, now_farm, farm_tz, reason="another program was running"
+            )
             return
 
         programs = await self._get_enabled_programs(db)
@@ -528,7 +540,9 @@ class SchedulerService:
             {"program_id": prog.id, "program_name": prog.name, "steps_count": len(prog.steps)},
         )
 
+        now_real = utcnow()
         active_data = {
+            "started_real": now_real.isoformat(),
             "program_id": prog.id,
             "program_name": prog.name,
             "step_index": 0,
@@ -602,7 +616,9 @@ class SchedulerService:
         )
 
         try:
-            cmd = await submit_command(db, cmd_req, SCHEDULER_ACTOR)
+            cmd = await submit_command(
+                db, cmd_req, SCHEDULER_ACTOR, program_run_since=self._run_began(active_data)
+            )
             active_data["active_command_id"] = cmd.id
             await self._set_state(db, STATE_ACTIVE_PROGRAM, json.dumps(active_data))
             await log_event(
@@ -627,6 +643,8 @@ class SchedulerService:
                     "duration_min": step.duration_min,
                 },
             )
+        except ProgramStopped:
+            await self._cancel_program(db, prog.id, prog.name)
         except CommandRejected as exc:
             # Blocked start rule: skip zone, log, raise S1 info alarm, continue program
             log.warning(
@@ -691,6 +709,11 @@ class SchedulerService:
             await self._clear_state(db, STATE_ACTIVE_PROGRAM)
             return
 
+        began = self._run_began(active_data)
+        if began and await stopped_all_since(db, began):
+            await self._cancel_program(db, prog_id, active_data.get("program_name"))
+            return
+
         cmd = await db.get(Command, cmd_id)
         zone_snap = snapshots.get(f"zone_{zone_id}")
         zone_state = zone_snap.state.get("state") if zone_snap else "off"
@@ -714,6 +737,24 @@ class SchedulerService:
                 {"program_id": prog.id, "step_index": step_index, "zone_id": zone_id},
             )
             await self._execute_program_step(db, prog, step_index + 1, active_data)
+
+    @staticmethod
+    def _run_began(active_data: dict) -> datetime | None:
+        """Real time the run started (None for a run saved by an older version)."""
+        value = active_data.get("started_real")
+        return datetime.fromisoformat(value) if value else None
+
+    async def _cancel_program(self, db: AsyncSession, prog_id: str, name: str | None) -> None:
+        await self._clear_state(db, STATE_ACTIVE_PROGRAM)
+        await log_event(
+            db,
+            "program.cancelled",
+            "program",
+            prog_id,
+            actor_type="scheduler",
+            payload={"program_name": name, "reason": "stop_all"},
+        )
+        await manager.broadcast("program.finished", {"program_id": prog_id, "program_name": name})
 
     async def _finish_program(self, db: AsyncSession, prog: Program) -> None:
         await self._clear_state(db, STATE_ACTIVE_PROGRAM)

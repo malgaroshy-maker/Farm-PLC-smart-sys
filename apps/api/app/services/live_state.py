@@ -8,7 +8,7 @@ This module reads them back as one FarmMapState and computes change events.
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, or_, select
@@ -138,6 +138,9 @@ async def upsert_snapshots(
     if not newest:
         return []
 
+    # A stored time ahead of our own clock means a clock was set back (e.g. a time sync on the
+    # gateway or this PC). Newer-only would then ignore every update until time caught up.
+    future = utcnow() + timedelta(seconds=settings.state_stale_after_sec)
     records = [
         {
             "device_key": key,
@@ -156,6 +159,7 @@ async def upsert_snapshots(
             index_elements=[DeviceStateSnapshot.device_key],
             set_={"state_json": excluded.state_json, "updated_at": excluded.updated_at},
             where=or_(
+                DeviceStateSnapshot.updated_at > future,
                 DeviceStateSnapshot.updated_at < excluded.updated_at,
                 and_(
                     DeviceStateSnapshot.updated_at == excluded.updated_at,
@@ -179,9 +183,13 @@ async def upsert_snapshots(
         row = rows.get(fields["device_key"])
         if row is None:
             db.add(DeviceStateSnapshot(**fields))
-        elif fields["updated_at"] > as_utc(row.updated_at) or (
-            fields["updated_at"] == as_utc(row.updated_at)
-            and fields["state_json"] != row.state_json
+        elif (
+            as_utc(row.updated_at) > future
+            or fields["updated_at"] > as_utc(row.updated_at)
+            or (
+                fields["updated_at"] == as_utc(row.updated_at)
+                and fields["state_json"] != row.state_json
+            )
         ):
             row.state_json = fields["state_json"]
             row.updated_at = fields["updated_at"]

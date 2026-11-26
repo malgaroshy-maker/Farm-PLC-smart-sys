@@ -369,3 +369,89 @@ async def test_api_restart_after_downtime_marks_missed_not_fired(client):
     assert "schedule.missed" in types
     assert "program.started" not in types
     assert starts == []
+
+
+@pytest.mark.asyncio
+async def test_stop_all_ends_the_running_program(client):
+    """Safety: after STOP ALL the next step of a program must not start by itself."""
+    push_state(client)
+    admin = login(client, "admin")
+    resp = client.post(
+        "/api/v1/schedules",
+        headers=admin,
+        json={
+            "name": "Two Steps",
+            "start_time_local": "08:00",
+            "weekday_mask": "1,2,3,4,5,6,7",
+            "steps": [
+                {"zone_id": "zone_enab", "step_order": 1, "duration_min": 20},
+                {"zone_id": "zone_rumman_1", "step_order": 2, "duration_min": 20},
+            ],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    original_fn = clock.farm_now
+    tz = ZoneInfo(settings.farm_timezone)
+    now = clock.farm_now().astimezone(tz)
+
+    def at(minute):
+        return datetime(now.year, now.month, now.day, 8, minute, tzinfo=tz)
+
+    async def tick(minute):
+        clock.farm_now = lambda real_now=None: at(minute)
+        async with async_session_factory() as db:
+            await scheduler.tick(db, await load_snapshots(db))
+        clock.farm_now = original_fn
+
+    async def program_starts():
+        async with async_session_factory() as db:
+            rows = await db.execute(select(Command).where(Command.actor_type == "scheduler"))
+            return [c.target_id for c in rows.scalars()]
+
+    try:
+        scheduler.reset()
+        scheduler._last_farm_time = at(0) - timedelta(minutes=5)
+        await tick(1)
+        assert await program_starts() == ["zone_enab"]
+
+        stop = client.post(
+            "/api/v1/commands",
+            headers=admin,
+            json={"command_type": "stop_all", "target_type": "system"},
+        )
+        assert stop.status_code == 201, stop.text
+        push_state(client)  # every zone is off
+        await tick(2)
+        assert await program_starts() == ["zone_enab"]
+        async with async_session_factory() as db:
+            assert await scheduler._get_state(db, STATE_ACTIVE_PROGRAM) is None
+    finally:
+        clock.farm_now = original_fn
+        scheduler.reset()
+
+
+@pytest.mark.asyncio
+async def test_program_due_while_another_runs_is_recorded_as_missed(client):
+    push_state(client)
+    _create_test_program(client, "Long run", "08:00")
+    later = _create_test_program(client, "Next run", "09:00", zone="zone_rumman_1")
+    original_fn = clock.farm_now
+    tz = ZoneInfo(settings.farm_timezone)
+    now = original_fn().astimezone(tz)
+
+    def at(hour, minute):
+        return datetime(now.year, now.month, now.day, hour, minute, tzinfo=tz)
+
+    try:
+        async with async_session_factory() as db:
+            await scheduler._set_state(db, STATE_ACTIVE_PROGRAM, "{}")
+            await db.commit()
+            await scheduler._check_due_programs(db, at(8, 59), at(9, 1), tz)
+            await db.commit()
+            missed = (
+                await db.execute(select(EventLog).where(EventLog.event_type == "schedule.missed"))
+            ).scalars()
+            assert [event.entity_id for event in missed] == [later]
+    finally:
+        clock.farm_now = original_fn
+        scheduler.reset()

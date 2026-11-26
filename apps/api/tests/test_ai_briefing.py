@@ -29,7 +29,7 @@ def _set_dummy_weather():
         et0_mm=4.8,
     )
     day = WeatherDaySummary(
-        date=clock.farm_now().strftime("%Y-%m-%d"),
+        date=clock.farm_now().astimezone(ZoneInfo(settings.farm_timezone)).strftime("%Y-%m-%d"),
         temp_min_c=17.0,
         temp_max_c=29.0,
         precipitation_total_mm=0.0,

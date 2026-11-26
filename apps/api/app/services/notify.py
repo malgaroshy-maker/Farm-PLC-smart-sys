@@ -14,6 +14,7 @@ briefing. Sending never blocks or breaks the alarm path.
 
 import asyncio
 import base64
+import html
 import json
 import logging
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ from app.core.timeutil import utcnow
 from app.database import async_session_factory
 from app.models.notification import NotificationSettings, PushSubscription
 from app.services.features import is_enabled
+from app.services.push_endpoint import is_push_service_url
 
 log = logging.getLogger(__name__)
 
@@ -91,11 +93,17 @@ async def vapid_keys(db: AsyncSession) -> tuple[str, str]:
 
 def _telegram_text(n: Notification) -> str:
     icon = {"S3": "🚨", "S2": "⚠️"}.get(n.severity or "", "🌿")
-    parts = [f"{icon} <b>{n.title_ar}</b>"]
+
+    # a "<" or "&" would make Telegram refuse the message. Shorten before escaping so that a
+    # tag or entity is never cut in half.
+    def esc(value: str, limit: int) -> str:
+        return html.escape(value[:limit], quote=False)
+
+    parts = [f"{icon} <b>{esc(n.title_ar, 200)}</b>"]
     if n.body_ar:
-        parts.append(n.body_ar)
-    parts.append(f"<i>{n.title_en}</i>")
-    return "\n".join(parts)[:4000]
+        parts.append(esc(n.body_ar, 3000))
+    parts.append(f"<i>{esc(n.title_en, 200)}</i>")
+    return "\n".join(parts)
 
 
 async def send_telegram(n: Notification, chat_id: str) -> bool:
@@ -149,6 +157,9 @@ async def send_web_push(db: AsyncSession, n: Notification) -> int:
     )
     sent = 0
     for s in subs:
+        if not is_push_service_url(s.endpoint):  # saved before the address check existed
+            await db.delete(s)
+            continue
         try:
             await asyncio.to_thread(
                 webpush,

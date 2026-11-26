@@ -25,7 +25,8 @@ export default function Login() {
       await login(username.trim(), password);
       navigate('/');
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 401 ? t('login.denied') : t('login.unreachable'));
+      const status = err instanceof ApiError ? err.status : 0;
+      setError(t(status === 401 ? 'login.denied' : status === 429 ? 'login.throttled' : 'login.unreachable'));
     } finally {
       setBusy(false);
     }

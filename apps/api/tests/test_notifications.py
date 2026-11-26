@@ -68,7 +68,10 @@ def test_web_push_keys_are_stable_and_subscriptions_saved(client):
     k1 = client.get("/api/v1/system/push/public-key", headers=h).json()["public_key"]
     k2 = client.get("/api/v1/system/push/public-key", headers=h).json()["public_key"]
     assert k1 == k2 and len(k1) > 80
-    sub = {"endpoint": "https://push.example/abc", "keys": {"p256dh": "p", "auth": "a"}}
+    sub = {
+        "endpoint": "https://fcm.googleapis.com/fcm/send/abc",
+        "keys": {"p256dh": "p", "auth": "a"},
+    }
     assert client.post("/api/v1/system/push/subscribe", json=sub, headers=h).json() == {"ok": True}
     status = client.get("/api/v1/system/notifications", headers=login(client, "admin")).json()
     assert status["web_push"]["devices"] >= 1

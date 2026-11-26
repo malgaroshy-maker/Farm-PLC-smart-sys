@@ -1,9 +1,12 @@
+import asyncio
 from datetime import timedelta
 
+import httpx
 import pytest
-from conftest import SIM, login, push_state
+from conftest import SIM, ZONE_IDS, login, push_state
 
 from app.core.timeutil import utcnow
+from app.main import app
 
 START = {"command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab"}
 
@@ -224,3 +227,30 @@ def test_stop_zone_only_supersedes_that_zone(client):
     )
     cmds = {c["id"]: c for c in client.get("/api/v1/commands", headers=op).json()}
     assert cmds[keep]["status"] == "pending"
+
+
+def test_simultaneous_starts_respect_the_zone_limit(client):
+    """Two requests must not both pass the interlocks before either one is saved."""
+    push_state(client)
+    headers = login(client, "operator")
+
+    async def start_all():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as api:
+            return await asyncio.gather(
+                *[
+                    api.post(
+                        "/api/v1/commands",
+                        headers=headers,
+                        json={
+                            "command_type": "start_zone",
+                            "target_type": "zone",
+                            "target_id": zone_id,
+                        },
+                    )
+                    for zone_id in ZONE_IDS[:4]
+                ]
+            )
+
+    responses = client.portal.call(start_all)
+    assert sorted(r.status_code for r in responses) == [201, 409, 409, 409]

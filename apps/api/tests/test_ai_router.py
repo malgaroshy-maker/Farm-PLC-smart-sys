@@ -1,10 +1,12 @@
 """Tests for AI Router Endpoints (/api/v1/ai and /health) (Milestone E)."""
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from conftest import login
 from pydantic_ai import models
 
+from app.config import settings
 from app.core.clock import clock
 from app.services.weather import WeatherData, WeatherDaySummary, WeatherForecast, weather_service
 
@@ -23,7 +25,7 @@ def _set_dummy_weather():
         et0_mm=5.0,
     )
     day = WeatherDaySummary(
-        date=clock.farm_now().strftime("%Y-%m-%d"),
+        date=clock.farm_now().astimezone(ZoneInfo(settings.farm_timezone)).strftime("%Y-%m-%d"),
         temp_min_c=18.0,
         temp_max_c=30.0,
         precipitation_total_mm=0.0,

@@ -88,6 +88,7 @@ const dict = {
   'login.busy': { ar: 'جارٍ التحقق…', en: 'Signing in…' },
   'login.denied': { ar: 'اسم المستخدم أو كلمة المرور غير صحيحة', en: 'Invalid username or password' },
   'login.unreachable': { ar: 'تعذّر الوصول إلى الخادم', en: 'Cannot reach the server' },
+  'login.throttled': { ar: 'محاولات خاطئة كثيرة. حاول مرة أخرى بعد بضع دقائق', en: 'Too many failed attempts. Try again in a few minutes' },
   // dashboard / KPIs
   'kpi.pumps': { ar: 'المضخات العاملة', en: 'Pumps running' },
   'kpi.flow': { ar: 'التدفق', en: 'Flow' },
