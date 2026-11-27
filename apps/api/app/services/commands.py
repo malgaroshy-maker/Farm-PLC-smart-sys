@@ -13,7 +13,7 @@ requests early and give the operator a clear reason.
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import combinations
 from uuid import uuid4
 from weakref import WeakKeyDictionary
@@ -179,14 +179,17 @@ async def _check_start_interlocks(
         for k, s in snapshots.items()
         if k.startswith("zone_")
     }
-    if zone_states.get(zone.id) in ACTIVE_ZONE_STATES:
+    # a zone still closing its valve is not free yet (the PLC counts it too)
+    busy_states = ACTIVE_ZONE_STATES | {"stopping"}
+    if zone_states.get(zone.id) in busy_states:
         raise _Interlock("zone_already_active", f"Zone {zone.code} is already running")
 
     pending_starts = {c.target_id for c in await _open_commands(db, "start_zone")}
+    pending_starts |= await _starts_not_yet_shown(db, snapshots)
     if zone.id in pending_starts:
         raise _Interlock("duplicate_command", f"A start for zone {zone.code} is already pending")
 
-    active = {zid for zid, st in zone_states.items() if st in ACTIVE_ZONE_STATES} | pending_starts
+    active = {zid for zid, st in zone_states.items() if st in busy_states} | pending_starts
     if len(active) >= settings.max_concurrent_zones:
         raise _Interlock(
             "max_concurrent_zones",
@@ -234,6 +237,24 @@ async def _check_start_interlocks(
 
 
 STOPS = ("stop_zone", "stop_all")
+
+
+async def _starts_not_yet_shown(db: AsyncSession, snapshots: dict[str, Snapshot]) -> set[str]:
+    """Starts a controller has accepted but whose zone no snapshot has shown since."""
+    recent = utcnow() - timedelta(seconds=20)
+    rows = await db.scalars(
+        select(Command).where(
+            Command.command_type == "start_zone",
+            Command.status == "completed",
+            Command.requested_at_real >= recent,
+        )
+    )
+    waiting = set()
+    for c in rows:
+        snap = snapshots.get(f"zone_{c.target_id}")
+        if snap and snap.updated_at <= as_utc(c.requested_at_real):
+            waiting.add(c.target_id)
+    return waiting
 
 
 async def _supersede_starts(db: AsyncSession, req: CommandCreate) -> list[Command]:
@@ -402,6 +423,16 @@ async def sync_command(db: AsyncSession, command_id: str, update: CommandSyncUpd
         raise HTTPException(404, "Command not found")
     if cmd.status in TERMINAL_COMMAND_STATUSES:
         raise HTTPException(409, f"Command already {cmd.status}")
+    if (
+        cmd.command_type in STOPS
+        and update.status == "failed"
+        and (update.failure_reason or "").startswith("plc_no_ack")
+    ):
+        # the controller never answered: a stop stays on the list until it is confirmed
+        cmd.status = "pending"
+        await db.commit()
+        await manager.broadcast("command.updated", CommandResponse.model_validate(cmd))
+        return cmd
     cmd.status = update.status
     now = clock.farm_now()
     req_at = as_utc(cmd.requested_at) if cmd.requested_at else now
@@ -441,6 +472,8 @@ async def expire_stale_commands(db: AsyncSession) -> list[Command]:
     )
     expired = []
     for c in result.scalars():
+        if c.command_type in STOPS:
+            continue  # never dropped: delivered until confirmed, with ALM-052 while it waits
         limit = (
             settings.command_timeout_sec
             if c.status == "pending"

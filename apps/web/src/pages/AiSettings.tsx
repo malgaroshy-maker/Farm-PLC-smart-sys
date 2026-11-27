@@ -64,6 +64,9 @@ export default function AiSettingsPage() {
   const [settings, setSettings] = useState<AiSettingsData>(DEFAULT_SETTINGS);
   const [models, setModels] = useState<AiModelOption[]>([]);
   const [saving, setSaving] = useState(false);
+  // until the real settings arrive the form shows placeholders, which must not be saved
+  const [loaded, setLoaded] = useState<'loading' | 'ok' | 'failed'>('loading');
+  const [loadTry, setLoadTry] = useState(0);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -78,6 +81,9 @@ export default function AiSettingsPage() {
       if (!active) return;
       if (sRes.status === 'fulfilled' && sRes.value) {
         setSettings(sRes.value);
+        setLoaded('ok');
+      } else {
+        setLoaded('failed');
       }
       if (mRes.status === 'fulfilled' && Array.isArray(mRes.value) && mRes.value.length > 0) {
         setModels(mRes.value);
@@ -87,7 +93,7 @@ export default function AiSettingsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [loadTry]);
 
   if (!isAdmin) {
     return (
@@ -123,6 +129,7 @@ export default function AiSettingsPage() {
   };
 
   const handleSave = async () => {
+    if (loaded !== 'ok') return;
     setSaving(true);
     setSaveSuccess(false);
     setSaveError(null);
@@ -133,7 +140,7 @@ export default function AiSettingsPage() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Save failed');
+      setSaveError(err instanceof Error ? err.message : t('common.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -172,6 +179,20 @@ export default function AiSettingsPage() {
       // Keep existing models
     }
   };
+
+  if (loaded !== 'ok') {
+    return (
+      <div className="panel p-5 max-w-md mx-auto text-center space-y-3" data-testid="ai-settings-not-loaded">
+        <p className="text-sm text-[#e5e2e1]">{t(loaded === 'loading' ? 'common.loading' : 'common.loadFailed')}</p>
+        {loaded === 'failed' && (
+          <button type="button" className="px-4 py-2 rounded-xl bg-[#00e5ff] text-[#0e0e0e] text-sm font-bold"
+            onClick={() => { setLoaded('loading'); setLoadTry((n) => n + 1); }}>
+            {t('common.retry')}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const recentCalls: AiRecentCall[] = settings.recent_calls || [];
 
@@ -232,7 +253,7 @@ export default function AiSettingsPage() {
           )}
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || loaded !== 'ok'}
             className="px-5 py-2 rounded-xl bg-[#00e5ff] hover:bg-[#00e5ff]/90 text-[#0e0e0e] font-bold text-xs transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {saving ? <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" /> : null}

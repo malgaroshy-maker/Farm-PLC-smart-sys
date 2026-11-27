@@ -12,6 +12,7 @@ VERSION : 0.1
       Tick1s : Bool;
       Reset : Bool;             // alarm reset clears a failed start
       PowerOk : Bool;           // no mains: never command (and never blame) the pump
+      Inhibit : Bool;           // E-stop, or this pump's water source is unsafe: stops it in HAND too
    END_VAR
    VAR_IN_OUT
       P : "UDT_Pump";
@@ -36,7 +37,8 @@ BEGIN
 
    // HAND runs the pump without the app, but every protection still stops it
    #P.CmdStart := (#P.PanelMode = 1 OR (#P.PanelMode = 0 AND #P.Demand))
-                  AND NOT #P.Fault AND NOT #P.FailedStart AND NOT #P.Locked AND #PowerOk;
+                  AND NOT #P.Fault AND NOT #P.FailedStart AND NOT #P.Locked AND #PowerOk
+                  AND NOT #Inhibit;
 
    #tStart(IN := #P.CmdStart AND NOT #P.RunFb,
            PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".PumpStartTimeoutS) * 1000));

@@ -17,6 +17,7 @@ VERSION : 0.1
       loaded : Bool;
       loadReq : Bool;
       busy : Bool;
+      sentOpen : Bool;
       req : Bool;
       job : Int;                         // 1..16 zones, 17 booster meter, 18 well meter
       jobIsValve : Bool;
@@ -85,7 +86,8 @@ BEGIN
             #req := TRUE;
             #jobIsValve := #job <= 16;
             IF #jobIsValve THEN
-               IF "DB_Zones".Zone[#job].ValveCmd THEN
+               #sentOpen := "DB_Zones".Zone[#job].ValveCmd;  // what this write says
+               IF #sentOpen THEN
                   #buf[1] := INT_TO_WORD("DB_Config".RadioOnTimeS);
                ELSE
                   #buf[1] := 16#0000;
@@ -121,7 +123,8 @@ BEGIN
 
          IF #mbMaster.DONE THEN
             IF #jobIsValve THEN
-               #lastCmd[#job] := "DB_Zones".Zone[#job].ValveCmd;
+               // not the command as it is now: a stop during the slow write must still be sent
+               #lastCmd[#job] := #sentOpen;
                #ageSec[#job] := 0;
                "DB_Zones".Zone[#job].ValveOpenFb := #lastCmd[#job];
             ELSIF #job = 17 THEN

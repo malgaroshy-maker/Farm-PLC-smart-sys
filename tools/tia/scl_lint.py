@@ -48,6 +48,7 @@ BUILTIN_FUNCS = {
     "WR_LOC_T",
     "WORD_TO_UINT",
     "UINT_TO_WORD",
+    "UINT_TO_INT",
     "T_DIFF",
     "SHR",
     "SHL",

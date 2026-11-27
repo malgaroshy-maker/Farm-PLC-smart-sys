@@ -4,7 +4,7 @@ import EmptyState from '../components/EmptyState';
 import MaintenanceDone from '../components/MaintenanceDone';
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import type { Alarm, AlarmSeverity } from '@algaroshy/contracts';
-import { useFarmStore } from '../store/farm';
+import { isOffline, useFarmStore } from '../store/farm';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { SEVERITY, availableActions, sortAlarms } from '../lib/alarms';
@@ -46,6 +46,8 @@ export default function AlarmCenter() {
   const [error, setError] = useState<string | null>(null);
   const activeRaw = useFarmStore((s) => s.state?.active_alarms);
   const active = activeRaw ?? NO_ALARMS;
+  const offline = useFarmStore(isOffline);
+  const activeUnknown = activeRaw === undefined || offline;
   const alarmAction = useFarmStore((s) => s.alarmAction);
   const { can } = useAuth();
   const { t, lang } = useT();
@@ -152,7 +154,15 @@ export default function AlarmCenter() {
               <div key={alarm.id} className="border-b border-[#353534]">
                 <div
                   className="grid grid-cols-2 md:grid-cols-12 gap-2 md:gap-4 p-4 text-sm items-center hover:bg-[#1c1b1b]/50 transition-colors cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={open}
                   onClick={() => setExpanded(open ? null : alarm.id)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+                    e.preventDefault();
+                    setExpanded(open ? null : alarm.id);
+                  }}
                 >
                   <div className="md:col-span-2 text-[#849396] font-mono text-xs flex items-center gap-2" dir="ltr">
                     {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -254,7 +264,10 @@ export default function AlarmCenter() {
               </div>
             );
           })}
-          {rows.length === 0 && (
+          {rows.length === 0 && view === 'active' && activeUnknown && (
+            <p className="p-8 text-center text-sm text-[#849396]">{t('offline.unknown')}</p>
+          )}
+          {rows.length === 0 && !(view === 'active' && activeUnknown) && !(view === 'history' && error) && (
             <EmptyState art="alarms" text={view === 'active' ? t('empty.alarms') : t('al.noHistory')} />
           )}
         </div>

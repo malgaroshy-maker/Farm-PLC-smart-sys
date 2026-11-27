@@ -72,7 +72,7 @@ function ZoneForm({ initial, onSave, onCancel, isNew }: { initial: Editable & { 
       {NUM_FIELDS.map((k) => (
         <label key={k} className="text-[11px] text-[#849396]">
           {t(`zoneAdmin.${k}` as MsgKey)}
-          <input className={field} type="number" step="any" min={0} dir="ltr" value={v[k] as number} onChange={(e) => set(k, Number(e.target.value) as never)} required />
+          <input className={field} type="number" step="any" min={0} dir="ltr" value={v[k] as number} onChange={(e) => set(k, (e.target.value === '' ? '' : Number(e.target.value)) as never)} required />
         </label>
       ))}
       {!isNew &&
@@ -101,11 +101,13 @@ export default function ZonesTab() {
   useZoneCatalog((s) => s.version); // re-render when names change
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
   const zones = zoneList();
 
   return (
     <div className="space-y-3" data-testid="zones-tab">
       <p className="text-xs text-[#bac9cc]">{t('zoneAdmin.intro')}</p>
+      {switchError && <p role="alert" className="text-xs text-[#ff5449]" dir="auto">{switchError}</p>}
       <div className="panel divide-y divide-white/5">
         {zones.map((z) => (
           <div key={z.id} className="p-3 space-y-2">
@@ -119,7 +121,10 @@ export default function ZonesTab() {
               <button onClick={() => setEditing(editing === z.id ? null : z.id)} className="px-2.5 py-1 rounded-lg border border-white/10 text-xs">
                 {t('zoneAdmin.edit')}
               </button>
-              <Switch on={z.enabled !== false} onChange={(v) => void updateZone(z.id, { enabled: v })} label={t('zoneAdmin.enabled')} />
+              <Switch on={z.enabled !== false} onChange={(v) => {
+                setSwitchError(null);
+                updateZone(z.id, { enabled: v }).catch((ex) => setSwitchError(errText(ex, t('settings.saveFailed'))));
+              }} label={t('zoneAdmin.enabled')} />
             </div>
             {editing === z.id && (
               <ZoneForm

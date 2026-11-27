@@ -146,7 +146,7 @@ export default function BaselineSection({ zoneId, currentFlow, currentPressure }
             <span className="text-[10px] text-[#849396] font-normal">m³/h</span>
           </div>
           <div className="text-[10px] text-[#849396] font-mono" dir="ltr">
-            Median: {fmtNum(baseline.flow_median_m3h ?? 0, 1)} m³/h
+            {t('baseline.median')}: {fmtNum(baseline.flow_median_m3h ?? 0, 1)} m³/h
           </div>
         </div>
 
@@ -161,7 +161,7 @@ export default function BaselineSection({ zoneId, currentFlow, currentPressure }
             <span className="text-[10px] text-[#849396] font-normal">bar</span>
           </div>
           <div className="text-[10px] text-[#849396] font-mono" dir="ltr">
-            Median: {fmtNum(baseline.pressure_median_bar ?? 0, 2)} bar
+            {t('baseline.median')}: {fmtNum(baseline.pressure_median_bar ?? 0, 2)} bar
           </div>
         </div>
       </div>

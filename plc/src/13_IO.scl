@@ -23,6 +23,8 @@ BEGIN
    "DB_Farm".WellLevelM := "FC_Scale"(Raw := "AI_WellLevel", MaxEng := "DB_Config".WellLevelMaxM, Bad => #b4);
    "DB_Farm".FilterDpBar := "FC_Scale"(Raw := "AI_FilterDp", MaxEng := "DB_Config".FilterDpMaxBar, Bad => #b5);
    "DB_Farm".AnalogFault := #b1 OR #b2 OR #b3 OR #b4 OR #b5;
+   "DB_Farm".TankSensorBad := #b1;
+   "DB_Farm".WellSensorBad := #b4;
 
    // 3-position selectors: ON input, OFF input, neither = AUTO; both (wiring fault) = OFF (safe)
    FOR #i := 1 TO 16 DO

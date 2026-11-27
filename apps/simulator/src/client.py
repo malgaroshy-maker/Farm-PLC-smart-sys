@@ -146,14 +146,19 @@ class APIClient:
         except httpx.HTTPError as e:
             print(f"Error pushing state: {e!r}")
 
-    async def refresh_fallback(self) -> None:
+    async def refresh_fallback(self, force: bool = True) -> None:
         """G7: hand the controller today's program so it can irrigate if the app goes down."""
         if not hasattr(self.adapter, "load_fallback"):
             return
         try:
             resp = await self.client.get("/schedules/upcoming", params={"hours": 24})
             resp.raise_for_status()
-            await self.adapter.load_fallback(resp.json())
+            runs = resp.json()
+            wanted = [(r["zone_id"], r["scheduled_start_farm"], r["duration_min"]) for r in runs]
+            if not force and wanted == getattr(self, "_fallback_loaded", None):
+                return
+            await self.adapter.load_fallback(runs)
+            self._fallback_loaded = wanted
         except httpx.HTTPError as e:
             print(f"Could not refresh the fallback program: {e!r}")
 
@@ -174,8 +179,10 @@ class APIClient:
                 if not self.comms_dropped():
                     await self.poll_commands()
                     await self.push_state()
-                    if ticks % 300 == 0:  # every ~5 min
-                        await self.refresh_fallback()
+                    # a skipped or edited program must reach the controller within half a
+                    # minute; the full reload every ~5 min covers a restarted controller
+                    if ticks % 30 == 0:
+                        await self.refresh_fallback(force=ticks % 300 == 0)
                 elif hasattr(self.adapter, "probe"):
                     await self.adapter.probe()  # a real link went down: keep knocking
                 ticks += 1

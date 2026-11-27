@@ -7,6 +7,7 @@ DInt = Int32, Word = UInt16), so a wrong type or a missing node fails here befor
 import asyncio
 import json
 import socket
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,8 @@ REALS = {
 
 
 def vtype(key: str, group: str):
+    if key == "failed_start":
+        return ua.VariantType.Boolean
     if key == "fault":
         return ua.VariantType.Boolean if group == "pump" else ua.VariantType.Int16
     if key in BOOLS:
@@ -89,6 +92,8 @@ def _entries(tm: dict):
             yield "pump", k, nid
     for k, nid in tm["command"].items():
         yield "command", k, nid
+    for k, nid in tm["clock"].items():
+        yield "clock", k, nid
     yield "fallback", "count", tm["fallback"]["count"]
     yield "fallback", "load_seq", tm["fallback"]["load_seq"]
     for run in tm["fallback"]["runs"]:
@@ -244,3 +249,38 @@ def test_example_tag_map_counts_array_elements_from_zero():
         assert f'"Zone"[{tags["index"] - 1}].' in tags["state"]
     runs = tm["fallback"]["runs"]
     assert [int(r["zone"].split("[")[1].split("]")[0]) for r in runs] == list(range(48))
+
+
+def test_opcua_sets_a_wrong_plc_clock_and_reports_a_failed_start(monkeypatch):
+    async def run():
+        server, tm, nodes = await _plc(_free_port())
+        monkeypatch.setattr(
+            OpcUaAdapter,
+            "_farm_wall_clock",
+            staticmethod(lambda: datetime(2026, 11, 27, 3, 20, 30)),
+        )
+        async with server:
+            for key, value in (
+                ("clock_year", 2026),
+                ("clock_month_day", 1127),
+                ("clock_hour_minute", 20),
+                ("clock_second", 30),
+            ):
+                await _set(nodes, tm["system"][key], value)
+            await _set(nodes, tm["pumps"]["pump_well_01"]["failed_start"], True)
+            adapter = OpcUaAdapter(tm)
+            try:
+                await adapter.start(Layout())
+                st = {p["device_key"]: p["state_json"] for p in await adapter.read_state()}
+                assert st["system_mode"]["plc_clock_skew_sec"] == -10800
+                got = [
+                    await _get(nodes, tm["clock"][k])
+                    for k in ("year", "month", "day", "hour", "minute", "second", "seq")
+                ]
+                assert got == [2026, 11, 27, 3, 20, 30, 1]
+                assert st["pump_pump_well_01"]["fault"] is True
+                assert st["pump_pump_well_01"]["state"] == "faulted"
+            finally:
+                await adapter.stop()
+
+    asyncio.run(run())

@@ -66,12 +66,22 @@ export class ApiError extends Error {
   }
 }
 
+/** AI and file requests are slow on purpose; everything else must answer quickly. */
+function timeoutFor(path: string): number {
+  return /\/(ai|backups|reports)\b/.test(path) ? 150_000 : 20_000;
+}
+
 function errorMessage(body: unknown, status: number): string {
   if (body && typeof body === 'object') {
     const b = body as { detail?: unknown; message?: unknown };
     if (typeof b.message === 'string') return b.message;
     if (typeof b.detail === 'string') return b.detail;
     if (Array.isArray(b.detail)) return 'Invalid request';
+    const detail = b.detail as { conflicts?: { message?: string }[] } | null | undefined;
+    if (detail && Array.isArray(detail.conflicts)) {
+      const said = detail.conflicts.map((c) => c.message).filter(Boolean);
+      if (said.length) return said.join(' · ');
+    }
   }
   if (typeof body === 'string' && body.trim().length > 0 && body.length < 120) return body.trim();
   return `Request failed (${status})`;
@@ -84,7 +94,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(apiUrl(path), { ...init, headers });
+  const signal = init.signal ?? AbortSignal.timeout?.(timeoutFor(path));
+  const res = await fetch(apiUrl(path), { ...init, headers, signal });
   const text = await res.text();
   let body: unknown = null;
   if (text) {
@@ -205,6 +216,8 @@ export interface DailyBriefing {
     precipitation_mm: number;
     et0_mm?: number;
   } | null;
+  recommendations?: string[];
+  recommendations_ar?: string[];
   alarms_summary?: {
     active_count: number;
     anomalies_count?: number;
@@ -415,11 +428,19 @@ export async function approveSuggestion(suggestionId: string): Promise<{ ok: boo
   });
 }
 
+export async function undoSuggestion(suggestionId: string): Promise<void> {
+  await apiFetch(`/api/v1/ai/suggestions/${suggestionId}/undo`, { method: 'POST' });
+}
+
 export async function rejectSuggestion(suggestionId: string, reason?: string): Promise<{ ok: boolean; message?: string }> {
   return apiFetch<{ ok: boolean; message?: string }>(`/api/v1/ai/suggestions/${suggestionId}/reject`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
+}
+
+function textList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim() !== '') : [];
 }
 
 export async function fetchDailyBriefing(date?: string): Promise<DailyBriefing> {
@@ -436,6 +457,8 @@ export async function fetchDailyBriefing(date?: string): Promise<DailyBriefing> 
     schedules_today: (raw.schedules_today as DailyBriefing['schedules_today']) ?? null,
     weather_forecast: (raw.weather_forecast as DailyBriefing['weather_forecast']) ?? null,
     alarms_summary: raw.alarms_summary as DailyBriefing['alarms_summary'],
+    recommendations: textList(raw.recommendations),
+    recommendations_ar: textList(raw.recommendations_ar),
     provider: (raw.provider ?? raw.provider_used) as string | undefined,
     model: (raw.model ?? raw.model_used) as string | undefined,
     model_used: raw.model_used ? String(raw.model_used) : raw.model ? String(raw.model) : undefined,

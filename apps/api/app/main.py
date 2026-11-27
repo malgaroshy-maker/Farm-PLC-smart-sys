@@ -35,6 +35,7 @@ from app.routers import (
     state,
     system,
     telemetry,
+    users,
     websocket,
     zones,
 )
@@ -154,7 +155,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -179,6 +180,7 @@ for r in (
     system,
     soil,
     backups,
+    users,
 ):
     app.include_router(r.router, prefix=API_V1)
 

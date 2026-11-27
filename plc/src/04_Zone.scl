@@ -19,7 +19,8 @@ VERSION : 0.1
       s : "UDT_ZoneState";
       c : "UDT_ZoneCfg";
       lastState : Int;
-      lastPanel : Int;
+      switchArmed : Bool;       // the panel switch has been out of ON since the last run or trouble
+      tPump : TON_TIME;
       tValve : TON_TIME;
       tValidate : TON_TIME;
       tBand : TON_TIME;
@@ -62,11 +63,23 @@ BEGIN
       IF #s.PanelMode = 2 AND #s.State >= 1 AND #s.State <= 4 THEN
          #s.State := 5;
       END_IF;
-      // ON runs the zone with no time limit; after a fault it restarts only when the switch is moved again
-      IF #s.PanelMode = 1 AND #idle AND NOT #Trip AND (#s.State <> 7 OR #lastPanel <> 1) THEN
-         #s.ReqStart := TRUE;
-         #s.ReqSource := 1;
-         #s.ReqDurationSec := 0;
+      // ON runs the zone with no time limit. It starts only when the switch is moved to ON: after
+      // a fault, an E-stop or a PLC restart, a switch left ON waits for AUTO and then ON again.
+      IF #s.PanelMode <> 1 OR #s.State = 8 THEN           // 8: a power cut keeps the panel run
+         #switchArmed := TRUE;
+      END_IF;
+      IF #s.PanelMode = 1 AND #idle AND #switchArmed AND #s.State <> 8 THEN
+         IF NOT #Trip AND NOT "DB_Power".IsolationFault AND "DB_Farm".PowerOk THEN
+            #s.ReqStart := TRUE;
+            #s.ReqSource := 1;
+            #s.ReqDurationSec := 0;
+         END_IF;
+         IF "DB_Farm".PowerOk THEN
+            #switchArmed := FALSE;                         // used up, started or not
+         END_IF;
+      END_IF;
+      IF #s.PanelMode = 1 AND #s.State = 8 AND "DB_Farm".PowerOk THEN
+         #s.State := 0;                                    // power is back: start again from the switch
       END_IF;
       // back to AUTO ends a panel run
       IF #s.RunSource = 1 AND #s.PanelMode = 0 AND #s.State >= 1 AND #s.State <= 4 THEN
@@ -100,6 +113,11 @@ BEGIN
             #s.StartsToday := #s.StartsToday + 1;
             #s.State := 1;
          END_IF;
+         IF #idle AND #Trip AND #s.ReqSource = 3 THEN
+            // the run cut by the power failure cannot resume: say so (ALM-033)
+            #s.State := 7;
+            #s.FaultCode := 33;
+         END_IF;
          #s.ReqStart := FALSE;
       END_IF;
    END_REGION
@@ -116,7 +134,10 @@ BEGIN
          1:  // starting_pump
             #s.NeedPump := TRUE;
             #s.ValveCmd := FALSE;
-            IF #PumpFailed THEN
+            // a pump held off (selector, lock-out) reports no failure: do not wait for ever
+            #tPump(IN := NOT #entered,
+                   PT := DINT_TO_TIME(INT_TO_DINT("DB_Config".PumpStartTimeoutS) * 2000));
+            IF #PumpFailed OR #tPump.Q THEN
                #s.State := 7;
                #s.FaultCode := #PumpFailCode;
             ELSIF #PumpRunning THEN
@@ -184,6 +205,7 @@ BEGIN
                IF NOT #otherOpen AND "DB_Farm".MainFlowM3h > "DB_Config".UnexpectedFlowM3h THEN
                   #s.State := 7;
                   #s.FaultCode := 20;                  // ALM-020 valve failed to close
+                  "DB_Power".IsolationFault := TRUE;   // nothing else starts until a reset
                ELSE
                   #s.State := 6;
                END_IF;
@@ -215,6 +237,5 @@ BEGIN
       #s.ValveOpenFb := #s.ValveCmd;                    // no limit switch on wired valves
    END_IF;
 
-   #lastPanel := #s.PanelMode;
    "DB_Zones".Zone[#ZoneIndex] := #s;
 END_FUNCTION_BLOCK

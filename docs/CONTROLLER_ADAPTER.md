@@ -26,7 +26,7 @@ MODBUS_MAP=apps/simulator/modbus_map.example.json
 ## Safety rule
 The PLC owns the interlocks. Adapters only forward commands; they never bypass or imitate the PLC's safety logic on the real hardware path. The API's own interlocks stay in place as a first check.
 
-**PLC clock (Modbus).** A controller that publishes its local time (`clock_year`, `clock_month_day` = month×100+day, `clock_hour_minute`, `clock_second`) is set by the gateway when it is more than 5 s off farm time: six registers from `clock.base`, then a new `clock.seq`. Always the real farm time, never the simulator's virtual clock.
+**PLC clock (Modbus and OPC UA).** Over OPC UA the tag map's `clock` section writes `DB_Cmd.ClockSet*` and then a new `ClockSeq`; the published time is `DB_Farm.Clock*`. A controller that publishes its local time (`clock_year`, `clock_month_day` = month×100+day, `clock_hour_minute`, `clock_second`) is set by the gateway when it is more than 5 s off farm time: six registers from `clock.base`, then a new `clock.seq`. Always the real farm time, never the simulator's virtual clock.
 
 **OPC UA array numbering.** The PLC's server numbers array elements in node ids from 0, so PLC zone n is `Zone[n-1]` and fallback run k is `Run[k-1]`. Each zone's `config_id` node (`DB_Config.Zone[n-1].Id`) must hold the zone's id, or the adapter refuses to start.
 

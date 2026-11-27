@@ -88,9 +88,37 @@ PURITY_ALLOW_LIST: set[str] = {
     # States and common tokens
     "AUTO",
     "OFF",
+    "HAND",
+    "ALL",
+    "RUN",
     "START",
     "STOP",
+    # electrical and mechanical abbreviations written in Latin on the farm panels
+    "KPA",
+    "RPM",
+    "DOL",
+    "MCB",
+    "MCCB",
+    "RCD",
+    "NPSH",
 }
+
+# "الجريان الجاف (Dry Run)": the Arabic already says it, the bracket only repeats it
+RE_GLOSS = re.compile(r"\s*[(（]\s*[A-Za-z][A-Za-z \-/']*[)）]")
+# record and tag identifiers such as pump_booster_01 or DB_Zones
+RE_IDENTIFIER = re.compile(r"\b[A-Za-z]+(?:_[A-Za-z0-9]+)+\b")
+
+
+def strip_glosses(text: str) -> str:
+    """Remove bracketed English repeats; brackets holding only allowed terms stay."""
+
+    def drop(match: re.Match) -> str:
+        words = RE_LATIN_WORD.findall(match.group(0))
+        return match.group(0) if all(_is_allowed_latin_word(w) for w in words) else ""
+
+    if not re.search(r"[\u0621-\u064a]", text):
+        return text
+    return RE_GLOSS.sub(drop, text)
 
 
 @dataclass
@@ -130,7 +158,8 @@ def check_arabic_text_purity(
     foreign_chars = hangul + cjk + kana + cyrillic
 
     # 2. Count English words of 3+ letters outside allow-list
-    latin_words = RE_LATIN_WORD.findall(RE_PRODUCT_NAME.sub("", text))
+    prose = RE_IDENTIFIER.sub("", strip_glosses(RE_PRODUCT_NAME.sub("", text)))
+    latin_words = RE_LATIN_WORD.findall(prose)
     violating_words: list[str] = []
     for w in latin_words:
         if not _is_allowed_latin_word(w, extra_allowed):

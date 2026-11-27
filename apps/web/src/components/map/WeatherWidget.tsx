@@ -96,7 +96,7 @@ export default function WeatherWidget({
             onClick={() => setMobileExpanded(true)}
             data-testid="weather-mobile-chip"
             className="panel px-2.5 py-1.5 flex items-center gap-1.5 text-xs text-[#e5e2e1] hover:bg-white/10 shadow-lg"
-            aria-label="Expand weather details"
+            aria-label={t('weather.expand')}
           >
             <span>{icon}</span>
             <bdi className="font-mono font-medium">{forecast.temperature_c}°C</bdi>

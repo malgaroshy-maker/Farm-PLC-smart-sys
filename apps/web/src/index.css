@@ -197,3 +197,9 @@ html[data-reduce-motion="1"] .tank-wave, html[data-reduce-motion="1"] .spin-slow
     min-height: 44px;
   }
 }
+
+/* the controller link is down: what is on screen is old */
+main[data-offline] > * {
+  opacity: 0.55;
+  filter: grayscale(0.7);
+}

@@ -22,11 +22,15 @@ VERSION : 0.1
       anyValve : Bool;
       boosterDemand : Bool;
       wellDemand : Bool;
+      useWell : Bool;
    END_VAR
 BEGIN
    REGION Tank
       "DB_Farm".TankCritical := "DB_Farm".TankLevelPct < "DB_Config".TankCritPct;
-      IF "DB_Farm".TankLevelPct < "DB_Config".RefillStartPct THEN
+      IF "DB_Farm".TankSensorBad THEN
+         // the level is unknown: filling blind could overflow the tank
+         "DB_Farm".Refilling := FALSE;
+      ELSIF "DB_Farm".TankLevelPct < "DB_Config".RefillStartPct THEN
          "DB_Farm".Refilling := TRUE;
       ELSIF "DB_Farm".TankLevelPct >= "DB_Config".RefillStopPct THEN
          "DB_Farm".Refilling := FALSE;
@@ -34,8 +38,9 @@ BEGIN
    END_REGION
 
    REGION Well dry-run lock-out (ALM-027)
-      IF "DB_Config".WellLevelMaxM > 0.0 AND NOT "DB_Farm".AnalogFault THEN
-         IF "DB_Farm".WellLevelM < "DB_Config".WellDryM THEN
+      IF "DB_Config".WellLevelMaxM > 0.0 THEN
+         // a dead well sensor locks the pump too: dry running could not be seen
+         IF "DB_Farm".WellSensorBad OR "DB_Farm".WellLevelM < "DB_Config".WellDryM THEN
             "DB_Pumps".Well.Locked := TRUE;
          ELSIF #Reset AND "DB_Farm".WellLevelM >= "DB_Config".WellRecoverM THEN
             "DB_Pumps".Well.Locked := FALSE;
@@ -90,10 +95,18 @@ BEGIN
       FOR #i := 1 TO 16 DO
          #Trip[#i] := FALSE;
          #TripCode[#i] := 0;
+         // a running zone keeps its source; an idle one is judged by the source a start would
+         // use now (judged by its last run's source, a direct-well start was silently dropped)
+         #st := "DB_Zones".Zone[#i].State;
+         IF #st >= 1 AND #st <= 5 THEN
+            #useWell := "DB_Zones".Zone[#i].UsesWell;
+         ELSE
+            #useWell := "DB_Farm".TankCritical AND "DB_Config".Zone[#i].UsesWellDirect;
+         END_IF;
          IF "DB_Farm".EStop THEN
             #Trip[#i] := TRUE;
             #TripCode[#i] := 41;
-         ELSIF "DB_Zones".Zone[#i].UsesWell THEN
+         ELSIF #useWell THEN
             IF "DB_Pumps".Well.Locked THEN
                #Trip[#i] := TRUE;
                #TripCode[#i] := 27;
@@ -102,7 +115,8 @@ BEGIN
                #TripCode[#i] := 4;
             END_IF;
          ELSE
-            IF "DB_Farm".TankCritical AND "DB_Zones".Zone[#i].RunSource <> 1 THEN
+            // also for a zone switched ON at the panel: the booster must never run dry
+            IF "DB_Farm".TankCritical THEN
                #Trip[#i] := TRUE;
                #TripCode[#i] := 2;
             ELSIF "DB_Pumps".Booster.Fault THEN

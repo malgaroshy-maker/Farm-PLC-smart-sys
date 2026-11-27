@@ -70,7 +70,11 @@ You can cancel a pending restore before the restart. To restart:
 - Windows: restart the PC, or run `stop.bat` then `Start-ScheduledTask AlgaroshyFarmServer`.
 - Linux: `sudo systemctl restart algaroshy-farm`.
 
-A restore takes every record back to the backup's time: alarms, history, settings and users. Restore only to recover from a broken or lost database.
+A restore takes every record back to the backup's time: alarms, history, settings and users. **Old passwords and disabled or enabled accounts come back too**, and everyone is signed out. Restore only to recover from a broken or lost database.
+
+**Keep in mind.** Backup files are not encrypted: anyone holding the USB drive or the Drive folder can read the farm's records. A failed or old backup (over 36 hours) shows as a warning in system health.
+
+**Locked out?** On the farm PC, in `apps/api`: `.venv\Scripts\python.exe -m app.reset_password <username>`.
 
 ## 4. Remote access with Tailscale (HTTPS)
 Don't open router ports to the internet. [Tailscale](https://tailscale.com) makes a private network between your own devices. The free plan covers a farm.

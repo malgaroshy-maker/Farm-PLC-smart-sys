@@ -14,7 +14,14 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const IS_WIN = process.platform === 'win32';
-const OURS = /uvicorn\s+app\.main|vite|-m\s+src\.main/i;
+const SERVICE = /uvicorn\s+app\.main|vite|-m\s+src\.main/i;
+const slashes = (text) => text.replaceAll('\\', '/').toLowerCase();
+
+/** Ours = one of our services AND started from this folder: another project's Vite stays. */
+function isOurs(cmd) {
+  const line = slashes(cmd);
+  return SERVICE.test(line) && (line.includes(slashes(ROOT) + '/') || line.includes('@algaroshy/'));
+}
 
 function envPort() {
   try {
@@ -51,6 +58,8 @@ let stopped = 0;
 const pidFile = path.join(ROOT, '.run', 'pids.json');
 if (existsSync(pidFile)) {
   for (const { tag, pid } of JSON.parse(readFileSync(pidFile, 'utf8'))) {
+    // after a crash or reboot the number may belong to an unrelated program
+    if (!isOurs(commandLine(pid))) continue;
     killTree(pid);
     console.log(`stopped ${tag} (pid ${pid})`);
     stopped++;
@@ -61,7 +70,7 @@ if (existsSync(pidFile)) {
 for (const port of [envPort(), 5173, 4173]) {
   for (const pid of listeners(port)) {
     const cmd = commandLine(pid);
-    if (OURS.test(cmd)) {
+    if (isOurs(cmd)) {
       killTree(pid);
       console.log(`stopped leftover on port ${port} (pid ${pid})`);
       stopped++;

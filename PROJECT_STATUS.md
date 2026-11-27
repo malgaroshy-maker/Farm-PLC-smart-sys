@@ -1,7 +1,7 @@
 # 📊 Project Status — Algaroshy Farm Smart Irrigation System
 
 **Last Updated:** 2026-11-27
-**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ → **Milestone G**. G1–G4, G6, hardware research, and the Arabic demo are done. G7 field readiness is built and awaiting owner review. The G5 leak, clock, and alarm-flashing checks passed on the PLCSIM bench. Arabic HMI localization and HMI permissions are deferred. [Milestone G plan](docs/MILESTONE_G_PLAN.md) · [G5 acceptance record](docs/MILESTONE_G5_CLOSEOUT_PLAN.md#acceptance-record-for-2026-11-26)
+**Current milestone:** A ✅ · B ✅ · C ✅ · D ✅ · E ✅ · F ✅ → **Milestone G**. G1–G4, G6, hardware research, and the Arabic demo are done. G7 field readiness is built and awaiting owner review. The G5 leak, clock, and alarm-flashing checks passed on the PLCSIM bench. The 2026-11-27 full audit added user accounts, new PLC safety rules and an Arabic-only panel; HMI permissions wait for the owner to create the panel users. [Milestone G plan](docs/MILESTONE_G_PLAN.md) · [G5 acceptance record](docs/MILESTONE_G5_CLOSEOUT_PLAN.md#acceptance-record-for-2026-11-26)
 **Roadmap:** [docs/AUDIT_AND_ROADMAP.md](docs/AUDIT_AND_ROADMAP.md)
 
 > This file only marks something ✅ when it works end-to-end and has tests or was verified in the running app.
@@ -14,9 +14,9 @@
 | Area | Status | Notes |
 |------|--------|-------|
 | Monorepo, contracts, docs | ✅ | pnpm + Turborepo. `@algaroshy/contracts` is used by the web app as the single source of types. |
-| Database + migrations | ✅ | Alembic head `06a7b8c9d0e1` records gaps in cycle water readings; the one before it adds durable pump observations. Fresh and upgraded test databases passed `alembic check`. |
+| Database + migrations | ✅ | Alembic head `17b8c9d0e1f2` adds sign-out on account changes; `06a7b8c9d0e1` records gaps in cycle water readings; the one before it adds durable pump observations. Fresh and upgraded test databases passed `alembic check`. |
 | Seed data | ✅ | Starting point only; the owner edits zones in Settings. 12 zones, 12 valves, 2 pumps, 2 sources, 15 sensors, admin user with a bcrypt-hashed password. |
-| Auth | ✅ | `POST /auth/login` (JWT), `GET /auth/me`. Roles owner_admin / operator / viewer enforced on every endpoint. Operator+ can toggle schedules; Admin creates/edits/deletes. The simulator uses a service token. |
+| Auth | ✅ | `POST /auth/login` (JWT), `GET /auth/me`. Roles owner_admin / operator / viewer are enforced by the API. The admin manages accounts (Settings → Users) and everyone can change their own password; a changed account is signed out everywhere. Operator+ can toggle schedules; Admin creates/edits/deletes. The simulator uses a service token. |
 | Virtual Farm Clock | ✅ | Single source of truth in API (`app/core/clock.py`), persisted, monotonic. Live speed control (pause, 1×, 10×, 60×, 360×), jump to time (presets + custom HH:MM), step (+1 min), WS `clock.changed` broadcasts, amber SIMULATED TIME badge (`#ff9f43`) with speed in AR+EN, presenter header chip (desktop) collapsing to badge on mobile, full Simulator page panel, and "Back to real time" with reset confirmation. Telemetry, event times, alarm windows, and map lighting/season follow farm time; link staleness and command timeouts stay on real wall clock. Locked to real time unless `CONTROLLER_MODE=simulator`. |
 | Sequential Programs & Schedules | ✅ | Sequential irrigation programs (`/api/v1/schedules`). Strict conflict checker verifies 24 h total runtime, zone max runtimes, weekday overlaps across midnight and week boundaries, forbidden zone combinations, and pump concurrency. 24 h weekly timeline UI with interactive edit drawer, crop icons, live conflict validation, and save confirmation. Next irrigation card ticking on simulation clock on dashboard and mobile status row. |
 | Scheduler Service | ✅ | Virtual farm-clock scheduler (`app/services/scheduler.py`). Driven by monitor tick on `clock.farm_now()`. Persists last-fired timestamps across restarts (`scheduler_state` table). Dispatches commands exclusively through `submit_command` with `actor_type="scheduler"`, enforcing all physical and hydraulic interlocks. Sequential step transitions wait for zone idle. Handles pause, speed changes, backward/forward jumps without double-firing or mass-firing. On blocked start (interlock rejection), records skipped cycle, raises S1 info alarm (ALM-035), and seamlessly advances to next step. |
@@ -25,7 +25,7 @@
 | Command service | ✅ | Whitelisted command types, target and payload validation, role permissions, interlocks (stale state, system mode, already running, duplicate, max concurrent zones, zone combinations, pump health, low tank, **open critical alarm**). Rejected commands are kept for the audit trail. Real-time command timeout tracking (`requested_at_real`). A stop supersedes open starts. Every step goes to `event_log`. |
 | Real-time | ✅ | `/ws?token=` sends `state.snapshot` on connect (with `farm_now` and `speed`), then `zone.state.changed`, `pump.state.changed`, `system.mode.changed`, `command.updated`, `telemetry.stale`, `clock.changed`, `schedule.fired`, `schedule.skipped`, `schedule.missed`, `program.started`, `program.finished`, `cycle.started`, `cycle.completed`, `cycle.skipped`, `cycle.aborted`. The web app uses one shared connection and falls back to polling. |
 | Simulator | ✅ | Plays the PLC and the farm. Follows API clock dynamically via WS. Physics `dt = real_dt × speed` with sub-stepping; pause suspends physics while publishing; jumps stop active zones and apply closed-form soil drying and tank balance. Protection for pump trip/failed start, valve stuck closed/open, no flow, leak, critical tank, e-stop and sensor fault. **Hydraulic constants are placeholders until the site survey.** |
-| Alarm engine | ✅ | 20 codes from ALARM_MATRIX with AR/EN guidance, kept in sync with contracts by a test. Lifecycle ack → latched → reset → history. A "maintenance done" sign-off clears repeated-fault alarm (ALM-036). 24 h window follows farm time; debounce timers and staleness checks follow real wall-clock time. |
+| Alarm engine | ✅ | Codes from ALARM_MATRIX (52 defined, not all raised today) with AR/EN guidance, kept in sync with contracts by a test. Lifecycle ack → latched → reset → history. A "maintenance done" sign-off clears repeated-fault alarm (ALM-036). 24 h window follows farm time; debounce timers and staleness checks follow real wall-clock time. |
 | Scenarios | ✅ | 15 scripted scenarios run through the normal command path from the Simulator page or `/sim/scenarios`. PLCSIM runs the 13 real-time cases at 1×. `scheduled_day` and `scheduled_blocked_start` require a virtual clock. |
 | Telemetry history | ✅ | Persisted every 10 s farm time, at most 1/s real, farm timestamps, retention in farm time. `/telemetry/series` and `/telemetry/water-today` drive zone and dashboard charts. |
 | Farm map | ✅ | **Traced from Esri satellite imagery (z17), north-up**, 0.5035 m per map unit (`tools/map-geometry/satellite_retrace.py`); the owner's sketch is kept as an area cross-check. Owner-confirmed layout: block 8 strips (rumman ummahat with big mother trees, enab trellis rows, zaytoun_2 as three rows of big old olives), mixed-fruit strip (almond, lemon, orange; not irrigated), one connected building (barn, brooder, workers' rooms), the farm rest house inside the boundary, and the underground well just north of the control room. Thousands of individual trees at real row spacing, fruit following the season. Fly-to on zone select and on new S2/S3 alarms, alarm rings, farm-life sprites (tractor, birds, worker), buried mainline + laterals, tank, booster, control room. Animations follow flow and farm-local day/night; each can be switched off in Settings. |
@@ -72,21 +72,20 @@ All **15/15** scenarios passed against the running API and software simulator at
 
 | Gap | Planned in |
 |-----|-----------|
-| No way to create operator or viewer accounts or change a password; only the seeded admin exists | Deferred by the owner (2026-11-27) |
 | Phones on the LAN use plain HTTP in demo and server modes, so passwords can be read on that network | Decide with hosting (owner, 2026-11-27) |
-| Over OPC UA the app does not set or check the PLC clock; only Modbus does | Before using OPC UA on the farm |
 | The OPC UA array numbering was seen on PLCSIM; check it again on the real PLC (the adapter refuses a wrong map) | Commissioning |
 | OPC UA was bench-tested with no security, and is switched off again in the TIA project | Before using OPC UA on the farm |
 | PLC access protection is "full access" and Modbus TCP has no login; the PLC network must be isolated | Before commissioning |
-| Python packages have not had a vulnerability scan | Next audit |
-| Arabic HMI localization and HMI permissions | Deferred by the owner. |
+| HMI permissions are not applied: they need panel users that only the owner creates ([steps](docs/HMI_BUILD_GUIDE.md)) | Owner, then a bench test |
+| The panel's alarm table headings are in English (runtime language) | Commissioning |
+| The software simulator does not model the newest PLC rules (switch re-set, tank lockout, stuck-valve lock, sensor faults) | Test those on PLCSIM |
 | Field commissioning | The bench used PLCSIM over Modbus and OPC UA. Measure and approve field flow bands before commissioning. |
 | Phone push on phones needs HTTPS: Tailscale `serve` is documented but not set up yet | Farm PC setup |
 | PostgreSQL in production, SMS/escalation | Production track |
 | Per-crop soil levels are proposed values; soil logic waits for the owner to confirm them | Owner input |
-| Farm total area: the satellite trace gives 9.97 ha, the seed says 11.9 ha | Owner input |
-| Scenario suite runs manually against a live stack, not in CI | CI improvement |
-| Pipe routes are a plausible guess. Edit `tools/map-geometry/network.py` with the real routes | Owner input |
+| Farm area: 11.9 ha is the official figure (owner); the satellite trace of the planted blocks gives 9.97 ha | Recorded |
+| CI runs the scenarios on the software simulator only; PLCSIM runs are manual | By design |
+| Pipe routes are approximate (owner keeps them as they are). Edit `tools/map-geometry/network.py` when the real routes are known | Owner input |
 | Dual-zone operation (`MAX_CONCURRENT_ZONES>1`) is supported by interlocks but not exercised by any scenario | After commissioning |
 
 ## Milestones

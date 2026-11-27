@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.alarm_catalog import CATALOG, SEVERITY_RANK, AlarmSpec
 from app.core.clock import clock
-from app.core.domain import ACTIVE_ZONE_STATES, CONTROLLER_LATCHED_ALARMS
+from app.core.domain import ACTIVE_ZONE_STATES, CONTROLLER_LATCHED_ALARMS, TERMINAL_COMMAND_STATUSES
 from app.core.timeutil import as_utc, utcnow
 from app.deps import Actor
 from app.models.alarm import Alarm
@@ -520,12 +520,36 @@ class AlarmEngine:
         events += await self.reconcile(
             db, self.staleness_conditions(snapshots, real_now), {"ALM-029", "ALM-044"}
         )
+        events += await self.reconcile(db, await self.stop_conditions(db, real_now), {"ALM-052"})
         await self._publish(db, events)
+
+    @staticmethod
+    async def stop_conditions(db: AsyncSession, real_now: datetime) -> list[Condition]:
+        """ALM-052: a stop the controller has not confirmed. Water may still be running."""
+        waiting = (
+            await db.execute(
+                select(Command).where(
+                    Command.command_type.in_(("stop_zone", "stop_all")),
+                    Command.status.not_in(TERMINAL_COMMAND_STATUSES),
+                )
+            )
+        ).scalars()
+        late = [
+            c
+            for c in waiting
+            if (real_now - as_utc(c.requested_at_real or c.requested_at)).total_seconds()
+            > settings.command_timeout_sec
+        ]
+        if not late:
+            return []
+        zones = sorted({c.target_id for c in late if c.target_id})
+        return [Condition("ALM-052", detail=", ".join(zones) or "STOP ALL")]
 
     async def on_monitor_tick(self, db: AsyncSession, snapshots: dict[str, Snapshot]) -> None:
         events = await self.reconcile(
             db, self.staleness_conditions(snapshots, utcnow()), {"ALM-029", "ALM-044"}
         )
+        events += await self.reconcile(db, await self.stop_conditions(db, utcnow()), {"ALM-052"})
         await self._publish(db, events)
 
     async def raise_event(

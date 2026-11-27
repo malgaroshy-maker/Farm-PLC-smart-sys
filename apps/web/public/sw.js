@@ -8,12 +8,20 @@
  *    picked up immediately but the shell still opens when the farm link is down
  *    (the app then shows OFFLINE instead of a browser error page).
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL).then((c) => c.addAll(['/', '/manifest.webmanifest'])));
+  event.waitUntil(
+    caches.open(SHELL).then(async (c) => {
+      await c.addAll(['/', '/manifest.webmanifest']);
+      // the shell is useless offline without the scripts and styles it names
+      const page = await (await c.match('/')).text();
+      const files = [...page.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]);
+      await c.addAll(files).catch(() => undefined);
+    }),
+  );
   self.skipWaiting();
 });
 

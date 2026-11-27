@@ -24,8 +24,15 @@ Response:
 }
 ```
 
-### POST /api/v1/auth/logout
-Invalidates session if applicable.
+There is no logout call: the app forgets its token. A token stops working when the account is switched off, its role or
+password changes, or a backup is restored.
+
+### GET /api/v1/auth/me
+The signed-in user.
+
+### POST /api/v1/auth/password
+Any user. `{ "current_password": "...", "new_password": "..." }`. Ends every other sign-in of that user and returns a new
+token. A wrong current password is `400 wrong_current_password` (limited like sign-in).
 
 ## 3. Farm and Config
 
@@ -44,11 +51,10 @@ Create zone.
 ### PATCH /api/v1/zones/{zoneId}
 Edit zone config.
 
-### GET /api/v1/zone-combinations
-Return allowed dual-zone combinations.
+### POST /api/v1/zones/{zoneId}/maintenance-done
+Records that maintenance was done on a zone.
 
-### PUT /api/v1/zone-combinations
-Replace or update combination matrix.
+Which zones may run together is stored in the database; there is no API for editing it.
 
 ## 4. Devices
 
@@ -116,51 +122,29 @@ Returns the most recent N cycles for a given zone. Feeds the zone drawer history
 
 ## 6. Commands
 
-### POST /api/v1/commands/start-zone
+### POST /api/v1/commands
+One endpoint for every command:
 ```json
-{ "zone_id": "zone_grapes_1", "mode": "manual" }
+{ "command_type": "start_zone", "target_type": "zone", "target_id": "zone_enab", "payload": { "duration_min": 30 } }
 ```
+`command_type`: `start_zone`, `stop_zone`, `stop_all`, `set_mode` (`payload.mode`), `reset_alarm`; in simulation only
+also `inject_fault` and `set_panel`. `stop_all`, `set_mode` and `reset_alarm` use `target_type: "system"` with no
+`target_id`.
 
-### POST /api/v1/commands/stop-zone
-```json
-{ "zone_id": "zone_grapes_1" }
-```
+A refused command is `409` with `{ "code": "...", "message": "...", "command_id": "..." }`.
 
-### POST /api/v1/commands/stop-all
-```json
-{ "reason": "operator_request" }
-```
+A stop is never dropped: it stays pending until the controller confirms it, and ALM-052 is raised while it waits.
 
-### POST /api/v1/commands/set-mode
-```json
-{ "mode": "auto" }
-```
+### GET /api/v1/commands?limit=20
+Recent commands with their status (`pending`, `accepted`, `executing`, `completed`, `rejected`, `failed`, `timed_out`).
 
-### POST /api/v1/commands/ack-alarm
-```json
-{ "alarm_id": "a123" }
-```
-
-### POST /api/v1/commands/reset-alarm
-```json
-{ "alarm_id": "a123" }
-```
-
-### POST /api/v1/commands/force-valve
-Admin only.
-```json
-{ "valve_id": "v1", "position": "open" }
-```
-
-### POST /api/v1/commands/source-override
-```json
-{ "zone_id": "zone_peach_1", "source_mode": "well_direct" }
-```
+### GET /api/v1/commands/pending · PATCH /api/v1/commands/{id}/sync
+Used by the controller gateway (service token only).
 
 ## 7. Telemetry
 
-### GET /api/v1/telemetry/current
-Returns summarized live values.
+### GET /api/v1/telemetry/series
+`metric_key`, optional `zone_id`, `minutes` (up to 7 days), `points`. Averaged history for charts.
 
 ### GET /api/v1/telemetry/flow-pressure
 
@@ -169,14 +153,6 @@ Returns main-line flow in m³/h and pressure in bar in shared one-minute buckets
 ### GET /api/v1/telemetry/water-today
 
 Returns `total_m3` and `zones` from farm-local midnight through the current farm time. Each zone has its `zone_id` and `m3` volume. The total and zone entries include `water_is_estimate` and `water_has_gaps`. A value is `null` when the volume is unknown and `0` when measured as zero. A run spanning midnight contributes only the volume supported by flow readings within today's portion.
-
-### GET /api/v1/telemetry/history
-Query params:
-- metric_key
-- zone_id
-- from
-- to
-- bucket optional
 
 ### GET /api/v1/state/map
 Returns everything needed to render the live farm map:
@@ -229,56 +205,65 @@ Observed runtime hours and starts per pump. Runtime covers continuous intervals 
 ### GET /api/v1/reports/alarm-history
 Historical alarm occurrences grouped by alarm code, severity, and bilingual title.
 
-## 10. Admin
+## 10. Users, system and records
 
-### GET /api/v1/users
-### POST /api/v1/users
-### PATCH /api/v1/users/{userId}
-### GET /api/v1/system/config
-### PATCH /api/v1/system/config
+### Users (admin only)
+- `GET /api/v1/users`
+- `POST /api/v1/users` `{ "name", "username", "role", "password" }`. Roles: `owner_admin`, `operator`, `viewer`.
+  Usernames are not case-sensitive. Passwords: at least 8 characters, at most 72 bytes.
+- `PATCH /api/v1/users/{id}` any of `name`, `username`, `role`, `password`, `is_active`.
+
+Accounts are switched off, not deleted. The last active admin cannot be switched off or demoted (`409 last_admin`).
+A locked-out owner resets a password on the farm PC: `python -m app.reset_password <username>` in `apps/api`.
+
+### System
+- `GET /api/v1/system/health` checks of the database, controller link, scheduler, AI, weather, disk and backup.
+- `GET /api/v1/system/features` · `PUT /api/v1/system/features/{key}` (admin)
+- `GET /api/v1/system/notifications` · `PUT .../notifications/telegram` · `POST .../notifications/telegram/detect` ·
+  `POST .../notifications/test` (admin)
+- `GET /api/v1/system/push/public-key` · `POST .../push/subscribe` · `POST .../push/unsubscribe`
+
+### Soil
+- `GET /api/v1/soil/levels` · `PUT /api/v1/soil/levels/{cropType}` · `GET /api/v1/soil/status`
+- `GET /api/v1/soil/probes` · `POST /api/v1/soil/probes` · `DELETE /api/v1/soil/probes/{id}`
+- `POST /api/v1/ingest/soil` readings from the probe gateway.
+
+### Backups (admin)
+- `GET /api/v1/backups` · `POST /api/v1/backups` · `POST /api/v1/backups/{name}/restore` (applied at the next start) ·
+  `DELETE /api/v1/backups/restore`
+
+### Event log
+- `GET /api/v1/events?limit&before_id&category&entity_id` records of commands, alarms, sign-ins and changes.
+
+### Simulation only
+- `GET|POST /api/v1/sim/clock` · `GET /api/v1/sim/scenarios` · `POST /api/v1/sim/scenarios/{name}/run` ·
+  `POST /api/v1/sim/scenarios/stop`
 
 ## 11. AI and Weather (Milestone E)
 
-### POST /api/v1/ai/explain-alarm
-Explains an active or historical alarm in Arabic or English using live sensor and catalog context.
-Request:
+### POST /api/v1/ai/explain-alarm (also /ai/alarm-assistant)
+Explains an alarm using live sensor and catalog context.
 ```json
-{
-  "alarm_id": 1,
-  "question": "ما سبب انخفاض الضغط؟",
-  "lang": "ar"
-}
+{ "alarm_id": "alm_...", "alarm_code": "ALM-008", "language": "ar", "question": "..." }
 ```
-Response:
-```json
-{
-  "alarm_id": 1,
-  "alarm_code": "ALM-008",
-  "summary": "انخفاض مفاجئ في ضغط خط الري...",
-  "likely_causes": ["تسريب في الخط الرئيسي", "عطل في مضخة التعزيز"],
-  "recommended_steps": ["فحص الخط الرئيسي بصرياً", "إيقاف المنطقة يدوياً"],
-  "safety_note": "لا تتجاوز إقفال الأمان التلقائي للمضخة",
-  "confidence": 0.95,
-  "provider": "apinex/free/gemini-3.8-flash",
-  "disclaimer": "مقترحات استرشادية فقط — يرجى التحقق الميداني قبل التنفيذ"
-}
-```
+The answer holds a summary, likely causes, steps and a safety note in Arabic and English, and names the provider.
 
 ### POST /api/v1/ai/chat
-Interactive chat with read-only farm tools (`get_alarm`, `get_zone_state`, `get_recent_telemetry`, `get_cycles`, `get_schedule`, `get_forecast`).
-Request:
+Chat with read-only farm tools (`get_alarm`, `get_zone_state`, `get_recent_telemetry`, `get_cycles`, `get_schedule`,
+`get_forecast`). It cannot start or stop water.
 ```json
-{
-  "messages": [{ "role": "user", "content": "كم استهلكنا مياه اليوم؟" }],
-  "lang": "ar"
-}
+{ "message": "كم استهلكنا من الماء اليوم؟", "language": "ar", "context_zone_id": null, "history": [] }
 ```
 
 ### GET /api/v1/ai/suggestions
 Returns pending and historical weather-aware irrigation suggestions.
 
 ### POST /api/v1/ai/suggestions/{id}/approve
-Approves an advisor suggestion (Operator+). Creates a 1-day program run override.
+Approves a suggestion (Operator+). Weather advice becomes a one-day program change. A soil "extra run" starts the
+zone at once, only while it has not expired and the soil is still confirmed dry.
+
+### POST /api/v1/ai/suggestions/{id}/undo
+Takes back an approved one-day change that no run has used.
 
 ### POST /api/v1/ai/suggestions/{id}/reject
 Rejects an advisor suggestion with feedback.
@@ -293,34 +278,11 @@ Returns cached Open-Meteo weather forecast for Algaroshy Farm (`32.516250, 14.07
 ### GET /api/v1/ai/settings
 Admin endpoint returning provider order, feature toggles, API key status, and active models.
 
-### POST /api/v1/ai/settings
+### PUT /api/v1/ai/settings
 Admin endpoint to update AI configuration.
 
-### POST /api/v1/ai/test-connection
+### POST /api/v1/ai/test
 Admin endpoint testing connectivity, measuring latency, and returning the active model.
-
-## 12. Response Rules
-
-Use a standard response wrapper for commands:
-
-```json
-{
-  "success": true,
-  "command_id": "cmd_001",
-  "status": "accepted",
-  "message": "Zone start command accepted."
-}
-```
-
-Error example:
-
-```json
-{
-  "success": false,
-  "error_code": "HYDRAULIC_CAPACITY_EXCEEDED",
-  "message": "The requested zone combination is not allowed."
-}
-```
 
 ## 12. API Conventions
 

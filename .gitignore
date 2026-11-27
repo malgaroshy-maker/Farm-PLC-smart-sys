@@ -131,3 +131,7 @@ video/refs/
 video/_dl/
 video/_chk/
 video/_render.log
+
+# video work in progress (farm photos, old captures)
+video/assets/v3/
+video/frames_old_cut/

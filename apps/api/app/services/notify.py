@@ -120,8 +120,12 @@ async def send_telegram(n: Notification, chat_id: str) -> bool:
     return True
 
 
+class SeveralChats(Exception):
+    """More than one chat wrote /start to the bot: which one is the owner is unknown."""
+
+
 async def telegram_detect_chat() -> str | None:
-    """Chat id of the latest message sent to the bot (owner sends /start first)."""
+    """The one chat that sent /start to the bot (owner sends it first)."""
     if not telegram_configured():
         return None
     url = f"{TELEGRAM_API}/bot{settings.telegram_bot_token}/getUpdates"
@@ -130,12 +134,15 @@ async def telegram_detect_chat() -> str | None:
     if r.status_code != 200:
         return None
     updates = r.json().get("result") or []
-    for u in reversed(updates):
+    chats = set()
+    for u in updates:
         msg = u.get("message") or u.get("channel_post") or {}
         chat = msg.get("chat") or {}
-        if chat.get("id") is not None:
-            return str(chat["id"])
-    return None
+        if chat.get("id") is not None and str(msg.get("text", "")).startswith("/start"):
+            chats.add(str(chat["id"]))
+    if len(chats) > 1:
+        raise SeveralChats
+    return chats.pop() if chats else None
 
 
 async def send_web_push(db: AsyncSession, n: Notification) -> int:

@@ -16,6 +16,23 @@ interface ExplainAlarmDrawerProps {
 
 const ZONE_MAP = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
 
+/** The alarm's own message and the farm's written steps for it. */
+function fromAlarm(alarm: Alarm, lang: string, reason: string): AlarmExplanation {
+  const ar = lang === 'ar';
+  const guidance = ar ? alarm.guidance_ar || alarm.guidance_en : alarm.guidance_en || alarm.guidance_ar;
+  return {
+    alarm_id: alarm.id,
+    summary: (ar ? alarm.message_ar || alarm.message_en : alarm.message_en || alarm.message_ar) || '',
+    likely_causes: [],
+    steps: guidance ? [guidance] : [],
+    safety_note: ar ? 'لا تتجاوز حمايات وحدة التحكم ولا تشغّل المضخة قسرياً.' : 'Never bypass PLC interlocks or force a pump to start.',
+    provider: 'rule_based',
+    model: 'rule-based-fallback',
+    is_fallback: true,
+    fallback_reason: reason,
+  };
+}
+
 export default function ExplainAlarmDrawer({ alarm, onClose }: ExplainAlarmDrawerProps) {
   if (!alarm) return null;
   return <ExplainAlarmDrawerContent key={alarm.id} alarm={alarm} onClose={onClose} />;
@@ -77,52 +94,8 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
       })
       .catch((err: unknown) => {
         if (!active || controller.signal.aborted) return;
-        // Fallback rule-based explanation derived directly from alarm metadata
-        const fallback: AlarmExplanation = {
-          alarm_id: alarm.id,
-          summary:
-            (lang === 'ar'
-              ? alarm.message_ar || alarm.message_en
-              : alarm.message_en || alarm.message_ar) || '',
-          likely_causes:
-            lang === 'ar'
-              ? [
-                  `انحراف القيمة الحالية (${alarm.current_value ?? '--'}) عن الحد المقبول (${alarm.threshold_value ?? '--'})`,
-                  'احتمال وجود عطل ميكانيكي أو انسداد أو تسريب في المسار المحدد',
-                  'استجابة بطيئة في فتح/إغلاق الصمامات أو إشارة الحساس',
-                ]
-              : [
-                  `Current telemetry value (${alarm.current_value ?? '--'}) crossed threshold (${alarm.threshold_value ?? '--'})`,
-                  'Possible mechanical restriction, valve delay, or pipe leakage in monitored segment',
-                  'Transient pressure surge or sensor wiring anomaly',
-                ],
-          steps:
-            lang === 'ar'
-              ? [
-                  alarm.guidance_ar || alarm.guidance_en || 'تحقق من خط الري والصمامات ميدانياً',
-                  'افحص مقياس الضغط ومؤشر التدفق على لوحة الأجهزة',
-                  'تأكد من عدم وجود تسريب ظاهر أو انسداد في فلاتر الخط',
-                  alarm.requires_manual_reset
-                    ? 'بعد المعالجة الميدانية، قم بإعادة تعيين الإنذار يدوياً من مركز الإنذارات'
-                    : 'سيزول الإنذار تلقائياً بمجرد عودة القراءات للنطاق الطبيعي',
-                ]
-              : [
-                  alarm.guidance_en || alarm.guidance_ar || 'Inspect irrigation line and valves on site',
-                  'Check physical pressure gauge and flow meter readout',
-                  'Confirm no visible pipe rupture, filter clogging, or dry run condition',
-                  alarm.requires_manual_reset
-                    ? 'Perform manual reset in Alarm Center once field check is verified'
-                    : 'Alarm clears automatically when telemetry returns to normal range',
-                ],
-          safety_note:
-            lang === 'ar'
-              ? 'تنبيه سلامة: لا تقم بتجاوز حمايات PLC أو تشغيل المضخة قسرياً عند هبوط الضغط الحاد.'
-              : 'Safety note: Never bypass PLC interlocks or force pump start during abnormal pressure drops.',
-          provider: 'rule_based',
-          model: 'rule-based-fallback',
-          is_fallback: true,
-          fallback_reason: 'rule_based_fallback',
-        };
+        // only what the alarm list itself says: no guessed causes
+        const fallback = fromAlarm(alarm, lang, 'rule_based_fallback');
         setExplanation(fallback);
         if (err instanceof Error && !err.message.includes('404')) {
           setError(err.message);
@@ -143,41 +116,7 @@ function ExplainAlarmDrawerContent({ alarm, onClose }: { alarm: Alarm; onClose: 
       abortControllerRef.current.abort();
     }
     setLoading(false);
-    const fallback: AlarmExplanation = {
-      alarm_id: alarm.id,
-      summary:
-        (lang === 'ar'
-          ? alarm.message_ar || alarm.message_en
-          : alarm.message_en || alarm.message_ar) || '',
-      likely_causes:
-        lang === 'ar'
-          ? [
-              `انحراف القيمة الحالية (${alarm.current_value ?? '--'}) عن الحد المقبول (${alarm.threshold_value ?? '--'})`,
-              'تم إلغاء الطلب بواسطة المشغّل وتم تطبيق التشخيص الميداني المباشر',
-            ]
-          : [
-              `Current telemetry value (${alarm.current_value ?? '--'}) crossed threshold (${alarm.threshold_value ?? '--'})`,
-              'Request cancelled by operator — direct field diagnosis loaded',
-            ],
-      steps:
-        lang === 'ar'
-          ? [
-              alarm.guidance_ar || alarm.guidance_en || 'تحقق من خط الري والصمامات ميدانياً',
-              'افحص مقياس الضغط ومؤشر التدفق على لوحة الأجهزة',
-            ]
-          : [
-              alarm.guidance_en || alarm.guidance_ar || 'Inspect irrigation line and valves on site',
-              'Check physical pressure gauge and flow meter readout',
-            ],
-      safety_note:
-        lang === 'ar'
-          ? 'تنبيه سلامة: لا تقم بتجاوز حمايات PLC أو تشغيل المضخة قسرياً عند هبوط الضغط الحاد.'
-          : 'Safety note: Never bypass PLC interlocks or force pump start during abnormal pressure drops.',
-      provider: 'rule_based',
-      model: 'rule-based-fallback',
-      is_fallback: true,
-      fallback_reason: 'cancelled_by_operator',
-    };
+    const fallback = fromAlarm(alarm, lang, 'cancelled_by_operator');
     setExplanation(fallback);
   };
 

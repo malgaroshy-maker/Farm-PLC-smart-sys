@@ -8,6 +8,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Full audit: safety rules, user accounts, Arabic panel and fixes (2026-11-27)
+
+**Controller (PLCSIM)**
+- Emergency stop stops every pump. A critically low tank locks out the booster. A bad tank sensor stops refilling; a bad well sensor locks the well pump.
+- A zone switch must be seen OFF before ON starts water again. A valve that will not close blocks all starts until reset.
+- The system mode survives a restart, and maintenance and off modes block starts. The PLC clock can now be set over OPC UA too.
+
+**Watering control**
+- A program never resumes after the app was down, the clock jumped, a power cut ended the run, or the program or automation was switched off or edited. The reason is recorded.
+- A stop is never dropped. While the controller has not confirmed it, the app keeps sending it and raises ALM-052.
+- STOP ALL no longer waits behind the morning briefing. A zone still closing counts toward the zone limit.
+- The controller's stored schedule follows approved one-day changes and the automation switch, and updates within half a minute.
+- Old soil advice cannot start water, starting from advice takes two taps, and Undo removes an approval that no run has used.
+
+**App**
+- A banner shows when there is no connection, old values are dimmed, nothing shows "all OK" without data, and Start is blocked while Stop stays.
+- Commands show what the controller finally did. Refusals and the event log are in Arabic.
+- User accounts: the admin adds, changes and disables users; everyone can change their password. A changed account is signed out everywhere.
+- Many fixes to schedules, AI settings, briefing recommendations, alarm explanations, keyboard use and phones.
+
+**Security and operations**
+- Sign-in tokens use PyJWT instead of python-jose, which had open advisories (with ecdsa). `pip-audit` reports no known vulnerabilities.
+- Sign-in limit hardened; changes to programs, devices, AI and notification settings are logged.
+- Live connections close with the sign-in. A failed or old backup shows in system health. Server mode stays up without the controller.
+- The launcher refuses development secrets in demo and server modes; `stop` only stops this app's processes.
+- CI runs every scenario on the software simulator.
+
+**Also fixed while recording the video**
+- With the real PLC program, zones without a moisture probe showed 0 %. The PLC never writes that field; the app now treats it as not measured, so it cannot trigger "dry soil" advice or mislead the assistant.
+- The assistant's greeting no longer carries a "backup mode" badge. The event log no longer claims it cannot be edited, and shows refusal reasons in Arabic.
+
+**Demo video**
+- A new family video (2:54, Arabic captions, music): MAGI-2 farm clips, the app on desktop and phone with zone start and stop, four real assistant answers and the Arabic panel. Every screen is labelled as simulation. Video files stay out of git; the tools are in `tools/video/`.
+
+**Panel**
+- The WinCC Unified panel is Arabic only (TIA V19 has no Arabic project language), including state names and PLC alarm texts.
+
 ### Bench testing: safety, clock, OPC UA and AI fixes (2026-11-27)
 
 - **A stop during a power cut now cancels that zone's resume** (app STOP ALL, stop zone, HMI Stop all), in the PLC and the simulator. Before, the zone restarted by itself when power returned.

@@ -120,7 +120,8 @@ BEGIN
       #FC_CanStart := 3;
    ELSIF "DB_Zones".Zone[#Zone].PanelMode <> 0 THEN
       #FC_CanStart := 2;
-   ELSIF "DB_Farm".Mode = 0 OR NOT "DB_Config".Zone[#Zone].Enabled THEN
+   ELSIF "DB_Farm".Mode = 0 OR "DB_Farm".Mode = 3 OR "DB_Power".IsolationFault
+         OR NOT "DB_Config".Zone[#Zone].Enabled THEN       // off, maintenance, or a stuck valve
       #FC_CanStart := 1;
    ELSIF #st >= 1 AND #st <= 5 THEN
       #FC_CanStart := 7;

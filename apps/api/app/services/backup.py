@@ -18,7 +18,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
@@ -88,6 +88,34 @@ def pending_restore() -> str | None:
 
 def rclone_path() -> str | None:
     return shutil.which("rclone")
+
+
+OLD_AFTER_HOURS = 36
+
+
+def health_code(app_uptime_sec: float) -> str:
+    """backup_ok, or what is wrong with the daily backup."""
+    saved = _read_status()
+    last = saved.get("last") or {}
+
+    def when(value: str | None) -> datetime | None:
+        try:
+            at = datetime.fromisoformat(str(value))
+        except ValueError:
+            return None
+        return at if at.tzinfo else at.replace(tzinfo=UTC)
+
+    made, failed = when(last.get("at")), when(saved.get("last_error_at"))
+    if failed and (not made or failed > made):
+        return "backup_failed"
+    limit = timedelta(hours=OLD_AFTER_HOURS)
+    if made and datetime.now(UTC) - made > limit:
+        return "backup_old"
+    if not made and app_uptime_sec > limit.total_seconds():
+        return "backup_old"
+    if any(str(last.get(k, "")).startswith(("failed", "rclone_missing")) for k in ("usb", "drive")):
+        return "backup_copy_failed"
+    return "backup_ok"
 
 
 def status() -> dict:
@@ -237,6 +265,9 @@ async def daily_loop() -> None:
                 await make_backup("daily")
         except Exception:
             log.exception("Daily backup failed")
-            _write_status({**_read_status(), "last_error_at": utcnow().isoformat()})
+            try:
+                _write_status({**_read_status(), "last_error_at": utcnow().isoformat()})
+            except Exception:  # a full or missing disk must not end the daily backups
+                log.exception("Could not record the failed backup")
             await asyncio.sleep(3600)  # don't retry a failing backup every minute
         await asyncio.sleep(60)

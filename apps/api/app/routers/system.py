@@ -20,6 +20,7 @@ from app.core.clock import clock
 from app.core.timeutil import utcnow
 from app.database import _is_sqlite, get_db
 from app.deps import Actor, get_actor, require_admin
+from app.services import backup
 from app.services.ai.agent import is_primary_degraded
 from app.services.live_state import last_update, load_snapshots
 from app.services.monitor import MONITOR_STATUS
@@ -145,6 +146,11 @@ async def system_health(actor: Actor = Depends(get_actor), db: AsyncSession = De
     except OSError:  # pragma: no cover
         checks.append(_check("disk", "warn", "disk_unknown"))
 
+    # 7. the daily backup (a failure must not stay silent)
+    if backup.db_path() is not None:
+        code = backup.health_code(time.time() - STARTED_AT)
+        checks.append(_check("backup", "ok" if code == "backup_ok" else "warn", code))
+
     order = {"ok": 0, "warn": 1, "fail": 2}
     overall = max((c["status"] for c in checks), key=order.__getitem__)
     return {
@@ -208,6 +214,20 @@ async def update_feature(
 # ── Notifications (Milestone G3) ─────────────────────────────
 
 
+async def _log_telegram(db: AsyncSession, actor: Actor, action: str) -> None:
+    from app.services.events import log_event
+
+    await log_event(  # the chat id itself is not written: every user can read the log
+        db,
+        "notify.settings_changed",
+        "notification",
+        "telegram",
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"action": action},
+    )
+
+
 class TelegramChat(BaseModel):
     chat_id: str
 
@@ -250,26 +270,38 @@ async def notification_status(
 
 
 @router.post("/notifications/telegram/detect")
-async def telegram_detect(_: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def telegram_detect(
+    actor: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)
+):
     """After the owner sends /start to the bot, read the chat id from the bot's updates."""
     from app.core.timeutil import utcnow as _now
-    from app.services.notify import get_settings_row, telegram_configured, telegram_detect_chat
+    from app.services.notify import (
+        SeveralChats,
+        get_settings_row,
+        telegram_configured,
+        telegram_detect_chat,
+    )
 
     if not telegram_configured():
         raise HTTPException(409, "telegram_token_missing")
-    chat_id = await telegram_detect_chat()
+    try:
+        chat_id = await telegram_detect_chat()
+    except SeveralChats:
+        # the newest sender could be a stranger who found the bot: the owner types the id
+        raise HTTPException(409, "telegram_several_chats") from None
     if not chat_id:
         raise HTTPException(404, "telegram_no_message")
     row = await get_settings_row(db)
     row.telegram_chat_id = chat_id
     row.updated_at = _now()
+    await _log_telegram(db, actor, "chat_detected")
     await db.commit()
     return {"chat_id": chat_id}
 
 
 @router.put("/notifications/telegram")
 async def telegram_set_chat(
-    body: TelegramChat, _: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)
+    body: TelegramChat, actor: Actor = Depends(require_admin), db: AsyncSession = Depends(get_db)
 ):
     from app.core.timeutil import utcnow as _now
     from app.services.notify import get_settings_row
@@ -277,6 +309,7 @@ async def telegram_set_chat(
     row = await get_settings_row(db)
     row.telegram_chat_id = body.chat_id.strip() or None
     row.updated_at = _now()
+    await _log_telegram(db, actor, "chat_set" if row.telegram_chat_id else "chat_removed")
     await db.commit()
     return {"chat_id": row.telegram_chat_id}
 

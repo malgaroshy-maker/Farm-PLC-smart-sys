@@ -146,13 +146,22 @@ When the mains returns:
 - otherwise it goes to `faulted` with "power was out N min, run not resumed".
 
 ### 6.5 Fallback program (G7)
-While `FallbackActive`, `FB_Fallback` starts each run in `DB_Fallback` at its time, for its duration, through the normal zone logic and interlocks. Runs keep `RunSource = fallback`, so the app records them as unattended cycles when the link returns. These times are the PLC's own local clock, so the gateway sets it over Modbus whenever it is more than 5 s off farm time (registers 16–19 show it, 308–314 set it). The app raises ALM-051 if it stays more than 2 minutes off. Over OPC UA the clock is not set yet.
+While `FallbackActive`, `FB_Fallback` starts each run in `DB_Fallback` at its time, for its duration, through the normal zone logic and interlocks. Runs keep `RunSource = fallback`, so the app records them as unattended cycles when the link returns. These times are the PLC's own local clock, so the gateway sets it over Modbus whenever it is more than 5 s off farm time (registers 16–19 show it, 308–314 set it). The app raises ALM-051 if it stays more than 2 minutes off. Over OPC UA the app sets it through `DB_Cmd.ClockSet*` and `ClockSeq`.
 
 ### 6.6 Restart (OB100)
 - All outputs off, every zone `off`, and the radio boxes are sent "close".
 - `FB_Power` treats the time the PLC was off as an outage, so the 30-minute rule applies to runs that were going before the restart. Their remaining time is kept in retain memory.
 
-### 6.7 Protection
+### 6.7 Safety rules added by the owner (2026-11-27)
+- **E-stop** stops every pump, in AUTO and in HAND.
+- **Critically low tank** locks out the booster, panel runs included. A **bad tank sensor** stops refilling; a **bad well sensor** locks the well pump.
+- **Zone switch:** ON starts water only after the switch was seen off ON. A run that tripped on resume stays faulted.
+- **Stuck-open valve (ALM-020)** blocks every start until the alarm is reset; the block survives a restart.
+- **System mode** survives a restart. Maintenance and off block starts.
+- A pump that does not report running within twice the start timeout faults the zone.
+- A stored fallback run is marked done only while the app is alive long enough after its start time.
+
+### 6.8 Protection
 - **Well dry run (ALM-027):** well level < 1.5 m stops the well pump and locks it out until the level recovers by 0.5 m and the alarm is reset.
 - **Filter ΔP > 0.5 bar (ALM-039):** a warning only.
 - **Unexpected flow (ALM-021):** flow > 0.8 m³/h with no zone open for 30 s.

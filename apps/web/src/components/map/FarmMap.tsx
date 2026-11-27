@@ -188,6 +188,12 @@ function ZoneShape({
         onPointerMove={(e) => onHover(z.id, e)}
         onPointerLeave={() => onHover(null)}
         role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          onSelect(z.id);
+        }}
         aria-label={z.name}
       />
     </g>

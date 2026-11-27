@@ -47,8 +47,13 @@ BEGIN
          #inWindow := #minOfDay >= "DB_Fallback".Run[#k].StartMinOfDay AND #minOfDay < #endMin;
          IF #inWindow THEN
             IF NOT #Active THEN
-               // the app is alive and runs its own schedule: never double-run this one
-               "DB_Fallback".Run[#k].Done := TRUE;
+               // the app is alive and runs its own schedule: never double-run this one. But the
+               // PLC only learns of a lost link after LinkTimeoutS, so wait that long into the run
+               // before writing it off, or a server that died just before the start loses it.
+               IF #minOfDay - "DB_Fallback".Run[#k].StartMinOfDay
+                  > "DB_Config".LinkTimeoutS / 60 THEN
+                  "DB_Fallback".Run[#k].Done := TRUE;
+               END_IF;
             ELSE
                #z := "DB_Fallback".Run[#k].ZoneIndex;
                IF "FC_CanStart"(#z) = 0 THEN

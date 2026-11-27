@@ -19,8 +19,16 @@ import { useClockStore } from '../lib/clock';
 import { upsertAlarm } from '../lib/alarms';
 import { usePrefs } from '../lib/prefs';
 import { playAlarmChime } from '../lib/sound';
+import { tr } from '../lib/i18n';
+import { rejectionText } from '../lib/commandText';
 
 export type LinkStatus = 'idle' | 'connecting' | 'live' | 'polling' | 'offline';
+
+/** True when nothing on screen can be trusted as "now". */
+export function isOffline(s: Pick<FarmStore, 'state' | 'link' | 'stale'>): boolean {
+  if (s.link === 'idle' || s.link === 'connecting') return false;
+  return s.stale || s.link === 'offline' || s.state?.data_fresh === false;
+}
 
 export type CommandOutcome =
   | { ok: true; command: Command }
@@ -29,6 +37,10 @@ export type CommandOutcome =
 interface FarmStore {
   state: FarmMapState | null;
   link: LinkStatus;
+  /** real time the last farm snapshot arrived */
+  lastDataAt: number | null;
+  /** no snapshot for a while: what is on screen is old */
+  stale: boolean;
   commands: Record<string, Command>;
   scenario: ScenarioRun | null;
   /** latest NEW major/critical alarm — the map flies to it */
@@ -41,6 +53,9 @@ interface FarmStore {
 }
 
 const POLL_MS = 2000;
+const POLL_TIMEOUT_MS = 8000;
+// the server sends a snapshot about every second
+export const STALE_AFTER_MS = 12000;
 const MAX_BACKOFF_MS = 15000;
 
 let socket: WebSocket | null = null;
@@ -53,14 +68,33 @@ const seenAlarms = new Set<string>();
 let primed = false;
 
 export const useFarmStore = create<FarmStore>((set, get) => {
+  let polling = false;
+  let watchTimer: ReturnType<typeof setInterval> | null = null;
+
+  const watch = () => {
+    if (watchTimer) clearInterval(watchTimer);
+    const since = Date.now();
+    watchTimer = setInterval(() => {
+      const stale = Date.now() - (get().lastDataAt ?? since) > STALE_AFTER_MS;
+      if (stale !== get().stale) set({ stale });
+    }, 1000);
+  };
+
   const stopPolling = () => {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
   };
 
   const pollOnce = async () => {
+    if (polling) return;
+    polling = true;
+    const asked = Date.now();
     try {
-      const state = await apiFetch<FarmMapState>('/api/v1/state/map');
+      const state = await apiFetch<FarmMapState>('/api/v1/state/map', {
+        signal: AbortSignal.timeout?.(POLL_TIMEOUT_MS),
+      });
+      // a snapshot that arrived while we waited is newer than this answer
+      if ((get().lastDataAt ?? 0) > asked || wanted === null) return;
       if (!primed) {
         state.active_alarms.forEach((al) => seenAlarms.add(al.id));
         primed = true;
@@ -68,9 +102,11 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       if (state.farm_now) {
         useClockStore.getState().sync(state);
       }
-      set({ state, link: get().link === 'live' ? 'live' : 'polling' });
+      set({ state, lastDataAt: Date.now(), stale: false, link: get().link === 'live' ? 'live' : 'polling' });
     } catch {
-      set({ link: 'offline' });
+      if (get().link !== 'live') set({ link: 'offline' });
+    } finally {
+      polling = false;
     }
   };
 
@@ -91,7 +127,7 @@ export const useFarmStore = create<FarmStore>((set, get) => {
         if (snap.farm_now) {
           useClockStore.getState().sync(snap);
         }
-        set({ state: snap });
+        set({ state: snap, lastDataAt: Date.now(), stale: false });
         break;
       }
       case 'clock.changed': {
@@ -171,6 +207,8 @@ export const useFarmStore = create<FarmStore>((set, get) => {
   return {
     state: null,
     link: 'idle',
+    lastDataAt: null,
+    stale: false,
     commands: {},
     scenario: null,
     focus: null,
@@ -181,6 +219,7 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       get().disconnect();
       wanted = token;
       void useClockStore.getState().fetchClock();
+      watch();
       open(token);
     },
 
@@ -189,11 +228,13 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       if (retryTimer) clearTimeout(retryTimer);
       retryTimer = null;
       stopPolling();
+      if (watchTimer) clearInterval(watchTimer);
+      watchTimer = null;
       socket?.close();
       socket = null;
       primed = false;
       seenAlarms.clear();
-      set({ link: 'idle', state: null, commands: {}, scenario: null, focus: null });
+      set({ link: 'idle', state: null, lastDataAt: null, stale: false, commands: {}, scenario: null, focus: null });
     },
 
     async alarmAction(alarmId, action) {
@@ -203,7 +244,7 @@ export const useFarmStore = create<FarmStore>((set, get) => {
         if (s) set({ state: { ...s, active_alarms: upsertAlarm(s.active_alarms, alarm) } });
         return null;
       } catch (err) {
-        return err instanceof Error ? err.message : 'Action failed';
+        return err instanceof Error ? err.message : tr('common.actionFailed');
       }
     },
 
@@ -218,9 +259,9 @@ export const useFarmStore = create<FarmStore>((set, get) => {
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) {
           const body = err.body as CommandRejection;
-          return { ok: false, message: body.message, code: body.code };
+          return { ok: false, message: rejectionText(body.code, body.message), code: body.code };
         }
-        return { ok: false, message: err instanceof Error ? err.message : 'Command failed' };
+        return { ok: false, message: tr('cmd.notSent') };
       }
     },
   };

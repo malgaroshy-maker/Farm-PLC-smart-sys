@@ -1,3 +1,4 @@
+import { isOffline, useFarmStore } from '../../store/farm';
 import { useState } from 'react';
 import { ZONE_BY_ID, useZoneCatalog, zoneList } from '../../lib/zones';
 import { Link } from 'react-router-dom';
@@ -26,8 +27,10 @@ function hhmm(ts: string) {
 
 export function TankCard({ state }: { state: FarmMapState | null }) {
   const { t } = useT();
+  const offline = useFarmStore(isOffline);
+  const known = state?.tank_level_pct != null;
   const pct = state?.tank_level_pct ?? 0;
-  const color = pct < 10 ? SEVERITY.S3.color : pct < 25 ? SEVERITY.S1.color : CYAN;
+  const color = !known || offline ? '#849396' : pct < 10 ? SEVERITY.S3.color : pct < 25 ? SEVERITY.S1.color : CYAN;
   const refilling = state?.pumps.find((p) => p.pump_id === 'pump_well_01')?.state === 'running';
   return (
     <div className="panel p-4 flex items-center gap-4">
@@ -43,9 +46,9 @@ export function TankCard({ state }: { state: FarmMapState | null }) {
           <TankIcon size={16} /> {t('kpi.tank')}
         </div>
         <div className="text-3xl font-bold font-mono" style={{ color }} dir="ltr">
-          {fmtNum(pct, 1)}%
+          {known ? `${fmtNum(pct, 1)}%` : '—'}
         </div>
-        <div className="text-xs text-[#849396]">{refilling ? t('dash.refilling') : t('dash.tankIdle')}</div>
+        <div className="text-xs text-[#849396]">{!known ? t('offline.unknown') : refilling ? t('dash.refilling') : t('dash.tankIdle')}</div>
       </div>
     </div>
   );
@@ -96,8 +99,9 @@ export function PumpsCard({ state }: { state: FarmMapState | null }) {
 
 // ── alarms ──────────────────────────────────────────────────────────────
 
-export function AlarmsCard({ alarms }: { alarms: Alarm[] }) {
+export function AlarmsCard({ alarms, known }: { alarms: Alarm[]; known: boolean }) {
   const { t, lang } = useT();
+  const offline = useFarmStore(isOffline);
   const top = sortAlarms(alarms).slice(0, 4);
   return (
     <div className="panel p-4 space-y-2">
@@ -109,7 +113,9 @@ export function AlarmsCard({ alarms }: { alarms: Alarm[] }) {
           {t('dash.all')} <bdi className="font-mono">({alarms.length})</bdi>
         </Link>
       </div>
-      {top.length === 0 ? (
+      {top.length === 0 && (!known || offline) ? (
+        <div className="text-sm text-[#849396] py-2">{t('offline.unknown')}</div>
+      ) : top.length === 0 ? (
         <div className="text-sm text-[#7ee787] py-2">✓ {t('al.noActive')}</div>
       ) : (
         top.map((a) => (
@@ -220,8 +226,16 @@ export function StatusCard({ state }: { state: FarmMapState | null }) {
   const running = (state?.zones ?? []).filter((z) => z.state === 'running').length;
   useZoneCatalog((c) => c.version);
   const zoneTotal = zoneList({ enabledOnly: true }).length;
-  const color = worst ? SEVERITY[worst.severity].color : running ? CYAN : '#7ee787';
-  const title = worst ? `${alarms.length} ${t('header.alarms')}` : running ? t('dash.irrigating') : t('dash.allOk');
+  const offline = useFarmStore(isOffline);
+  const unknown = !state || offline;
+  const color = worst ? SEVERITY[worst.severity].color : unknown ? '#849396' : running ? CYAN : '#7ee787';
+  const title = worst
+    ? `${alarms.length} ${t('header.alarms')}`
+    : unknown
+      ? t('offline.unknown')
+      : running
+        ? t('dash.irrigating')
+        : t('dash.allOk');
   return (
     <div className="panel p-4 flex items-center gap-4" style={{ borderColor: `${color}55` }}>
       <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${color}1f`, color }}>
@@ -232,7 +246,7 @@ export function StatusCard({ state }: { state: FarmMapState | null }) {
           {title}
         </div>
         <div className="text-xs text-[#849396]">
-          {t('kpi.zonesRunning')}: <bdi dir="ltr" className="font-mono">{running} / {zoneTotal}</bdi> · {t('kpi.tank')}: <bdi dir="ltr" className="font-mono">{fmtNum(state?.tank_level_pct, 0)}%</bdi>
+          {t('kpi.zonesRunning')}: <bdi dir="ltr" className="font-mono">{state ? running : '—'} / {zoneTotal}</bdi> · {t('kpi.tank')}: <bdi dir="ltr" className="font-mono">{state?.tank_level_pct != null ? `${fmtNum(state.tank_level_pct, 0)}%` : '—'}</bdi>
         </div>
       </div>
       <div className="flex flex-col gap-1.5 text-xs shrink-0">

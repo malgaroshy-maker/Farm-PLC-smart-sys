@@ -18,6 +18,7 @@ def test_guard_no_forbidden_utcnow_in_services():
         "alarms.py": [
             "r_now = real_now or utcnow()",  # debounce timer
             "self.staleness_conditions(snapshots, utcnow())",  # ALM-044 / ALM-029 link check
+            "self.stop_conditions(db, utcnow())",  # ALM-052 stop delivery timeout
             "real_now = utcnow()",  # debounce timer
         ],
         "anomaly.py": [
@@ -26,6 +27,7 @@ def test_guard_no_forbidden_utcnow_in_services():
         "commands.py": [
             "requested_at_real=utcnow()",  # command timeout tracking
             "now_real = utcnow()",  # command timeout tracking
+            "recent = utcnow() - timedelta(seconds=20)",  # start accepted, not yet in a snapshot
         ],
         "live_state.py": [
             "((now or utcnow()) - last).total_seconds() <= settings.state_stale_after_sec",  # link staleness
@@ -40,6 +42,7 @@ def test_guard_no_forbidden_utcnow_in_services():
         ],
         "scheduler.py": [
             "now_real = utcnow()",  # tick downtime detection (real elapsed time between ticks)
+            "if (utcnow() - sent).total_seconds() < START_SHOWS_WITHIN_SEC:",  # link wait
         ],
         "features.py": [
             "row.updated_at = utcnow()",  # when the owner flipped a switch (real-world audit time)

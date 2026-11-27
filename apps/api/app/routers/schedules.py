@@ -13,6 +13,7 @@ from app.config import settings
 from app.core.clock import clock
 from app.database import get_db
 from app.deps import Actor, get_actor, require_admin, require_roles
+from app.models.ai import ProgramOverride
 from app.models.program import Program, ProgramStep
 from app.models.zone import Zone
 from app.schemas.schedule import (
@@ -25,6 +26,8 @@ from app.schemas.schedule import (
     UpcomingRun,
 )
 from app.services.conflicts import check_program_conflicts, parse_weekday_mask
+from app.services.events import log_event
+from app.services.features import is_enabled
 
 router = APIRouter(prefix="/schedules", tags=["Schedules"])
 require_operator_or_admin = require_roles("owner_admin", "operator")
@@ -97,7 +100,16 @@ async def get_upcoming_runs(
 
 
 async def compute_upcoming_runs(db: AsyncSession, hours: int = 24) -> list[UpcomingRun]:
-    """Runs starting (or still running) within the next `hours`, in farm time."""
+    """Runs starting (or still running) within the next `hours`, in farm time.
+
+    The runs that will really happen: none while automation is off, and approved one-day
+    changes applied. The controller's fallback list is built from this.
+    """
+    if not await is_enabled(db, "automation.scheduler"):
+        return []
+    changes: dict[tuple[str, str | None], ProgramOverride] = {}
+    for o in await db.scalars(select(ProgramOverride).order_by(ProgramOverride.created_at)):
+        changes[(o.target_date, o.program_id)] = o
     programs = await _get_all_programs(db)
     zones = await _get_zones_map(db)
 
@@ -134,9 +146,18 @@ async def compute_upcoming_runs(db: AsyncSession, hours: int = 24) -> list[Upcom
             except Exception:
                 continue
 
+            day = curr_date.isoformat()
+            change = changes.get((day, p.id)) or changes.get((day, None))
+            if change and change.action == "skip":
+                continue
+            factor = 1.0
+            if change and change.action in ("extend", "reduce"):
+                factor = float(change.duration_factor)
+
             step_start = prog_start_dt
             for step in p.steps:
-                step_end = step_start + timedelta(minutes=step.duration_min)
+                minutes = max(1, int(round(step.duration_min * factor)))
+                step_end = step_start + timedelta(minutes=minutes)
                 # If step starts within the window and has not already finished
                 if step_end > now_local and step_start <= end_local:
                     zone = zones.get(step.zone_id)
@@ -155,7 +176,7 @@ async def compute_upcoming_runs(db: AsyncSession, hours: int = 24) -> list[Upcom
                             zone_name_ar=zname_ar,
                             crop_type=crop,
                             scheduled_start_farm=step_start.isoformat(),
-                            duration_min=step.duration_min,
+                            duration_min=minutes,
                             seconds_until_start=sec_until,
                         )
                     )
@@ -248,6 +269,15 @@ async def create_program(
         )
         db.add(step)
 
+    await log_event(
+        db,
+        "schedule.created",
+        "program",
+        program_id,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"program_name": req.name},
+    )
     await db.commit()
     # Reload with relationships
     created = await _get_program(db, program_id)
@@ -271,7 +301,7 @@ async def get_program(
 async def update_program(
     program_id: str,
     req: ProgramUpdate,
-    _: Actor = Depends(require_admin),
+    actor: Actor = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update program configuration (Admin only). Validates with conflict checker."""
@@ -348,6 +378,18 @@ async def update_program(
             )
             program.steps.append(st)
 
+    await log_event(
+        db,
+        "schedule.updated",
+        "program",
+        program_id,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={
+            "program_name": program.name,
+            "changed": sorted(req.model_dump(exclude_unset=True)),
+        },
+    )
     await db.commit()
     updated = await _get_program(db, program_id)
     return _to_program_response(updated)
@@ -357,7 +399,7 @@ async def update_program(
 async def toggle_program(
     program_id: str,
     req: ProgramToggle,
-    _: Actor = Depends(require_operator_or_admin),
+    actor: Actor = Depends(require_operator_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Enable or disable an irrigation program (Operator+)."""
@@ -393,6 +435,15 @@ async def toggle_program(
 
     program.enabled = req.enabled
     program.updated_at = clock.farm_now()
+    await log_event(
+        db,
+        "schedule.updated",
+        "program",
+        program_id,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"program_name": program.name, "enabled": req.enabled},
+    )
     await db.commit()
     return _to_program_response(program)
 
@@ -400,12 +451,21 @@ async def toggle_program(
 @router.delete("/{program_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_program(
     program_id: str,
-    _: Actor = Depends(require_admin),
+    actor: Actor = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an irrigation program (Admin only)."""
     program = await db.get(Program, program_id)
     if not program:
         raise HTTPException(status_code=404, detail="Program not found")
+    await log_event(
+        db,
+        "schedule.deleted",
+        "program",
+        program_id,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"program_name": program.name},
+    )
     await db.delete(program)
     await db.commit()

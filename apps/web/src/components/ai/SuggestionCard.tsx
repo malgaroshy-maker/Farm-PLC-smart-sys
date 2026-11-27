@@ -1,13 +1,29 @@
 import { useState, useEffect, useRef } from 'react';
 import { Check, X, RotateCcw } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
-import { useT, pickName, type MsgKey } from '../../lib/i18n';
-import { approveSuggestion, rejectSuggestion, type AdvisorSuggestion } from '../../lib/api';
+import { useT, pickName, tr, type MsgKey } from '../../lib/i18n';
+import { ApiError, approveSuggestion, rejectSuggestion, undoSuggestion, type AdvisorSuggestion } from '../../lib/api';
+import { rejectionText } from '../../lib/commandText';
+import { parseUtcDate } from '../../lib/clock';
+import { isOffline, useFarmStore } from '../../store/farm';
 import { AiSparklesIcon, WeatherIcon } from '../icons/FarmIcons';
 
 interface SuggestionCardProps {
   suggestion: AdvisorSuggestion;
   onStatusChange?: (updated: AdvisorSuggestion) => void;
+}
+
+const REFUSALS = ['suggestion_expired', 'soil_automation_off', 'soil_not_dry'];
+
+/** The server's refusal in the viewer's language. */
+function suggestionProblem(err: unknown): string {
+  const said = err instanceof Error ? err.message : '';
+  const code = said.split(':')[0].trim();
+  if (REFUSALS.includes(code)) return tr(`advisor.refused.${code}` as MsgKey);
+  const body = err instanceof ApiError ? (err.body as { detail?: unknown } | null) : null;
+  if (typeof body?.detail === 'string' && body.detail.includes('already used')) return tr('advisor.refused.used');
+  const interlock = rejectionText(code, '');
+  return interlock || tr('common.actionFailed');
 }
 
 export default function SuggestionCard({ suggestion, onStatusChange }: SuggestionCardProps) {
@@ -19,6 +35,10 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
   const [overrideStatus, setOverrideStatus] = useState<AdvisorSuggestion['status'] | null>(null);
   const status = overrideStatus ?? suggestion.status;
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const offline = useFarmStore(isOffline);
+  const startsWater = suggestion.action === 'extra_run';
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [undoSeconds, setUndoSeconds] = useState(5);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -31,6 +51,13 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
 
   const handleApprove = async () => {
     if (!canAct || busy) return;
+    // starting water takes a second tap
+    if (startsWater && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    setConfirming(false);
+    setProblem(null);
     setBusy(true);
 
     try {
@@ -58,7 +85,7 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
         }
       }, 500);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Approval failed');
+      setProblem(suggestionProblem(err));
     } finally {
       setBusy(false);
     }
@@ -74,7 +101,7 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
       setOverrideStatus('rejected');
       onStatusChange?.(updated);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Rejection failed');
+      setProblem(suggestionProblem(err));
     } finally {
       setBusy(false);
     }
@@ -86,12 +113,11 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
     setBusy(true);
 
     try {
-      // Revert to pending
-      const updated: AdvisorSuggestion = { ...suggestion, status: 'pending' };
+      await undoSuggestion(suggestion.id);
       setOverrideStatus('pending');
-      onStatusChange?.(updated);
-    } catch {
-      // Ignore
+      onStatusChange?.({ ...suggestion, status: 'pending' });
+    } catch (err: unknown) {
+      setProblem(suggestionProblem(err));
     } finally {
       setBusy(false);
     }
@@ -130,7 +156,7 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
             className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${actionStyle.bg} ${actionStyle.text} ${actionStyle.border}`}
           >
             {t(`advisor.action.${suggestion.action}` as MsgKey)}
-            {suggestion.adjustment_pct != null && ` ${suggestion.adjustment_pct > 0 ? '+' : ''}${suggestion.adjustment_pct}%`}
+            {!startsWater && !!suggestion.adjustment_pct && ` ${suggestion.adjustment_pct > 0 ? '+' : ''}${suggestion.adjustment_pct}%`}
           </span>
         </div>
       </div>
@@ -191,29 +217,43 @@ export default function SuggestionCard({ suggestion, onStatusChange }: Suggestio
         </div>
         {suggestion.expires_at && (
           <span className="font-mono">
-            {t('advisor.expiresIn')} {suggestion.expires_at.slice(11, 16)}
+            {t('advisor.expiresIn')}{' '}
+            <bdi>
+              {parseUtcDate(suggestion.expires_at).toLocaleTimeString('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' })}
+            </bdi>
           </span>
         )}
       </div>
+
+      {problem && (
+        <p role="alert" className="text-xs text-[#ffb4ab]">
+          {problem}
+        </p>
+      )}
+      {confirming && status === 'pending' && (
+        <p role="status" className="text-xs text-[#ffeb3b]">
+          {t('advisor.confirmStart')}
+        </p>
+      )}
 
       {/* Action Buttons (Operator+) */}
       {canAct && status === 'pending' && (
         <div className="flex items-center gap-2 pt-1">
           <button
             onClick={handleApprove}
-            disabled={busy}
+            disabled={busy || (startsWater && offline)}
             className="flex-1 py-1.5 px-3 rounded-xl bg-[#00e5ff] hover:bg-[#00e5ff]/90 text-[#0e0e0e] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
           >
             <Check size={14} />
-            <span>{t(suggestion.action === 'extra_run' ? 'advisor.startNow' : 'advisor.approve')}</span>
+            <span>{t(confirming ? 'advisor.confirmNow' : startsWater ? 'advisor.startNow' : 'advisor.approve')}</span>
           </button>
           <button
-            onClick={handleReject}
+            onClick={confirming ? () => setConfirming(false) : handleReject}
             disabled={busy}
             className="py-1.5 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-[#849396] hover:text-[#e5e2e1] text-xs font-medium flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
           >
             <X size={14} />
-            <span>{t('advisor.reject')}</span>
+            <span>{t(confirming ? 'drawer.cancel' : 'advisor.reject')}</span>
           </button>
         </div>
       )}

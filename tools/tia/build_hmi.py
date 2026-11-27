@@ -6,12 +6,25 @@ TIA. Rerunnable: each screen is deleted and built again.
     python tools/tia/build_hmi.py overview zone alarms [--save]
 
 Design: docs/PLC_PROGRAM.md section 7 (match the app, layout A) and docs/HMI_BUILD_GUIDE.md.
-Tags come from hmi/FarmHMI_tags.xlsx; text lists ZoneState, PanelMode, RunSource from FarmHMI_textlists.xlsx.
+Tags come from hmi/FarmHMI_tags.xlsx.
+
+The panel is Arabic only: TIA V19 has no Arabic project language, so there is no language switch.
+State names come from screen scripts (TEXT_LISTS), not from TIA text lists, and `alarmtexts`
+writes the Arabic alarm texts. Arabic goes into scripts as \\u escapes.
 """
 
+import json
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "apps" / "api"))
+
+from gen_hmi_alarms_texts import PLC_ALARMS, TEXT_LISTS  # noqa: E402
+
+from app.core.alarm_catalog import CATALOG  # noqa: E402
 
 HELPER = r"D:\projects\Tia portal mcp\openness-tools\HmiUnified.exe"
 PROJECT, HMI = "AlgaroshyFarm", "HMI_RT_1"
@@ -96,11 +109,45 @@ def dyn_tag(path: str, prop: str, tag: str, ranges: list[tuple] | None = None) -
               f"From={lo}", f"To={hi}", f"Value={value}")
 
 
-def text_from_list(path: str, resource_list: str, tag: str) -> None:
+# the PLC's reply to a button (FC_ReasonText), in Arabic
+PLC_REPLIES = {
+    "interlock": "مرفوض: شرط أمان",
+    "zone_in_manual": "المنطقة على الوضع اليدوي",
+    "no_power": "لا توجد كهرباء",
+    "pump_unavailable": "المضخة غير متاحة",
+    "tank_low": "الخزان منخفض",
+    "estop_active": "زر الطوارئ مضغوط",
+    "already_running": "المنطقة تعمل بالفعل",
+    "bad_target": "منطقة غير صالحة",
+    "plc_rejected": "رفضت وحدة التحكم",
+}
+
+
+def text_by_script(path: str, script: str) -> None:
     d = f"{path}.Dynamizations"
-    h("create", d, "ResourceListDynamization", "Text")
-    h("set", f"{d}[Text].ResourceList", resource_list)
-    h("set", f"{d}[Text].Tag", tag)
+    h("create", d, "ScriptDynamization", "Text")
+    h("set", f"{d}[Text].ScriptCode", script)
+    # a tag trigger needs a tag list the helper cannot set; once a second is quick enough
+    h("set", f"{d}[Text].Trigger.Type", "T1s")
+
+
+def lookup_script(table: dict, tag: str, missing: str = "-") -> str:
+    """JavaScript that shows table[tag value]. json.dumps keeps the script plain ASCII."""
+    return (
+        f"var table = {json.dumps({str(k): v for k, v in table.items()})};\n"
+        f'var shown = table[String(Tags("{tag}").Read())];\n'
+        f"return shown === undefined ? {json.dumps(missing)} : shown;"
+    )
+
+
+def text_from_list(path: str, resource_list: str, tag: str) -> None:
+    text_by_script(path, lookup_script({v: ar for v, _en, ar in TEXT_LISTS[resource_list]}, tag))
+
+
+def alarm_texts() -> None:
+    for n in PLC_ALARMS:
+        spec = CATALOG[f"ALM-{n:03d}"]
+        h("set", f"DiscreteAlarms[ALM_{n:03d}].EventText", f"ALM-{n:03d} {spec.name_ar}")
 
 
 def field(name, left, top, width, height, tag, fmt=None, color=TEXT, size=22, align="Right", operable=False) -> str:
@@ -317,7 +364,8 @@ def zone() -> None:
     button("Z_StopAll", 48, 456, 572, 80, "إيقاف الكل", press("Hmi_BtnStopAll"), back=FAULT_BG, border=FAULT_LINE, size=26, fore=FAULT_TXT)
     text("Z_Hint", 48, 556, 572, 40, "الأوامر تمر عبر وحدة التحكم بنفس فحوصات التطبيق", color=MUTED, size=15)
     text("Z_AnswerLbl", 360, 610, 260, 36, "رد وحدة التحكم", color=MUTED, size=16)
-    field("Z_Answer", 48, 610, 300, 36, "Hmi_ResultText", color=AMBER, size=18, align="Left")
+    answer = text("Z_Answer", 48, 610, 300, 36, "", color=AMBER, size=18, align="Left")
+    text_by_script(answer, lookup_script(PLC_REPLIES, "Hmi_ResultText", missing=""))
 
 
 
@@ -460,9 +508,11 @@ def settings() -> None:
         item("HmiRectangle", f"St_R{k}", 47, y, 566, 56, BackColor=BG, BorderColor=BORDER, BorderWidth="1")
         dyn_tag(lamp(f"St_R{k}_Dot", 575, y + 17, 22), "BackColor", tag, ranges)
         text(f"St_R{k}_T", 62, y + 8, 500, 40, label, color=SOFT, size=20)
-    text("St_Note", 47, 540, 566, 160,
-         "تغيير الوضع يمر عبر وحدة التحكم ويسري فوراً. التطبيق يستطيع تغييره أيضاً. "
-         "صلاحيات المسؤول فقط تُضاف لاحقاً من إعدادات المستخدمين.", color=MUTED, size=16)
+    # a panel text does not wrap: one sentence per item
+    text("St_Note", 47, 596, 566, 30, "تغيير الوضع يمر عبر وحدة التحكم ويبقى بعد إعادة التشغيل",
+         color=MUTED, size=15)
+    text("St_Note2", 47, 628, 566, 30, "في وضعي الصيانة والإيقاف لا تبدأ أي منطقة",
+         color=MUTED, size=15)
 
 # ── Alarms ──────────────────────────────────────────────────
 def alarms() -> None:
@@ -473,7 +523,7 @@ def alarms() -> None:
 
 
 BUILDERS = {"overview": overview, "zone": zone, "alarms": alarms, "pumps": pumps, "schedule": schedule,
-            "settings": settings}
+            "settings": settings, "alarmtexts": alarm_texts}
 
 
 def main() -> None:

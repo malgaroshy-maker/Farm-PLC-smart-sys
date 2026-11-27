@@ -1,6 +1,6 @@
 """User model."""
 
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, IdentityMixin, TimestampMixin
@@ -18,3 +18,5 @@ class User(Base, IdentityMixin, TimestampMixin):
         String(20), default="viewer"
     )  # owner_admin | operator | viewer
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # sign-in tokens carry this number; raising it signs the user out everywhere
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

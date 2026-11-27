@@ -1,3 +1,4 @@
+import { eventDetails, eventName } from '../lib/eventText';
 import { useEffect, useState } from 'react';
 import EmptyState, { ErrorState } from '../components/EmptyState';
 import { EventsIcon } from '../components/icons/FarmIcons';
@@ -37,14 +38,6 @@ function fetchPage(cat: Cat, before?: number): Promise<EventRow[]> {
   if (cat !== 'all') q.set('category', cat);
   if (before) q.set('before_id', String(before));
   return apiFetch<EventRow[]>(`/api/v1/events?${q}`);
-}
-
-function summarize(p: Record<string, unknown> | null): string {
-  if (!p) return '';
-  return Object.entries(p)
-    .filter(([k, v]) => v != null && k !== 'command_id')
-    .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
-    .join(' · ');
 }
 
 export default function EventsPage() {
@@ -131,15 +124,15 @@ export default function EventsPage() {
                 <td className="p-3 font-mono text-xs text-[#849396] whitespace-nowrap" dir="ltr">
                   {fmt.format(parseUtcDate(e.occurred_at))}
                 </td>
-                <td className="p-3 font-mono text-xs whitespace-nowrap" dir="ltr" style={{ color: TYPE_COLOR[e.event_type] ?? '#e5e2e1' }}>
-                  {e.event_type}
+                <td className="p-3 text-xs whitespace-nowrap" title={e.event_type} style={{ color: TYPE_COLOR[e.event_type] ?? '#e5e2e1' }}>
+                  {eventName(e.event_type, lang)}
                 </td>
                 <td className="p-3 font-mono text-xs max-w-[12rem] truncate" dir="ltr" title={e.entity_id ?? e.entity_type}>
                   {e.entity_id ?? e.entity_type}
                 </td>
                 <td className="p-3 text-xs">{e.actor_name ?? t(`actor.${e.actor_type}` as MsgKey) ?? e.actor_type}</td>
-                <td className="p-3 text-xs text-[#bac9cc] min-w-[16rem] break-words" dir="ltr">
-                  {summarize(e.payload)}
+                <td className="p-3 text-xs text-[#bac9cc] min-w-[16rem] break-words" dir="auto">
+                  {eventDetails(e.payload, lang)}
                 </td>
               </tr>
             ))}

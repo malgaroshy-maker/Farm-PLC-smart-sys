@@ -120,7 +120,7 @@ export default function ReportsPage() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(downloadUrl);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Download failed');
+      alert(err instanceof Error ? err.message : t('common.actionFailed'));
     } finally {
       setDownloading(false);
     }

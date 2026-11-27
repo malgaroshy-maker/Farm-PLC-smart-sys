@@ -65,12 +65,12 @@ function LevelRow({ row }: { row: Level }) {
       <label className="text-[11px] text-[#849396]">
         {t('soil.start')}
         <input aria-label={`${t('soil.start')} ${t(`crop.${row.crop_type}` as MsgKey)}`} className={field} type="number" min={0} max={100} dir="ltr"
-          value={v.start_pct} onChange={(e) => setV({ ...v, start_pct: Number(e.target.value) })} />
+          value={v.start_pct} onChange={(e) => setV({ ...v, start_pct: (e.target.value === '' ? '' : Number(e.target.value)) as number })} />
       </label>
       <label className="text-[11px] text-[#849396]">
         {t('soil.stop')}
         <input aria-label={`${t('soil.stop')} ${t(`crop.${row.crop_type}` as MsgKey)}`} className={field} type="number" min={0} max={100} dir="ltr"
-          value={v.stop_pct} onChange={(e) => setV({ ...v, stop_pct: Number(e.target.value) })} />
+          value={v.stop_pct} onChange={(e) => setV({ ...v, stop_pct: (e.target.value === '' ? '' : Number(e.target.value)) as number })} />
       </label>
       <div className="col-span-3 sm:col-span-1 flex flex-wrap gap-2 items-center">
         <button type="button" onClick={() => save(true)} className="px-3 py-1.5 rounded-lg bg-[#00e5ff] text-[#0e0e0e] text-xs font-bold">
@@ -105,7 +105,8 @@ function Probes() {
     }
   };
   const disable = async (id: string) => {
-    await apiFetch(`${PROBES}/${id}`, { method: 'DELETE' }).catch(() => null);
+    setMsg(null);
+    await apiFetch(`${PROBES}/${id}`, { method: 'DELETE' }).catch((ex) => setMsg(errText(ex, t('settings.saveFailed'))));
     refreshPoll(PROBES);
   };
   const zoneName = (id: string) => {

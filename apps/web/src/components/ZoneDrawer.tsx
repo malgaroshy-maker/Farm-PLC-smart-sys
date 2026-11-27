@@ -7,7 +7,9 @@ import type { IrrigationCycle, TelemetrySeries, Zone, Alarm } from '@algaroshy/c
 
 import type { ZoneLiveState } from '../hooks/useFarmConnector';
 import type { CommandOutcome } from '../store/farm';
-import { useFarmStore } from '../store/farm';
+import { isOffline, useFarmStore } from '../store/farm';
+import { useCommandResult } from '../lib/useCommandResult';
+import { failureText } from '../lib/commandText';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { SEVERITY } from '../lib/alarms';
@@ -26,7 +28,7 @@ interface ZoneDrawerProps {
   onCommand?: (action: 'start' | 'stop', targetId: string, durationMin?: number) => Promise<CommandOutcome>;
 }
 
-type Feedback = { kind: 'ok' | 'error'; text: string } | null;
+type Feedback = { kind: 'sent'; commandId: string } | { kind: 'error'; text: string } | null;
 type ChartRow = { time: string; moisture?: number; flow?: number };
 
 const SEED = ZONE_BY_ID; // live catalog (Settings → Zones & equipment)
@@ -106,7 +108,12 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
   const canControl = can('owner_admin', 'operator');
   const [config, setConfig] = useState<Zone | undefined>(SEED[zoneId]);
   const [minutes, setMinutes] = useState<number | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  // a confirmation is only good for the state it was asked in
+  const [confirmingIn, setConfirmingIn] = useState<string | null>(null);
+  const confirming = confirmingIn !== null && confirmingIn === (zoneState?.state ?? 'unknown');
+  const setConfirming = (on: boolean) => setConfirmingIn(on ? (zoneState?.state ?? 'unknown') : null);
+  const offline = useFarmStore(isOffline);
+  const [cyclesFailed, setCyclesFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [explainingAlarm, setExplainingAlarm] = useState<Alarm | null>(null);
@@ -118,10 +125,12 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
     let active = true;
     apiFetch<IrrigationCycle[]>(`/api/v1/cycles/recent/${zoneId}?limit=5`)
       .then((data) => {
-        if (active) setRecentCycles(data);
+        if (!active) return;
+        setRecentCycles(data);
+        setCyclesFailed(false);
       })
       .catch(() => {
-        if (active) setRecentCycles([]);
+        if (active) setCyclesFailed(true);
       });
     return () => {
       active = false;
@@ -159,7 +168,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
     setConfirming(false);
     setFeedback(
       res.ok
-        ? { kind: 'ok', text: t(action === 'start' ? 'drawer.startOk' : 'drawer.stopOk') }
+        ? { kind: 'sent', commandId: res.command.id }
         : { kind: 'error', text: `${t('drawer.blocked')}: ${res.message}` },
     );
   };
@@ -177,7 +186,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
   return (
     <>
       <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-40" onClick={onClose} />
-      <div className="fixed top-0 end-0 h-full w-[460px] max-w-full z-50 flex flex-col text-[#e5e2e1] bg-[#121214]/95 backdrop-blur-xl border-s border-white/10 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label={pickName(lang, config?.name, config?.name_ar) || zoneId} className="fixed top-0 end-0 h-full w-[460px] max-w-full z-50 flex flex-col text-[#e5e2e1] bg-[#121214]/95 backdrop-blur-xl border-s border-white/10 shadow-2xl">
         <div className="p-5 flex items-start gap-3 border-b border-white/10">
           <span className="p-2 rounded-xl bg-white/5" style={{ color }}>
             <CropIcon size={26} />
@@ -266,10 +275,13 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
               </p>
             ) : !canControl ? (
               <p className="text-sm text-[#849396]">{t('drawer.viewOnly')}</p>
-            ) : active ? (
+            ) : active || offline ? (
+              <>
+              {offline && <p className="text-sm text-[#ffb4ab]">{t('offline.startBlocked')}</p>}
               <button disabled={busy} onClick={() => run('stop')} className="w-full py-3 rounded-xl border border-[#ffb4ab]/60 text-[#ffb4ab] hover:bg-[#ffb4ab]/10 font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                 <Square size={18} /> {t('drawer.stop')}
               </button>
+              </>
             ) : (
               <>
                 <div className="flex items-center justify-between text-sm">
@@ -321,8 +333,9 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
                 )}
               </>
             )}
-            {feedback && (
-              <p role="status" className={`text-xs ${feedback.kind === 'ok' ? 'text-[#00e5ff]' : 'text-[#ffb4ab]'}`}>
+            {feedback?.kind === 'sent' && <CommandLine id={feedback.commandId} />}
+            {feedback?.kind === 'error' && (
+              <p role="alert" className="text-xs text-[#ffb4ab]">
                 {feedback.text}
               </p>
             )}
@@ -370,7 +383,7 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
               {t('zone.history.title')}
             </div>
             {recentCycles.length === 0 ? (
-              <div className="text-xs text-[#849396] py-2">{t('zone.history.noCycles')}</div>
+              <div className="text-xs text-[#849396] py-2">{t(cyclesFailed ? 'common.loadFailed' : 'zone.history.noCycles')}</div>
             ) : (
               <div className="space-y-2">
                 {recentCycles.map((cyc) => {
@@ -440,6 +453,21 @@ function ZoneDrawerBody({ zoneId, zoneState, onClose, onCommand }: ZoneDrawerPro
 
       <ExplainAlarmDrawer alarm={explainingAlarm} onClose={() => setExplainingAlarm(null)} />
     </>
+  );
+}
+
+/** Sent, then what the controller finally said. */
+function CommandLine({ id }: { id: string }) {
+  const { t } = useT();
+  const cmd = useCommandResult(id);
+  const status = cmd?.status;
+  const failed = status === 'failed' || status === 'timed_out';
+  return (
+    <p role={failed ? 'alert' : 'status'} className={`text-xs ${failed ? 'text-[#ffb4ab]' : 'text-[#00e5ff]'}`}>
+      {failed
+        ? `${t('cmd.failed')} — ${failureText(cmd?.failure_reason)}`
+        : t(status === 'completed' ? 'cmd.confirmed' : 'cmd.sent')}
+    </p>
   );
 }
 

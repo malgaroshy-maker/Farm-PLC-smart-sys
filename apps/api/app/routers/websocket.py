@@ -68,7 +68,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
         snapshot = await current_map_state(db)
 
     await manager.send(websocket, "state.snapshot", snapshot)
-    await manager.connect(websocket)
+    await manager.connect(websocket, actor.actor_id)
     try:
         while True:
             msg = await websocket.receive_text()

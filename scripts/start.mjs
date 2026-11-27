@@ -328,7 +328,7 @@ process.on('exit', () => {
   if (!stopping) for (const { child } of children) killTree(child.pid);
 });
 
-async function waitFor(url, label, timeoutMs = 60_000, check = (r) => r.ok) {
+async function waitFor(url, label, timeoutMs = 60_000, check = (r) => r.ok, required = true) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
     try {
@@ -339,7 +339,8 @@ async function waitFor(url, label, timeoutMs = 60_000, check = (r) => r.ok) {
     }
     await new Promise((r) => setTimeout(r, 700));
   }
-  die(`${label} did not become ready within ${timeoutMs / 1000}s.`);
+  if (required) die(`${label} did not become ready within ${timeoutMs / 1000}s.`);
+  return false;
 }
 
 function isVirtualOrLinkLocal(addr, ifaceName = '') {
@@ -414,6 +415,13 @@ async function main() {
 
   if (!existsSync(path.join(ROOT, '.env')) && !existsSync(path.join(ROOT, '.env.example'))) die('.env.example missing.');
   const env = ensureEnv();
+  if (MODE === 'demo') {
+    // phones reach these modes over the network: the development secrets are not allowed
+    const weak = Object.entries({ SECRET_KEY: 'change-me-to-a-real-secret-key', SIMULATOR_TOKEN: 'dev-simulator-token' })
+      .filter(([key, sample]) => [undefined, '', sample].includes(process.env[key] || env[key]))
+      .map(([key]) => key);
+    if (weak.length) die(`Set your own ${weak.join(' and ')} in .env (or delete .env to generate new secrets).`);
+  }
   ensurePython();
   ensureNode();
 
@@ -441,7 +449,9 @@ async function main() {
   log('setup', 'Migrating database…');
   if (!run(VENV_PY, ['-m', 'alembic', 'upgrade', 'head'], { cwd: API_DIR, env: { ...process.env, ...shared } })) die('Database migration failed.');
   log('setup', 'Seeding (skipped if already seeded)…');
-  run(VENV_PY, ['-m', 'app.seed'], { cwd: API_DIR, env: { ...process.env, ...shared } });
+  if (!run(VENV_PY, ['-m', 'app.seed'], { cwd: API_DIR, env: { ...process.env, ...shared } })) {
+    die('Seeding failed (an ADMIN_PASSWORD longer than 72 bytes is refused; see the output above).');
+  }
   if (RESET) {
     log('setup', 'Clearing alarms, commands, events and telemetry for a clean demo (users and settings are kept)…');
     if (!run(VENV_PY, ['-m', 'app.reset_demo'], { cwd: API_DIR, env: { ...process.env, ...shared } })) die('Demo reset failed.');
@@ -493,10 +503,13 @@ async function main() {
 
   // wait until the simulator is feeding live data through the web proxy
   const token = `Bearer ${process.env.SIMULATOR_TOKEN || env.SIMULATOR_TOKEN || 'dev-simulator-token'}`;
-  await waitFor(`${webUrl}/api/v1/zones`, 'Simulator link', 60_000, async () => {
+  // On the farm server the app must stay up when the controller is unreachable: it shows
+  // "no connection", raises the alarm and keeps trying. Elsewhere a missing link is a failure.
+  const live = await waitFor(`${webUrl}/api/v1/zones`, 'Simulator link', 60_000, async () => {
     const r = await fetch(`${webUrl}/api/v1/state/map`, { headers: { Authorization: token } });
     return r.ok && (await r.json()).data_fresh === true;
-  });
+  }, !SERVER);
+  if (!live) log('setup', 'WARNING: no live data from the controller yet. The app keeps running and trying.');
 
   console.log('');
   log('info', color(32, `Ready → ${webUrl}`));

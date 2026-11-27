@@ -7,7 +7,7 @@ def test_health_lists_all_checks_for_any_user(client):
     push_state(client)
     body = client.get("/api/v1/system/health", headers=login(client, "viewer")).json()
     keys = [c["key"] for c in body["checks"]]
-    assert keys == ["database", "controller", "scheduler", "ai", "weather", "disk"]
+    assert keys == ["database", "controller", "scheduler", "ai", "weather", "disk", "backup"]
     assert body["status"] in {"ok", "warn", "fail"}
     for c in body["checks"]:
         assert c["status"] in {"ok", "warn", "fail"} and c["code"]

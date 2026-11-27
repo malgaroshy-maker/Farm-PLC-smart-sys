@@ -45,17 +45,19 @@ export default function Dashboard() {
 
   useEffect(() => {
     let active = true;
-    fetchAiSuggestions()
-      .then((data) => {
-        if (active && Array.isArray(data)) setSuggestions(data);
-      })
-      .catch(() => {
-        if (!active) return;
-        setSuggestions([]);
-      });
+    // new advice arrives and old advice expires while the page stays open
+    const load = () =>
+      fetchAiSuggestions()
+        .then((data) => {
+          if (active && Array.isArray(data)) setSuggestions(data);
+        })
+        .catch(() => undefined);
+    void load();
+    const timer = setInterval(() => document.visibilityState !== 'hidden' && void load(), 30_000);
 
     return () => {
       active = false;
+      clearInterval(timer);
     };
   }, []);
 
@@ -115,7 +117,7 @@ export default function Dashboard() {
           {isDesktop && <NextIrrigationCard />}
           <TankCard state={state} />
           <PumpsCard state={state} />
-          <AlarmsCard alarms={state?.active_alarms ?? []} />
+          <AlarmsCard alarms={state?.active_alarms ?? []} known={state !== null} />
           <TrendsCard />
         </aside>
       </div>

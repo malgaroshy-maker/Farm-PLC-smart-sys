@@ -32,7 +32,8 @@ const DAYS: { dayNum: number; key: MsgKey }[] = [
 ];
 
 function parseDays(maskStr: string | undefined): number[] {
-  if (!maskStr) return [1, 2, 3, 4, 5, 6, 7];
+  // a new program starts with every day; a saved empty list really means no day
+  if (maskStr === undefined) return [1, 2, 3, 4, 5, 6, 7];
   return maskStr
     .split(',')
     .map((s) => Number(s.trim()))
@@ -107,10 +108,11 @@ export default function SchedulesPage() {
     try {
       const updated = await apiFetch<Program>(`/api/v1/schedules/${p.id}/toggle`, {
         method: 'PATCH',
+        body: JSON.stringify({ enabled: !p.enabled }),
       });
       setPrograms((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Toggle failed');
+      alert(err instanceof Error ? err.message : t('common.saveFailed'));
     }
   };
 
@@ -245,6 +247,13 @@ export default function SchedulesPage() {
                       <div
                         key={p.id}
                         onClick={() => openEditDrawer(p)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return;
+                          e.preventDefault();
+                          openEditDrawer(p);
+                        }}
                         style={blockStyle}
                         title={`${p.name} (${p.start_time_local}, ${totalDur} ${t('common.min')})`}
                         className={`absolute h-6 rounded px-1.5 flex items-center text-[10px] font-bold truncate cursor-pointer transition-all border ${
@@ -528,6 +537,11 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
       return;
     }
 
+    if (selectedDays.length === 0) {
+      alert(t('schedules.noDays'));
+      return;
+    }
+
     setSaving(true);
     try {
       const payload: ProgramCreate = {
@@ -550,7 +564,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
       }
       onSaved();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Save failed');
+      alert(err instanceof Error ? err.message : t('common.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -565,7 +579,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
       });
       onDeleted();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Delete failed');
+      alert(err instanceof Error ? err.message : t('common.actionFailed'));
     } finally {
       setDeleting(false);
     }
@@ -576,7 +590,7 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs" onClick={onClose} />
-      <div className="fixed inset-y-0 end-0 z-50 w-full max-w-lg bg-[#161618] border-s border-white/10 flex flex-col shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label={t(program ? 'schedules.drawerEdit' : 'schedules.drawerCreate')} className="fixed inset-y-0 end-0 z-50 w-full max-w-lg bg-[#161618] border-s border-white/10 flex flex-col shadow-2xl">
         {/* Drawer Header */}
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
           <h2 className="text-base font-bold text-[#e5e2e1]">
@@ -731,7 +745,8 @@ function ProgramDrawer({ program, onClose, onSaved, onDeleted }: DrawerProps) {
                           type="button"
                           onClick={() => removeStep(idx)}
                           className="p-1 text-[#849396] hover:text-[#ff5449]"
-                          title="Remove step"
+                          title={t('schedules.removeStep')}
+                          aria-label={t('schedules.removeStep')}
                         >
                           <Trash2 size={14} />
                         </button>

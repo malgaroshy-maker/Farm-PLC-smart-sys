@@ -62,7 +62,7 @@ export default function VirtualClockPanel() {
       await fn();
       if (successText) flash(successText);
     } catch (err) {
-      flash(err instanceof Error ? err.message : 'Error executing clock command');
+      flash(err instanceof Error ? err.message : t('common.actionFailed'));
     } finally {
       setBusy(false);
     }
@@ -223,7 +223,7 @@ export default function VirtualClockPanel() {
               value={customTime}
               onChange={(e) => setCustomTime(e.target.value)}
               pattern="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
-              title="HH:MM format between 00:00 and 23:59"
+              title="00:00–23:59"
               disabled={busy || !isAdmin}
               className="flex-1 px-3 py-1.5 rounded-lg border border-white/10 bg-[#0e0e0e] text-xs font-mono text-[#e5e2e1] focus:outline-none focus:border-[#00e5ff]"
               dir="ltr"

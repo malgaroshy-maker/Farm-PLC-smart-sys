@@ -4,13 +4,14 @@
  */
 import { lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bell, Bot, DatabaseBackup, LayoutGrid, ToggleRight } from 'lucide-react';
+import { Bell, Bot, DatabaseBackup, LayoutGrid, ToggleRight, Users } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useT, type MsgKey } from '../lib/i18n';
 import BackupsTab from '../components/settings/BackupsTab';
 import FeaturesTab from '../components/settings/FeaturesTab';
 import NotificationsTab from '../components/settings/NotificationsTab';
 import ZonesTab from '../components/settings/ZonesTab';
+import UsersTab from '../components/settings/UsersTab';
 
 const AiSettingsPage = lazy(() => import('./AiSettings'));
 
@@ -20,6 +21,7 @@ const TABS = [
   { key: 'zones', icon: LayoutGrid, label: 'settings.tab.zones' },
   { key: 'ai', icon: Bot, label: 'settings.tab.ai' },
   { key: 'backups', icon: DatabaseBackup, label: 'settings.tab.backups' },
+  { key: 'users', icon: Users, label: 'settings.tab.users' },
 ] as const;
 
 export default function SettingsPage() {
@@ -57,6 +59,7 @@ export default function SettingsPage() {
         {tab === 'notifications' && <NotificationsTab />}
         {tab === 'zones' && <ZonesTab />}
         {tab === 'backups' && <BackupsTab />}
+        {tab === 'users' && <UsersTab />}
         {tab === 'ai' && (
           <Suspense fallback={<div className="text-sm text-[#849396]">{t('common.loading')}</div>}>
             <AiSettingsPage />

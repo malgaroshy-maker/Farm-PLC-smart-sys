@@ -294,6 +294,7 @@ Used when system operation can safely continue:
 | ALM-049 | Source Switchover Failed | Water Source | S2 | Automatic failover from tank/well did not complete | Abort dependent sequence | Create process interruption event | Push, web, email | Yes | Optional | Important for hybrid source logic |
 | ALM-050 | Configuration Missing Thresholds | Configuration | S1 | Zone/device lacks required threshold values | Block related smart decisions | Log config defect | Web, in-app, optional email | No | No | Must be prevented in admin UI |
 | ALM-051 | PLC Clock Wrong | Equipment | S2 | PLC local time more than 2 min off farm time for about 1 min, after the app tried to set it | Fallback schedule would run at the wrong time | Check the server clock and PLC link | Web, in-app, Telegram, push | Yes | No | Clears by itself once the clock is right |
+| ALM-052 | Stop Not Delivered | Process | S3 | A stop is not confirmed by the controller within the command time limit | The app keeps sending the stop | Stop at the control panel, then check the PLC link | Web, in-app, Telegram, push | Yes | No | Clears when the controller confirms the stop |
 
 ---
 

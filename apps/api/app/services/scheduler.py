@@ -9,6 +9,7 @@ Monitors sequentially executing program steps and handles:
   - Monotonicity across restarts (persisted in scheduler_state table)
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
@@ -22,9 +23,11 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.core.clock import clock
 from app.core.domain import TERMINAL_COMMAND_STATUSES
-from app.core.timeutil import utcnow
+from app.core.timeutil import as_utc, utcnow
+from app.database import async_session_factory
 from app.deps import Actor
 from app.models.ai import ProgramOverride
+from app.models.alarm import Alarm
 from app.models.command import Command
 from app.models.program import Program, ProgramStep, SchedulerState
 from app.models.zone import Zone
@@ -52,6 +55,8 @@ SCHEDULER_ACTOR = Actor(
 STATE_LAST_FARM_TIME = "scheduler.last_farm_time"
 STATE_ACTIVE_PROGRAM = "scheduler.active_program"
 MISSED_RUN_GAP_SEC = 900.0  # 15 farm minutes gap indicates a clock jump or downtime
+RESTART_GAP_SEC = 60.0  # a restart that took longer ends the program that was running
+START_SHOWS_WITHIN_SEC = 20.0  # real time a controller has to show a zone it accepted
 
 
 class SchedulerService:
@@ -59,6 +64,7 @@ class SchedulerService:
         self._last_farm_time: datetime | None = None
         self._last_real_time: datetime | None = None
         self._pending_jump: tuple[datetime, datetime] | None = None
+        self._background: set = set()
 
     def on_clock_jump(
         self, new_farm_time: datetime, prev_farm_time: datetime | None = None
@@ -115,6 +121,7 @@ class SchedulerService:
         self._pending_jump = None
         if jump_range is not None:
             jump_from, jump_to = jump_range
+            await self._cancel_active(db, "clock_jump")
             await self._handle_missed_runs(db, jump_from, jump_to, farm_tz)
             self._last_farm_time = now_farm
             await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
@@ -133,6 +140,8 @@ class SchedulerService:
                     # Fresh process (API restart): everything between the last
                     # recorded tick and now happened while we were down, so it
                     # follows the owner's "missed runs" rule — never catch up.
+                    if (now_farm - restored).total_seconds() > RESTART_GAP_SEC:
+                        await self._cancel_active(db, "app_was_down")
                     await self._handle_missed_runs(db, restored, now_farm, farm_tz)
                 self._last_farm_time = now_farm
                 await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
@@ -150,13 +159,23 @@ class SchedulerService:
             # Clock jumped backward or resynced: immediately align to now_farm
             self._last_farm_time = now_farm
             await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
-            await self._clear_state(db, STATE_ACTIVE_PROGRAM)
+            await self._cancel_active(db, "clock_jump")
             await db.commit()
             return
         if delta_sec == 0:
             return
 
-        # 2. Check active running program progress
+        # 2. After a real gap (PC asleep, app frozen) nothing is caught up: the running program
+        # ends before any of its steps can be looked at
+        if delta_real_sec > 60.0:
+            await self._cancel_active(db, "app_was_down")
+            await self._handle_missed_runs(db, prev_farm, now_farm, farm_tz)
+            self._last_farm_time = now_farm
+            await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
+            await db.commit()
+            return
+
+        # 3. Check active running program progress
         active_prog_json = await self._get_state(db, STATE_ACTIVE_PROGRAM)
         if active_prog_json:
             try:
@@ -165,39 +184,26 @@ class SchedulerService:
             except Exception:
                 log.exception("Error processing active scheduler program")
 
-        # 3. Check for missed runs on real-time downtime
-        if delta_real_sec > 60.0:
-            await self._handle_missed_runs(db, prev_farm, now_farm, farm_tz)
-            self._last_farm_time = now_farm
-            await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
-            await db.commit()
-            return
-
         from app.services.features import is_enabled
 
         # 4. Find programs due between prev_farm and now_farm (owner can pause automation)
         if await is_enabled(db, "automation.scheduler"):
             await self._check_due_programs(db, prev_farm, now_farm, farm_tz)
 
-        # 5. Check daily morning briefing at 06:00 farm time
-        try:
-            from app.services.ai.briefing import check_scheduled_briefing
-
+        # 5. Morning briefing (06:00) and evening weather advice (18:00) wait on the weather and
+        # the AI for up to a minute. They run on their own, after this commit: inside the tick
+        # they held SQLite's write lock, and STOP ALL failed with "database is locked".
+        await db.commit()
+        if self._crossed(prev_farm, now_farm, farm_tz, settings.ai_daily_briefing_time):
             if await is_enabled(db, "ai.briefing"):
-                await check_scheduled_briefing(db, prev_farm=prev_farm, now_farm=now_farm)
-        except Exception:
-            log.exception("Error checking scheduled morning briefing")
-
-        # 6. Evening weather check for tomorrow (18:00 farm time) -> advisor suggestion
-        try:
+                self._in_background(self._run_briefing(prev_farm, now_farm))
+        if self._crossed(prev_farm, now_farm, farm_tz, "18:00"):
             if await is_enabled(db, "automation.advisor_auto") and await is_enabled(
                 db, "ai.advisor"
             ):
-                await self._maybe_auto_advise(db, prev_farm, now_farm, farm_tz)
-        except Exception:
-            log.exception("Error running the automatic weather advisor")
+                self._in_background(self._run_advisor(prev_farm, now_farm, farm_tz))
 
-        # 7. Soil logic (G7): stop a full zone early, suggest an extra run for a dry one
+        # 6. Soil logic (G7): stop a full zone early, suggest an extra run for a dry one
         try:
             from app.services import soil
 
@@ -209,6 +215,38 @@ class SchedulerService:
         self._last_farm_time = now_farm
         await self._set_state(db, STATE_LAST_FARM_TIME, now_farm.isoformat())
         await db.commit()
+
+    @staticmethod
+    def _crossed(prev_farm: datetime, now_farm: datetime, farm_tz: ZoneInfo, hhmm: str) -> bool:
+        hour, minute = (int(x) for x in hhmm.split(":"))
+        local = now_farm.astimezone(farm_tz)
+        target = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        return prev_farm.astimezone(farm_tz) < target <= local
+
+    def _in_background(self, work) -> None:
+        task = asyncio.create_task(work)
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+
+    async def _run_briefing(self, prev_farm: datetime, now_farm: datetime) -> None:
+        from app.services.ai.briefing import check_scheduled_briefing
+
+        try:
+            async with async_session_factory() as db:
+                await check_scheduled_briefing(db, prev_farm=prev_farm, now_farm=now_farm)
+                await db.commit()
+        except Exception:
+            log.exception("Error checking scheduled morning briefing")
+
+    async def _run_advisor(
+        self, prev_farm: datetime, now_farm: datetime, farm_tz: ZoneInfo
+    ) -> None:
+        try:
+            async with async_session_factory() as db:
+                await self._maybe_auto_advise(db, prev_farm, now_farm, farm_tz)
+                await db.commit()
+        except Exception:
+            log.exception("Error running the automatic weather advisor")
 
     async def _soil_logic(self, db: AsyncSession, snapshots: dict[str, Snapshot]) -> None:
         from app.models.ai import AISuggestion
@@ -253,6 +291,9 @@ class SchedulerService:
         self._soil_stopped = stopped & running  # forget zones that have finished
 
         now = clock.farm_now()
+        from app.services.ai.advisor import expire_suggestions
+
+        await expire_suggestions(db)
         for zs in await soil.dry_without_run(db, status):
             pending = (
                 (
@@ -543,6 +584,7 @@ class SchedulerService:
         now_real = utcnow()
         active_data = {
             "started_real": now_real.isoformat(),
+            "steps": self._signature(prog),
             "program_id": prog.id,
             "program_name": prog.name,
             "step_index": 0,
@@ -714,6 +756,15 @@ class SchedulerService:
             await self._cancel_program(db, prog_id, active_data.get("program_name"))
             return
 
+        res = await db.execute(
+            select(Program).options(selectinload(Program.steps)).where(Program.id == prog_id)
+        )
+        prog = res.scalar_one_or_none()
+        why = await self._why_cancel(db, prog, active_data)
+        if why:
+            await self._cancel_program(db, prog_id, active_data.get("program_name"), why)
+            return
+
         cmd = await db.get(Command, cmd_id)
         zone_snap = snapshots.get(f"zone_{zone_id}")
         zone_state = zone_snap.state.get("state") if zone_snap else "off"
@@ -722,14 +773,23 @@ class SchedulerService:
         cmd_terminal = cmd is None or cmd.status in TERMINAL_COMMAND_STATUSES
         zone_idle = zone_state in ("off", "completed", "faulted")
 
-        if cmd_terminal and zone_idle:
-            # Advance to next step!
-            res = await db.execute(
-                select(Program).options(selectinload(Program.steps)).where(Program.id == prog_id)
-            )
-            prog = res.scalar_one_or_none()
-            if not prog:
-                await self._clear_state(db, STATE_ACTIVE_PROGRAM)
+        if not zone_idle:
+            if not active_data.get("seen_running"):
+                active_data["seen_running"] = True
+                await self._set_state(db, STATE_ACTIVE_PROGRAM, json.dumps(active_data))
+            return
+
+        # A PLC completes the command as soon as it accepts it, before any snapshot shows the
+        # zone: "off" then means "not yet", not "finished"
+        if cmd and cmd.status == "completed" and not active_data.get("seen_running"):
+            sent = as_utc(cmd.requested_at_real or cmd.requested_at)
+            if (utcnow() - sent).total_seconds() < START_SHOWS_WITHIN_SEC:
+                return
+
+        if cmd_terminal:
+            if await self._power_cut_ended_run(db, zone_id, cmd):
+                # the owner decides what happens after a run that could not resume
+                await self._cancel_program(db, prog.id, prog.name, "power_cut")
                 return
 
             await manager.broadcast(
@@ -744,7 +804,53 @@ class SchedulerService:
         value = active_data.get("started_real")
         return datetime.fromisoformat(value) if value else None
 
-    async def _cancel_program(self, db: AsyncSession, prog_id: str, name: str | None) -> None:
+    @staticmethod
+    def _signature(prog: Program) -> list:
+        return [[s.step_order, s.zone_id, s.duration_min] for s in prog.steps]
+
+    async def _why_cancel(
+        self, db: AsyncSession, prog: Program | None, active_data: dict
+    ) -> str | None:
+        from app.services.features import is_enabled
+
+        if prog is None:
+            return "program_deleted"
+        if not prog.enabled:
+            return "program_switched_off"
+        if not await is_enabled(db, "automation.scheduler"):
+            return "automation_switched_off"
+        saved = active_data.get("steps")
+        if saved is not None and saved != self._signature(prog):
+            return "program_edited"
+        return None
+
+    async def _power_cut_ended_run(self, db: AsyncSession, zone_id: str, cmd) -> bool:
+        if cmd is None:
+            return False
+        found = await db.scalar(
+            select(Alarm.id)
+            .where(
+                Alarm.alarm_code == "ALM-033",
+                Alarm.zone_id == zone_id,
+                Alarm.triggered_at >= cmd.requested_at,
+            )
+            .limit(1)
+        )
+        return found is not None
+
+    async def _cancel_active(self, db: AsyncSession, reason: str) -> None:
+        raw = await self._get_state(db, STATE_ACTIVE_PROGRAM)
+        if not raw:
+            return
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            data = {}
+        await self._cancel_program(db, data.get("program_id"), data.get("program_name"), reason)
+
+    async def _cancel_program(
+        self, db: AsyncSession, prog_id: str | None, name: str | None, reason: str = "stop_all"
+    ) -> None:
         await self._clear_state(db, STATE_ACTIVE_PROGRAM)
         await log_event(
             db,
@@ -752,7 +858,7 @@ class SchedulerService:
             "program",
             prog_id,
             actor_type="scheduler",
-            payload={"program_name": name, "reason": "stop_all"},
+            payload={"program_name": name, "reason": reason},
         )
         await manager.broadcast("program.finished", {"program_id": prog_id, "program_name": name})
 

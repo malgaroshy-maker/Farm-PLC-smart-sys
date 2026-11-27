@@ -8,6 +8,7 @@ import ZonesPage from './pages/ZonesPage';
 import EquipmentPage from './pages/EquipmentPage';
 import EventsPage from './pages/EventsPage';
 import { AuthProvider } from './lib/auth';
+import { useT } from './lib/i18n';
 
 const SchedulesPage = lazy(() => import('./pages/Schedules'));
 const ReportsPage = lazy(() => import('./pages/Reports'));
@@ -16,11 +17,12 @@ const SettingsPage = lazy(() => import('./pages/Settings'));
 const HelpPage = lazy(() => import('./pages/Help'));
 
 function PageLoader() {
+  const { t } = useT();
   return (
     <div className="h-full w-full flex items-center justify-center text-xs text-[#849396]">
       <div className="flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-[#00e5ff] animate-ping" />
-        <span>جارٍ التحميل…</span>
+        <span>{t('common.loading')}</span>
       </div>
     </div>
   );

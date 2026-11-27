@@ -61,7 +61,7 @@ export default function InstallPrompt() {
       role="banner"
       aria-label={t('pwa.installBanner')}
       data-testid="pwa-install-banner"
-      className="fixed top-2 inset-x-2 sm:inset-x-auto sm:end-4 z-50 p-3 sm:px-4 rounded-2xl bg-[#141416]/95 border border-[#00e5ff]/40 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 max-w-md"
+      className="fixed bottom-24 lg:bottom-4 inset-x-2 sm:inset-x-auto sm:end-4 z-30 p-3 sm:px-4 rounded-2xl bg-[#141416]/95 border border-[#00e5ff]/40 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 max-w-md"
     >
       <div className="flex items-center gap-2.5 min-w-0">
         <span className="p-2 rounded-xl bg-[#00e5ff]/15 text-[#00e5ff] shrink-0">

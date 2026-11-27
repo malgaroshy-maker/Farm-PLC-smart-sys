@@ -449,6 +449,20 @@ _SPECS = [
         "تحقق أولاً من التاريخ والوقت في الخادم، ثم من الاتصال بوحدة التحكم. يضبط التطبيق ساعة وحدة التحكم تلقائياً.",
         source="derived",
     ),
+    AlarmSpec(
+        "ALM-052",
+        "Stop Not Delivered",
+        "لم يصل أمر الإيقاف",
+        "process",
+        "S3",
+        True,
+        False,
+        "A stop has not been confirmed by the controller. Water may still be running.",
+        "لم تؤكد وحدة التحكم أمر الإيقاف. قد يكون الماء ما زال يجري.",
+        "Go to the control panel: press Stop all there, or turn the zone switch OFF. Then check the PLC connection. The app keeps sending the stop until it is confirmed.",
+        "اذهب إلى لوحة التحكم: اضغط «إيقاف الكل» هناك أو أدر مفتاح المنطقة إلى الإيقاف، ثم افحص الاتصال بوحدة التحكم. يستمر التطبيق بإرسال أمر الإيقاف حتى يتم تأكيده.",
+        source="derived",
+    ),
 ]
 
 CATALOG: dict[str, AlarmSpec] = {s.code: s for s in _SPECS}

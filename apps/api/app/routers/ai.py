@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.alarm_catalog import CATALOG
 from app.core.clock import clock
+from app.core.timeutil import as_utc
 from app.database import async_session_factory, get_db
 from app.deps import Actor, get_actor, require_roles
 from app.models.ai import AISettings, AISuggestion
@@ -58,10 +59,12 @@ from app.services.ai import (
     mark_model_unavailable,
     reject_suggestion,
 )
+from app.services.ai.advisor import expire_suggestions, undo_approval
 from app.services.ai.briefing import get_briefing_schedule
 from app.services.ai.providers import validated_apinex_url
 from app.services.ai.redaction import redact_text
 from app.services.anomaly import anomaly_detector
+from app.services.events import log_event
 from app.services.features import clear_cache as clear_feature_cache
 from app.services.realtime import manager
 from app.services.weather import WeatherForecast, is_usable_forecast, weather_service
@@ -219,6 +222,8 @@ async def api_list_suggestions(
     actor: Actor = Depends(get_actor),
 ):
     """List AI suggestions with optional filtering."""
+    if await expire_suggestions(db):
+        await db.commit()
     stmt = select(AISuggestion).order_by(desc(AISuggestion.created_at))
     if feature:
         stmt = stmt.where(AISuggestion.feature == feature)
@@ -314,7 +319,22 @@ async def api_approve_suggestion(
         if sug.status != "pending":
             raise HTTPException(status_code=400, detail=f"Suggestion is already {sug.status}")
         from app.schemas.command import CommandCreate
+        from app.services import soil
         from app.services.commands import CommandRejected, submit_command
+        from app.services.live_state import load_snapshots
+
+        # the advice may be hours old: nothing starts unless it is still true now
+        if sug.expires_at and as_utc(sug.expires_at) <= as_utc(clock.farm_now()):
+            sug.status = "expired"
+            await db.commit()
+            raise HTTPException(status_code=409, detail="suggestion_expired: no longer valid")
+        if not await soil.logic_on(db):
+            raise HTTPException(status_code=409, detail="soil_automation_off: switched off")
+        now_soil = (await soil.soil_status(db, await load_snapshots(db))).get(payload["zone_id"])
+        if not now_soil or not now_soil.confirmed or now_soil.state != "dry":
+            raise HTTPException(
+                status_code=409, detail="soil_not_dry: the soil is no longer confirmed dry"
+            )
 
         try:
             cmd = await submit_command(
@@ -332,7 +352,8 @@ async def api_approve_suggestion(
             )
         except CommandRejected as exc:
             raise HTTPException(status_code=409, detail=f"{exc.code}: {exc.message}") from exc
-        sug.status, sug.responded_at, sug.responded_by = "approved", clock.farm_now(), actor.name
+        sug.status, sug.responded_at = "approved", clock.farm_now()
+        sug.responded_by = actor.actor_id
         await db.commit()
         await manager.broadcast(
             "ai.suggestion.approved", {"suggestion_id": sug.id, "action": "extra_run"}
@@ -344,7 +365,7 @@ async def api_approve_suggestion(
             "command_id": cmd.id,
         }
     try:
-        override = await approve_suggestion(db, suggestion_id, operator_name=actor.name)
+        override = await approve_suggestion(db, suggestion_id, operator_name=actor.actor_id)
         return {
             "status": "approved",
             "suggestion_id": override.suggestion_id,
@@ -357,6 +378,20 @@ async def api_approve_suggestion(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@router.post("/suggestions/{suggestion_id}/undo")
+async def api_undo_suggestion(
+    suggestion_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(require_operator),
+):
+    """Take back an approval before any run has used it."""
+    try:
+        await undo_approval(db, suggestion_id, operator_name=actor.actor_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "pending", "suggestion_id": suggestion_id}
+
+
 @router.post("/suggestions/{suggestion_id}/reject")
 async def api_reject_suggestion(
     suggestion_id: str,
@@ -365,7 +400,7 @@ async def api_reject_suggestion(
 ):
     """Operator rejects suggestion."""
     try:
-        suggestion = await reject_suggestion(db, suggestion_id, operator_name=actor.name)
+        suggestion = await reject_suggestion(db, suggestion_id, operator_name=actor.actor_id)
         return {
             "status": "rejected",
             "suggestion_id": suggestion.id,
@@ -390,7 +425,8 @@ async def api_get_daily_briefing(
     record = await get_or_generate_daily_briefing(
         db=db,
         target_date=target_date.isoformat() if target_date else None,
-        force_refresh=force_refresh,
+        # a forced rebuild is a paid AI call: viewers read the stored briefing
+        force_refresh=force_refresh and actor.role != "viewer",
         lang=lang,
     )
 
@@ -410,6 +446,7 @@ async def api_get_daily_briefing(
         "alarms_overview": record.alarms_overview,
         "alarms_overview_ar": record.alarms_overview_ar,
         "recommendations": recs,
+        "recommendations_ar": payload.get("recommendations_ar") or [],
         "provider_used": record.provider_used,
         "model_used": payload.get("model_used"),
         **payload.get("metrics", {}),
@@ -428,7 +465,9 @@ async def api_get_weather_forecast(
     actor: Actor = Depends(get_actor),
 ):
     """Retrieve 7-day weather forecast from Open-Meteo with 3h caching."""
-    forecast = await weather_service.get_forecast(db=db, force_refresh=force_refresh)
+    forecast = await weather_service.get_forecast(
+        db=db, force_refresh=force_refresh and actor.role != "viewer"
+    )
     if not is_usable_forecast(forecast):
         raise HTTPException(status_code=503, detail="Verified weather forecast is unavailable")
     return forecast
@@ -562,6 +601,15 @@ async def api_update_ai_settings(
             flag.enabled = update_data[setting]
             flag.updated_by = actor.name
     entry.updated_at = clock.farm_now()
+    await log_event(
+        db,
+        "ai.settings_changed",
+        "ai_settings",
+        "default",
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"changed": sorted(k for k, v in update_data.items() if v is not None)},
+    )
     await db.commit()
     await db.refresh(entry)
     clear_feature_cache()

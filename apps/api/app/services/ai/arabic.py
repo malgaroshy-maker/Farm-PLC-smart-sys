@@ -11,6 +11,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.services.ai.purity import strip_glosses
+
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 
 # wrong / inconsistent phrase -> agreed term
@@ -29,6 +31,7 @@ def normalize_text(text: str) -> str:
         return text
     out = text.translate(_DIGITS)
     out = _DECIMAL.sub(".", out)
+    out = strip_glosses(out)
     for pattern, repl in _TERMS:
         out = pattern.sub(repl, out)
     return out

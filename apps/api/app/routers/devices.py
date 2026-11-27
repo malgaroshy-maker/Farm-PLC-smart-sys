@@ -17,6 +17,7 @@ from app.schemas.device import (
     ValveResponse,
     ValveUpdate,
 )
+from app.services.events import log_event
 
 router = APIRouter(tags=["Devices"])
 
@@ -35,7 +36,7 @@ async def list_pumps(_: Actor = Depends(get_actor), db: AsyncSession = Depends(g
 async def update_pump(
     pump_id: str,
     update: PumpUpdate,
-    _: Actor = Depends(require_admin),
+    actor: Actor = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update pump configuration."""
@@ -44,6 +45,15 @@ async def update_pump(
         raise HTTPException(status_code=404, detail=f"Pump '{pump_id}' not found")
     for field, value in update.model_dump(exclude_unset=True).items():
         setattr(pump, field, value)
+    await log_event(
+        db,
+        "device.changed",
+        "pump",
+        pump_id,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"changed": sorted(update.model_dump(exclude_unset=True))},
+    )
     await db.flush()
     await db.refresh(pump)
     return pump
@@ -63,7 +73,7 @@ async def list_valves(_: Actor = Depends(get_actor), db: AsyncSession = Depends(
 async def update_valve(
     valve_id: str,
     update: ValveUpdate,
-    _: Actor = Depends(require_admin),
+    actor: Actor = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update valve configuration."""
@@ -72,6 +82,15 @@ async def update_valve(
         raise HTTPException(status_code=404, detail=f"Valve '{valve_id}' not found")
     for field, value in update.model_dump(exclude_unset=True).items():
         setattr(valve, field, value)
+    await log_event(
+        db,
+        "device.changed",
+        "valve",
+        valve_id,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"changed": sorted(update.model_dump(exclude_unset=True))},
+    )
     await db.flush()
     await db.refresh(valve)
     return valve
@@ -91,7 +110,7 @@ async def list_sensors(_: Actor = Depends(get_actor), db: AsyncSession = Depends
 async def update_sensor(
     sensor_id: str,
     update: SensorUpdate,
-    _: Actor = Depends(require_admin),
+    actor: Actor = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update sensor configuration."""
@@ -100,6 +119,15 @@ async def update_sensor(
         raise HTTPException(status_code=404, detail=f"Sensor '{sensor_id}' not found")
     for field, value in update.model_dump(exclude_unset=True).items():
         setattr(sensor, field, value)
+    await log_event(
+        db,
+        "device.changed",
+        "sensor",
+        sensor_id,
+        actor_type="user",
+        actor_id=actor.actor_id,
+        payload={"changed": sorted(update.model_dump(exclude_unset=True))},
+    )
     await db.flush()
     await db.refresh(sensor)
     return sensor

@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { Navigate, NavLink, Outlet, Link } from 'react-router-dom';
-import { CircleHelp, Languages, LogOut, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import OfflineBanner from '../components/OfflineBanner';
+import PageBoundary from '../components/PageBoundary';
+import PasswordDrawer from '../components/PasswordDrawer';
+import { StopAllNotice } from '../components/CommandNotice';
+import { CircleHelp, KeyRound, Languages, LogOut, Menu, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import {
   AlarmIcon,
   EquipmentIcon,
@@ -19,7 +23,7 @@ import InstallPrompt from '../components/InstallPrompt';
 import { usePrefs } from '../lib/prefs';
 import { useAuth } from '../lib/auth';
 import { session } from '../lib/api';
-import { useFarmStore } from '../store/farm';
+import { isOffline, useFarmStore } from '../store/farm';
 import FieldBanner from '../components/FieldBanner';
 import type { LinkStatus } from '../store/farm';
 import { SEVERITY, topSeverity } from '../lib/alarms';
@@ -55,6 +59,8 @@ export default function DashboardLayout() {
   const alarms = useFarmStore((s) => s.state?.active_alarms);
   const sendCommand = useFarmStore((s) => s.sendCommand);
   const [stopMsg, setStopMsg] = useState<string | null>(null);
+  const [stopId, setStopId] = useState<string | null>(null);
+  const offline = useFarmStore(isOffline);
   const [menuOpen, setMenuOpen] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
   const health = usePoll<SystemHealth>(user ? SYSTEM_HEALTH_PATH : null, 15000);
@@ -63,6 +69,10 @@ export default function DashboardLayout() {
   useZoneCatalogSync();
   const { formatted: clock } = useFarmClock(lang);
   const prefs = usePrefs();
+
+  const clearStop = useCallback(() => setStopId(null), []);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const closePassword = useCallback(() => setPasswordOpen(false), []);
 
   useEffect(() => {
     if (user && session.token) connect(session.token);
@@ -79,16 +89,19 @@ export default function DashboardLayout() {
   const isAdmin = can('owner_admin');
   const showTech = isAdmin && presenter.on;
   const linkStatus =
-    (link === 'live' || link === 'polling') && !fresh ? { key: 'link.stale' as MsgKey, color: '#ffb4ab' } : LINK[link];
+    link === 'live' && offline
+      ? { key: 'link.stale' as MsgKey, color: '#ffb4ab' }
+      : (link === 'live' || link === 'polling') && !fresh ? { key: 'link.stale' as MsgKey, color: '#ffb4ab' } : LINK[link];
   // any failed / degraded health check turns the badge red / amber (owner 2026-11-23)
   const status =
     health && health.status !== 'ok' ? { key: linkStatus.key, color: HEALTH_COLOR[health.status] } : linkStatus;
 
   const handleStopAll = async () => {
     if (!window.confirm(t('header.stopAllConfirm'))) return;
+    setStopMsg(null);
     const res = await sendCommand({ command_type: 'stop_all', target_type: 'system' });
-    setStopMsg(res.ok ? '✓' : res.message);
-    setTimeout(() => setStopMsg(null), 4000);
+    if (res.ok) setStopId(res.command.id);
+    else setStopMsg(`${t('stop.failed')} — ${res.message}`);
   };
 
   const nav: { key: MsgKey; path: string; icon: (p: IconProps) => React.ReactNode; badge?: number }[] = [
@@ -178,6 +191,16 @@ export default function DashboardLayout() {
           <div className="text-[#e5e2e1]">{user.name}</div>
           <div>{t(`role.${user.role}` as MsgKey)}</div>
         </div>
+        <button
+          onClick={() => {
+            setMenuOpen(false);
+            setPasswordOpen(true);
+          }}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[#bac9cc] hover:bg-[#353534]"
+        >
+          <KeyRound size={18} />
+          <span>{t('password.title')}</span>
+        </button>
         <button onClick={logout} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[#849396] hover:bg-[#353534] hover:text-[#ffb4ab]">
           <LogOut size={18} />
           <span>{t('nav.logout')}</span>
@@ -249,7 +272,6 @@ export default function DashboardLayout() {
             >
               <Sparkles size={18} className={prefs.reduceMotion ? 'opacity-50' : ''} />
             </button>
-            {stopMsg && <span className="text-xs text-[#ffeb3b] max-w-40 truncate">{stopMsg}</span>}
             <Link
               to="/alarms"
               className={`hidden sm:flex items-center gap-2 ${worst === 'S3' ? 'animate-pulse' : ''}`}
@@ -270,12 +292,28 @@ export default function DashboardLayout() {
             )}
           </div>
         </header>
+        <OfflineBanner />
+        {stopMsg && (
+          <div role="alert" className="shrink-0 flex items-center justify-center gap-3 px-3 py-2 bg-[#93000a] text-[#ffdad6] text-sm font-bold text-center">
+            <span>{stopMsg}</span>
+            <button type="button" onClick={() => setStopMsg(null)} className="underline text-xs shrink-0">
+              {t('common.dismiss')}
+            </button>
+          </div>
+        )}
+        {stopId && <StopAllNotice key={stopId} id={stopId} onClose={clearStop} />}
         <FieldBanner />
 
-        <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
-          <Outlet />
+        {/* old values are dimmed, so nobody reads them as "now" */}
+        <main id="main" tabIndex={-1} data-offline={offline || undefined} className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
+          <PageBoundary>
+            <Suspense fallback={<p className="text-center text-xs text-[#849396] py-8">{t('common.loading')}</p>}>
+              <Outlet />
+            </Suspense>
+          </PageBoundary>
         </main>
         {chatOn && <FloatingAssistant />}
+        {passwordOpen && <PasswordDrawer onClose={closePassword} />}
         {healthOpen && <HealthPanel initial={health} onClose={() => setHealthOpen(false)} />}
 
         {/* mobile bottom navigation */}

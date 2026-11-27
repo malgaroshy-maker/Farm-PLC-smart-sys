@@ -2,6 +2,7 @@
 
 import sqlite3
 import sys
+import time
 from contextlib import closing
 from pathlib import Path
 from shutil import copy2
@@ -99,11 +100,21 @@ def restore_database(backup: Path, live: Path, recovery: Path) -> None:
             source.backup(destination)
 
 
+def _end_all_sign_ins(live: Path) -> None:
+    """A restore brings back old accounts: nobody stays signed in across it."""
+    with closing(sqlite3.connect(live)) as db, db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+        if "token_version" in columns:
+            db.execute("UPDATE users SET token_version = ?", (int(time.time()),))
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         return 1
     try:
-        restore_database(*(Path(value) for value in sys.argv[1:]))
+        paths = [Path(value) for value in sys.argv[1:]]
+        restore_database(*paths)
+        _end_all_sign_ins(paths[1])
     except InvalidBackup:
         return 2
     except (OSError, sqlite3.Error):

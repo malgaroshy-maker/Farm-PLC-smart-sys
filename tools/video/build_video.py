@@ -419,10 +419,9 @@ def render() -> None:
     print(f"total {total:.0f}s -> {silent}")
     music = next(iter(sorted((ROOT / 'video' / 'music').glob('track.*'))), None)
     if music and not PREVIEW:
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(silent), "-stream_loop", "-1", "-i", str(music), "-t", str(total),
-                        "-af", f"afade=t=in:d=2,afade=t=out:st={total - 4}:d=4,volume=0.7", "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-                        "-c:a", "libvo_aacenc", "-b:a", "192k", str(OUT)], check=True)
-        print("music mixed ->", OUT)
+        import mix_music  # PyAV: the ffmpeg on PATH may be too old to loop a track
+
+        mix_music.write(silent, OUT, None, None, 192)
     else:
         silent.replace(OUT)
         print("no music track: silent ->", OUT)

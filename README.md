@@ -8,7 +8,7 @@
 
 ### ملخص بالعربية
 
-نظام ري ذكي لمزرعة الجروشي: خريطة حيّة للمزرعة مرسومة من صور الأقمار الصناعية، تشغيل وإيقاف مناطق الري، جداول ري تلقائية، إنذارات مع إرشادات بالعربية، تقارير المياه والمضخات، ومساعد ذكي يشرح الإنذارات ويقترح تعديل الري حسب الطقس. يعمل اليوم مع محاكي يمثّل المزرعة ووحدة التحكم، وسيتصل لاحقاً بوحدة تحكم Siemens (PLC) عبر OPC UA. الواجهة عربية أولاً مع خيار الإنجليزية، وتعمل على الحاسوب والهاتف (تطبيق ويب قابل للتثبيت).
+نظام ري ذكي لمزرعة الجروشي: خريطة حيّة للمزرعة مرسومة من صور الأقمار الصناعية، تشغيل وإيقاف مناطق الري، جداول ري تلقائية، إنذارات مع إرشادات بالعربية، تقارير المياه والمضخات، ومساعد ذكي يشرح الإنذارات ويقترح تعديل الري حسب الطقس. يعمل اليوم في المحاكاة: مع محاكي برمجي، أو مع برنامج وحدة التحكم Siemens في PLCSIM عبر Modbus TCP أو OPC UA. لم يُركَّب بعد في المزرعة. الواجهة عربية أولاً مع خيار الإنجليزية، وتعمل على الحاسوب والهاتف (تطبيق ويب قابل للتثبيت).
 
 **دليل المشغّل:** من داخل التطبيق (صفحة «المساعدة»)، أو [docs/OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md)، أو نسخة PDF للطباعة.
 
@@ -25,13 +25,13 @@ A sensor-backed, remotely observable irrigation platform for Algaroshy Farm. It 
 - 🗺️ **Live farm map** traced from satellite imagery: every zone, tree row, pipe, valve, pump, tank and building, with animated water flow and day/night lighting.
 - 🔧 **Zone control:** start/stop with a duration picker and interlock feedback, plus a global STOP ALL.
 - 📅 **Schedules:** sequential irrigation programs on a weekly timeline with conflict checks.
-- 🚨 **Alarms:** 51 alarm definitions (24 raised today) with severity, ack/reset and Arabic/English guidance.
+- 🚨 **Alarms:** 52 alarm definitions with severity, ack/reset and Arabic/English guidance.
 - 📈 **Reports:** daily irrigation, water per zone, pump runtime and alarm history, with CSV export.
 - 🧠 **AI:** explain any alarm, a farm assistant chat, a weather advisor whose decisions come from fixed server rules (the AI only explains them), statistical leak/clog detection, and a morning briefing.
 - 🔔 **Notifications:** critical and major alarms and the briefing go to Telegram and phone push.
 - ⚙️ **Settings:** feature switches, notification setup, zone and equipment admin, AI models.
 - 🩺 **Health:** a status badge and panel for the database, controller link, scheduler, AI, weather and disk.
-- 🔒 **Roles:** owner/admin, operator and viewer.
+- 🔒 **Accounts:** owner/admin, operator and viewer. The admin manages users; everyone can change their own password.
 
 ---
 
@@ -113,6 +113,7 @@ It then starts the **API, simulator and web app in one window** with tagged logs
 cd apps/api && .venv/Scripts/python -m pytest -q      # Linux/macOS: .venv/bin/python
 cd apps/simulator && ../api/.venv/Scripts/python -m pytest -q
 pnpm lint && pnpm build && pnpm test
+apps/api/.venv/Scripts/python scripts/run_scenarios.py   # all scenarios on the software simulator (about 12 min)
 ```
 
 ---
@@ -121,7 +122,7 @@ pnpm lint && pnpm build && pnpm test
 
 Progress is tracked in [PROJECT_STATUS.md](PROJECT_STATUS.md); the current plan is [docs/MILESTONE_G_PLAN.md](docs/MILESTONE_G_PLAN.md).
 
-**A** foundations ✅ → **B** simulator + alarms ✅ → **C** demo UI + PWA ✅ → **D** schedules + reports ✅ → **E** AI ✅ → **F** satellite map + weather ✅ → **G** hardening ✅, PLC design (next), hardware research report, demo video → production (PLC on site, hosting).
+**A** foundations ✅ → **B** simulator + alarms ✅ → **C** demo UI + PWA ✅ → **D** schedules + reports ✅ → **E** AI ✅ → **F** satellite map + weather ✅ → **G** hardening, PLC program on PLCSIM, hardware research and demo video ✅ → [one-zone field trial](docs/FIELD_TRIAL_CHECKLIST.md) → production (PLC on site, hosting).
 
 ---
 
@@ -149,7 +150,8 @@ All engineering documents are in [`/docs`](./docs/):
 | [IO List](docs/IO_LIST.md) | PLC tags, sensors, actuators |
 | [PLC Control Logic](docs/PLC_CONTROL_LOGIC.md) | Control philosophy, sequences, interlocks |
 | [Controller Adapter](docs/CONTROLLER_ADAPTER.md) | Simulator and OPC UA adapters, command handshake |
-| [Alarm Matrix](docs/ALARM_MATRIX.md) | 51 alarm definitions with full behavior |
+| [Alarm Matrix](docs/ALARM_MATRIX.md) | 52 alarm definitions with full behavior |
+| [Field trial checklist](docs/FIELD_TRIAL_CHECKLIST.md) | One zone on the real farm: checks, measured limits, safety tests |
 | [Schedules](docs/SCHEDULES.md) / [Simulation Time](docs/SIMULATION_TIME.md) | Programs, scheduler and the virtual farm clock |
 | [Simulation Plan](docs/SIMULATION_PLAN.md) | Simulator design and test scenarios |
 | [Map Survey](docs/MAP_SURVEY.md) / [Farm Site](docs/FARM_SITE.md) | How the map was traced, site facts |
@@ -165,7 +167,7 @@ All engineering documents are in [`/docs`](./docs/):
 1. **The PLC is the local safety authority.** Cloud and apps never bypass interlocks.
 2. **Simulation first.** Everything is built and tested against the simulator before hardware.
 3. **Arabic-first, bilingual.** Every screen and alarm message in Arabic and English.
-4. **Audited.** Every control change is written to an immutable event log.
+4. **Recorded.** Commands, alarms, sign-ins and changes to users, programs, devices and settings are written to an event log. The app offers no way to edit it, but anyone with the database file can.
 5. **Shared contracts.** The same schemas across backend, simulator and web.
 6. **AI suggests, humans decide.** AI never controls equipment directly.
 7. **Works offline.** Every AI feature falls back to fixed rules.

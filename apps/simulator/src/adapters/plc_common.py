@@ -5,7 +5,10 @@ The PLC numbers things; the app names them. This module is the one place that tr
 
 from __future__ import annotations
 
+import os
+import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # FB_Zone states (UDT_ZoneState.State) -> the app's zone states
 ZONE_STATES = (
@@ -91,3 +94,40 @@ def fallback_runs(
         if len(out) >= limit:
             break
     return out
+
+
+# ── PLC clock ──────────────────────────────────────────
+
+CLOCK_TOLERANCE_S = 5  # set the PLC clock when it is further off than this
+CLOCK_SET_EVERY_S = 60.0
+
+
+def farm_wall_clock() -> datetime:
+    """Real farm local time. Never the simulator's virtual clock: a PLC cannot follow it."""
+    zone = ZoneInfo(os.getenv("FARM_TIMEZONE", "Africa/Tripoli"))
+    return datetime.now(zone).replace(tzinfo=None, microsecond=0)
+
+
+def clock_skew_sec(parts: list[int], now: datetime) -> int | None:
+    """Seconds the PLC is ahead; parts = year, month*100+day, hour*100+minute, second."""
+    year, month_day, hour_minute, second = parts
+    try:
+        plc = datetime(
+            year, month_day // 100, month_day % 100, hour_minute // 100, hour_minute % 100, second
+        )
+    except ValueError:
+        return None
+    return round((plc - now).total_seconds())
+
+
+class ClockSetTimer:
+    """True when the clock is off and it was not set a moment ago."""
+
+    def __init__(self) -> None:
+        self._next = 0.0
+
+    def take(self, skew: int) -> bool:
+        if abs(skew) <= CLOCK_TOLERANCE_S or time.monotonic() < self._next:
+            return False
+        self._next = time.monotonic() + CLOCK_SET_EVERY_S
+        return True

@@ -319,6 +319,45 @@ async def approve_suggestion(
     return override
 
 
+async def expire_suggestions(db: AsyncSession) -> int:
+    """Pending suggestions past their time stop being offered."""
+    now = as_utc(clock.farm_now())
+    rows = await db.scalars(select(AISuggestion).where(AISuggestion.status == "pending"))
+    old = [s for s in rows if s.expires_at and as_utc(s.expires_at) <= now]
+    for s in old:
+        s.status = "expired"
+    return len(old)
+
+
+async def undo_approval(db: AsyncSession, suggestion_id: str, operator_name: str) -> None:
+    """Take back an approved one-day change that no run has used yet."""
+    suggestion = await db.get(AISuggestion, suggestion_id)
+    if not suggestion or suggestion.status != "approved":
+        raise ValueError("Only an approved suggestion can be undone.")
+    overrides = list(
+        await db.scalars(
+            select(ProgramOverride).where(ProgramOverride.suggestion_id == suggestion_id)
+        )
+    )
+    if not overrides or any(o.applied for o in overrides):
+        raise ValueError("This change was already used and cannot be undone.")
+    for override in overrides:
+        await db.delete(override)
+    suggestion.status, suggestion.responded_at, suggestion.responded_by = "pending", None, None
+    await db.commit()
+    await log_event(
+        db,
+        "ai.suggestion.undone",
+        "ai_suggestion",
+        suggestion_id,
+        actor_type="user",
+        actor_id=operator_name,
+    )
+    await manager.broadcast(
+        "ai.suggestion.undone", {"suggestion_id": suggestion_id, "status": "pending"}
+    )
+
+
 async def reject_suggestion(
     db: AsyncSession,
     suggestion_id: str,

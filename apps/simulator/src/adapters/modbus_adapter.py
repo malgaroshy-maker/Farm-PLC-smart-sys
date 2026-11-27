@@ -28,11 +28,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from ..adapter import Layout
 from ..modbus_tcp import ModbusError, ModbusTcpClient
@@ -42,8 +40,6 @@ from . import plc_common as pc
 COMMAND_TYPES = {"start_zone": 1, "stop_zone": 2, "stop_all": 3, "reset_alarm": 4}
 REASONS = pc.REASONS
 ALARM_WORDS = ("alarm_word0", "alarm_word1", "alarm_word2")
-CLOCK_TOLERANCE_S = 5  # set the PLC clock when it is further off than this
-CLOCK_SET_EVERY_S = 60.0
 
 
 class MapError(ValueError):
@@ -82,7 +78,7 @@ class ModbusAdapter:
         self._addr = self._addresses()
         self._heartbeat = 0
         self._heartbeat_due = False
-        self._next_clock_set = 0.0
+        self._clock_due = pc.ClockSetTimer()
         self._zone_index = {
             zid: int(z["index"]) for zid, z in regmap["zones"].items() if "index" in z
         }
@@ -234,7 +230,8 @@ class ModbusAdapter:
                 "health": "warning" if state == "faulted" else "healthy",
                 "flow_m3h": z("flow_m3h"),
                 "pressure_bar": z("pressure_bar"),
-                "moisture_pct": z("moisture_pct", 0.0),
+                # the PLC never writes this field, so 0 means nothing measures it, not "0 %"
+                "moisture_pct": z("moisture_pct", None) or None,
                 "panel_mode": pc.PANEL_ZONE.get(int(z("panel_mode")), "auto"),
                 "run_source": source if state not in ("off", "completed") else None,
                 "last_updated": now,
@@ -287,37 +284,23 @@ class ModbusAdapter:
     # ── PLC clock ──────────────────────────────────────────
 
     async def _check_clock(self, values: dict, raw: dict) -> int | None:
-        """Seconds the PLC's local time is ahead of the farm's, and set it when it is off.
+        """Seconds the PLC's local time is ahead of the farm's; sets the PLC clock when it is off.
 
-        The fallback schedule runs on the PLC's own clock, so it must show farm time. Always
-        the real wall clock: a PLC cannot follow the simulator's virtual clock. Returns None
-        for a controller that does not publish its clock.
+        None for a controller that does not publish its clock.
         """
         if not raw.get("system.clock_year"):
             return None
-        month_day, hour_minute = raw["system.clock_month_day"], raw["system.clock_hour_minute"]
         now = self._farm_wall_clock()
-        try:
-            plc = datetime(
-                raw["system.clock_year"],
-                month_day // 100,
-                month_day % 100,
-                hour_minute // 100,
-                hour_minute % 100,
-                raw["system.clock_second"],
-            )
-        except ValueError:
-            return None
-        skew = round((plc - now).total_seconds())
-        if abs(skew) > CLOCK_TOLERANCE_S and time.monotonic() >= self._next_clock_set:
-            self._next_clock_set = time.monotonic() + CLOCK_SET_EVERY_S
+        skew = pc.clock_skew_sec(
+            [raw[f"system.clock_{k}"] for k in ("year", "month_day", "hour_minute", "second")], now
+        )
+        if skew is not None and self._clock_due.take(skew):
             await self._set_clock(now, skew)
         return skew
 
     @staticmethod
     def _farm_wall_clock() -> datetime:
-        zone = ZoneInfo(os.getenv("FARM_TIMEZONE", "Africa/Tripoli"))
-        return datetime.now(zone).replace(tzinfo=None, microsecond=0)
+        return pc.farm_wall_clock()
 
     async def _set_clock(self, now: datetime, skew: int) -> None:
         clock = self.map.get("clock")

@@ -27,7 +27,7 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
       .catch((err: unknown) => {
         if (!active) return;
         setBriefing(null);
-        setError(err instanceof Error ? err.message : 'Failed to load daily briefing');
+        setError(err instanceof Error ? err.message : 'failed');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -73,6 +73,7 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
   if (!briefing) return null;
 
   const recapText = pickName(lang, briefing.morning_recap, briefing.morning_recap_ar);
+  const tips = (lang === 'ar' ? briefing.recommendations_ar : briefing.recommendations) ?? [];
   const forecast = briefing.weather_forecast;
   const activeModel = briefing.model_used || briefing.model;
 
@@ -200,6 +201,18 @@ export default function DailyBriefingCard({ initialCollapsed = false }: DailyBri
               </div> : <span className="text-xs text-[#849396]">—</span>}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* each language shows only its own advice: no English list on the Arabic screen */}
+      {tips.length > 0 && (
+        <div data-testid="briefing-recommendations">
+          <div className="text-[11px] font-bold text-[#849396]">{t('briefing.recommendations')}</div>
+          <ul className="mt-1 list-disc ps-5 space-y-0.5 text-xs text-[#bac9cc]">
+            {tips.map((tip) => (
+              <li key={tip}>{tip}</li>
+            ))}
+          </ul>
         </div>
       )}
     </article>

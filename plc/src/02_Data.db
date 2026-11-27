@@ -75,6 +75,13 @@ NON_RETAIN
       HmiStopAllCount : Int;               // PLC -> app, +1 per Stop all on the HMI (0 = none since restart)
       Tick1s : Bool;                       // one-cycle pulse each second
       AnalogFault : Bool;
+      TankSensorBad : Bool;                // each sensor is judged on its own
+      WellSensorBad : Bool;
+      // PLC local time, for the app to compare (also Modbus holding registers 16-19)
+      ClockYear : Int;
+      ClockMonthDay : Int;                 // month * 100 + day
+      ClockHourMinute : Int;               // hour * 100 + minute
+      ClockSecond : Int;
    END_VAR
 END_DATA_BLOCK
 
@@ -106,6 +113,15 @@ NON_RETAIN
       Mb : "UDT_CmdChannel";               // copied from Modbus registers 300-307
       Hmi : "UDT_CmdChannel";              // the control-room panel
       ResetReq : Bool;                     // alarm reset requested (any channel)
+      // set the PLC clock to farm local time: write the six fields, then change ClockSeq.
+      // The OPC UA adapter writes these; FB_ModbusMap fills them from holding registers 308-314.
+      ClockSetYear : Int;
+      ClockSetMonth : Int;
+      ClockSetDay : Int;
+      ClockSetHour : Int;
+      ClockSetMinute : Int;
+      ClockSetSecond : Int;
+      ClockSeq : Int;
    END_VAR
 END_DATA_BLOCK
 
@@ -129,6 +145,8 @@ VERSION : 0.1
       OutageSec : DInt;
       Remaining : Array[1..16] of DInt;    // seconds left on runs cut by a power loss
       Interrupted : Array[1..16] of Bool;
+      SavedMode : Int := 1;                // the system mode survives a PLC restart
+      IsolationFault : Bool;               // ALM-020: no new runs until an alarm reset
    END_VAR
 END_DATA_BLOCK
 

@@ -28,6 +28,7 @@ S7 `Int` is 16-bit: every integer is written as Int16, or the PLC rejects the wr
 import asyncio
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,7 @@ class OpcUaAdapter:
         self._events: list[dict] = []
         self._heartbeat = 0
         self._heartbeat_due = False
+        self._clock_due = pc.ClockSetTimer()
         self._zone_index = {
             zid: int(z["index"]) for zid, z in tagmap["zones"].items() if "index" in z
         }
@@ -156,6 +158,38 @@ class OpcUaAdapter:
 
         await node.write_value(ua.DataValue(ua.Variant(value, getattr(ua.VariantType, vtype))))
 
+    # ── PLC clock ──────────────────────────────────────────
+
+    async def _check_clock(self, values: dict) -> int | None:
+        """Like the Modbus adapter: the fallback schedule runs on the PLC's own clock."""
+        if not values.get("system.clock_year"):
+            return None
+        now = self._farm_wall_clock()
+        skew = pc.clock_skew_sec(
+            [
+                int(values[f"system.clock_{k}"])
+                for k in ("year", "month_day", "hour_minute", "second")
+            ],
+            now,
+        )
+        clock = self.tagmap.get("clock")
+        if skew is not None and clock and self._clock_due.take(skew):
+            try:
+                for key in ("year", "month", "day", "hour", "minute", "second"):
+                    node = self.client.get_node(clock[key])
+                    await self._write(node, getattr(now, key), "Int16")
+                seq_node = self.client.get_node(clock["seq"])
+                seq = int(await seq_node.read_value())
+                await self._write(seq_node, seq % 29999 + 1, "Int16")  # last: the PLC takes it
+                print(f"[OPCUA] PLC clock was {skew:+d} s off farm time: set")
+            except Exception as exc:  # the next check tries again; the API raises ALM-051
+                print(f"[OPCUA] clock write failed: {type(exc).__name__}")
+        return skew
+
+    @staticmethod
+    def _farm_wall_clock() -> datetime:
+        return pc.farm_wall_clock()
+
     # ── state ──────────────────────────────────────────────
 
     async def read_state(self) -> list[dict]:
@@ -187,6 +221,9 @@ class OpcUaAdapter:
             if f"system.{opt}" in v:
                 stats[opt] = float(sys(opt))
         mode_extra = {}
+        skew = await self._check_clock(v)
+        if skew is not None:
+            mode_extra["plc_clock_skew_sec"] = skew
         if "system.hmi_stop_all_count" in v:
             mode_extra["hmi_stop_all_count"] = int(sys("hmi_stop_all_count"))
         out = [
@@ -219,7 +256,8 @@ class OpcUaAdapter:
                 "health": "warning" if state == "faulted" else "healthy",
                 "flow_m3h": float(z("flow_m3h", 0.0)),
                 "pressure_bar": float(z("pressure_bar", 0.0)),
-                "moisture_pct": float(z("moisture_pct", 0.0)),
+                # the PLC never writes this field, so 0 means nothing measures it, not "0 %"
+                "moisture_pct": z("moisture_pct", None) or None,
                 "panel_mode": pc.PANEL_ZONE.get(int(z("panel_mode", 0)), "auto"),
                 "run_source": source if state not in ("off", "completed") else None,
                 "last_updated": now,
@@ -245,15 +283,16 @@ class OpcUaAdapter:
             p = lambda k, d=None, _p=pid: v.get(f"pump.{_p}.{k}", d)  # noqa: E731
             feedback = p("run_fb")
             run = bool(feedback)
+            fault = bool(p("fault", False)) or bool(p("failed_start", False))
             out.append(
                 item(
                     f"pump_{pid}",
                     {
                         "pump_id": pid,
-                        "state": "faulted" if p("fault") else ("running" if run else "stopped"),
+                        "state": "faulted" if fault else ("running" if run else "stopped"),
                         "run_fb": run,
                         "run_fb_observed": feedback is not None,
-                        "fault": bool(p("fault", False)),
+                        "fault": fault,
                         "runtime_hours": float(p("runtime_hours", 0.0)),
                         "panel_mode": pc.PANEL_PUMP.get(int(p("panel_mode", 0)), "auto"),
                         "power_kw": float(p("power_kw", 0.0)),

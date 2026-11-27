@@ -5,6 +5,7 @@ Provides deterministic, offline-first responses when external AI providers
 Strictly returns structured Pydantic models.
 """
 
+import re
 from typing import Any
 
 from app.core.alarm_catalog import ALARM_CATALOG
@@ -16,6 +17,15 @@ from app.services.ai.schemas import (
 )
 from app.services.alarms import OPEN
 from app.services.weather import WeatherForecast
+
+# an order to move water, not a question about it (when does irrigation start?)
+WATER_ORDER = re.compile(
+    r"^(?:(?:من فضلك|رجاء|رجاءً|لو سمحت|هل يمكنك|ممكن|please|can you|could you)\s+)?"
+    r"(?:أن\s+)?"
+    r"(?:شغ[ّ]?ل|تشغل|تشغيل|ابدأ|ابدا|تبدأ|أوقف|اوقف|وقف|توقف|إيقاف|ايقاف|افتح|أغلق|اغلق|"
+    r"اطفئ|أطفئ|اسق|ارو|"
+    r"start|stop|turn (?:on|off)|switch (?:on|off)|open|close|run|water)(?=\s|$|[.!?؟])"
+)
 
 
 class RuleBasedService:
@@ -406,6 +416,21 @@ class RuleBasedService:
         numbers even when every AI model is down (Milestone G2).
         """
         msg_lower = message.lower()
+        if WATER_ORDER.search(msg_lower.strip()):
+            en = (
+                "The assistant cannot start or stop water. To start: open the zone on the Zones "
+                "page and press Start. To stop at once: press STOP ALL at the top of the screen."
+            )
+            ar = (
+                "المساعد لا يشغّل الماء ولا يوقفه. للتشغيل: افتح المنطقة من صفحة المناطق ثم "
+                "اضغط «تشغيل». للإيقاف فوراً: اضغط «إيقاف الكل» أعلى الشاشة."
+            )
+            return ChatResponse(
+                reply=ar if lang == "ar" else en,
+                reply_ar=ar,
+                provider_used="rule_based",
+                model_used="rule_based",
+            )
         live = self._live_answer(msg_lower, facts or {})
         if live:
             en, ar = live

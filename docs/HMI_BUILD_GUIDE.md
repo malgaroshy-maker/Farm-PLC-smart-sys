@@ -15,7 +15,7 @@ You build the screens in TIA Portal; this guide is the spec. The panel device `F
 ## 1. Connect the panel to the PLC
 1. **Devices & networks**: draw a PROFINET line from the panel's interface to the PLC's X1 (192.168.0.1). Give the panel 192.168.0.2 / 255.255.255.0.
 2. **HMI connections**: create a connection from `FarmHMI` to `FarmPLC` (S7 communication). All farm DBs use optimized access, which Unified reads symbolically.
-3. **Runtime settings > Languages**: add Arabic (Libya) and English (UK). Default: Arabic. `DB_HMI.Language` (0 Arabic, 1 English) is there if you want the PLC to hold the language.
+3. **Language (owner, 2026-11-27): Arabic only, no switch.** TIA V19 has no Arabic project language, so the screens carry Arabic text directly, state names come from screen scripts (one-second trigger), and `build_hmi.py alarmtexts` writes the Arabic alarm texts. Mentions of an AR | EN switch or imported text lists below are the old design.
 
 ## 2. Look
 | Item | Value |
@@ -110,6 +110,15 @@ Use Unified operation rights on the controls. Operators can set the run duration
 
 Build `tools/tia/FarmHmiAccess.cs` against the installed V19 `Siemens.Engineering.dll`. Set `FARM_TIA_V19_API` to that PublicAPI folder and run the resulting executable with `inspect <open project.ap19>` to see the current control rights. If TIA reports zero rights, inspect **FarmHMI > Runtime settings > Security > Access control** and **Security settings > Users and roles** in the engineering project. After building or rebuilding screens, use `apply <open project.ap19>` once TIA exposes the Operate right and at least one active named project user has the HMI Administrator role. The helper applies the rights, compiles the HMI and saves on a clean compile. The owner handles account setup and sign-in.
 
+### Panel users and rights (not applied yet)
+The owner prepares this and then tests it on the bench. Until then anyone at the panel can press every button.
+1. In TIA open **Security settings > Users and roles**. Create an operator user and an administrator user, and **type their passwords yourself**. Give them the HMI Operator and HMI Administrator roles.
+2. Check **FarmHMI > Runtime settings > Security > Access control** is on.
+3. Close nothing in TIA. Set `FARM_TIA_V19_API` and run `FarmHmiAccess.exe inspect <project.ap19>`, then `apply <project.ap19>`. Approve TIA's **Allow access** question yourself.
+4. Compile, start the simulation and check: an operator can set the duration, Start, Stop and Stop all; only the administrator can change the system mode or reset alarms.
+
+Do not apply the rights before the users exist: the mode and reset buttons would be locked for everyone.
+
 ## 6. Screens
 Bottom bar, always visible (right to left in Arabic): Overview, Zones, Pumps and water, Alarms, Schedule, Settings. Top bar: farm name, alarm count (red when `DB_Alarms.AnyActive`), PLC link state (`DB_Farm.LinkOk`; amber "fallback" while `FallbackActive`), clock, AR | EN switch.
 
@@ -151,7 +160,7 @@ The app also derives alarms from live data; the HMI shows only what the PLC itse
 ## 8. Test in the Unified runtime simulator
 1. Compile the panel and start the simulation. The PLC must be running in PLCSIM at 192.168.0.1 (`run.bat demo plcsim` plays the farm around it).
 2. Overview shows live zone colours. Press the zone 1 tile, enter 2 minutes, press Start: zone 1 goes through starting and opening to running (green), source "الشاشة". Press Stop. Then Stop all.
-3. After localization resumes, switch AR | EN and verify both versions of the screen and alarm text.
+3. Verify the Arabic state names, replies and alarm texts. If icons look broken in one browser but not in TIA or another browser, check in a normal Chrome window.
 4. Trip the booster from the app's Simulator page and verify that ALM-005 appears in the alarm table. Pause **Alarms – Show recent** in the table toolbar to select the row, then use **Single acknowledgment**. Repair the simulated pump and use Reset alarms as an administrator. Verify the flashing transitions in the closeout plan.
 5. Send me screenshots and I'll check them against layout A.
 

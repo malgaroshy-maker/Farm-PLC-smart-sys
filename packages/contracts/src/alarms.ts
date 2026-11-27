@@ -580,4 +580,15 @@ export const ALARM_DEFINITIONS: Record<string, AlarmDefinition> = {
     description_en: "PLC local time differs from farm time by more than 2 minutes",
     description_ar: "وقت وحدة التحكم يختلف عن وقت المزرعة بأكثر من دقيقتين",
   },
+  "ALM-052": {
+    code: "ALM-052",
+    name: "Stop Not Delivered",
+    name_ar: "لم يصل أمر الإيقاف",
+    category: "process",
+    severity: "S3",
+    requires_ack: true,
+    requires_manual_reset: false,
+    description_en: "A stop command has not been confirmed by the controller",
+    description_ar: "لم تؤكد وحدة التحكم أمر الإيقاف",
+  },
 };

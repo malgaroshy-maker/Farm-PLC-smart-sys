@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { X, Send, Bot, XCircle, Copy, Check, AlertTriangle } from 'lucide-react';
-import { useFarmStore } from '../../store/farm';
+import { isOffline, useFarmStore } from '../../store/farm';
 import { useT, fmtNum, type MsgKey } from '../../lib/i18n';
 import { sendAiChat, type ChatMessage } from '../../lib/api';
 import { AiSparklesIcon, FlowIcon, GaugeIcon, PumpIcon, ZonesIcon } from '../icons/FarmIcons';
@@ -44,6 +44,7 @@ export default function FloatingAssistant() {
       created_at: new Date().toISOString(),
     },
   ]);
+  const offline = useFarmStore(isOffline);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const elapsedSec = useElapsedSeconds(loading);
@@ -187,7 +188,7 @@ export default function FloatingAssistant() {
                   {t('chat.title')}
                   <span className="w-2 h-2 rounded-full bg-[#00e5ff] animate-pulse" />
                 </h3>
-                <span className="text-[11px] text-[#849396]">{t('chat.online')}</span>
+                <span className="text-[11px] text-[#849396]">{t(offline ? 'offline.title' : 'chat.online')}</span>
               </div>
             </div>
 
@@ -244,7 +245,7 @@ export default function FloatingAssistant() {
                   <>
                     {m.references?.length ? <ChatSources references={m.references} /> : null}
                     <div className="flex items-center gap-2 mt-1.5 px-1 w-full max-w-[85%]">
-                      {m.model !== 'farm_records' && <ModelBadge modelUsed={m.model_used || m.model} provider={m.provider} />}
+                      {m.model !== 'farm_records' && (m.provider !== 'system' || m.is_fallback) && <ModelBadge modelUsed={m.model_used || m.model} provider={m.provider} />}
                       <button
                         type="button"
                         onClick={() => handleCopy(m.content, idx)}

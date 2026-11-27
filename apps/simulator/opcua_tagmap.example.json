@@ -14,9 +14,22 @@
     "filter_dp_bar": "ns=3;s=\"DB_Farm\".\"FilterDpBar\"",
     "refilling": "ns=3;s=\"DB_Farm\".\"Refilling\"",
     "hmi_stop_all_count": "ns=3;s=\"DB_Farm\".\"HmiStopAllCount\"",
+    "clock_year": "ns=3;s=\"DB_Farm\".\"ClockYear\"",
+    "clock_month_day": "ns=3;s=\"DB_Farm\".\"ClockMonthDay\"",
+    "clock_hour_minute": "ns=3;s=\"DB_Farm\".\"ClockHourMinute\"",
+    "clock_second": "ns=3;s=\"DB_Farm\".\"ClockSecond\"",
     "alarm_word0": "ns=3;s=\"DB_Alarms\".\"Word0\"",
     "alarm_word1": "ns=3;s=\"DB_Alarms\".\"Word1\"",
     "alarm_word2": "ns=3;s=\"DB_Alarms\".\"Word2\""
+  },
+  "clock": {
+    "year": "ns=3;s=\"DB_Cmd\".\"ClockSetYear\"",
+    "month": "ns=3;s=\"DB_Cmd\".\"ClockSetMonth\"",
+    "day": "ns=3;s=\"DB_Cmd\".\"ClockSetDay\"",
+    "hour": "ns=3;s=\"DB_Cmd\".\"ClockSetHour\"",
+    "minute": "ns=3;s=\"DB_Cmd\".\"ClockSetMinute\"",
+    "second": "ns=3;s=\"DB_Cmd\".\"ClockSetSecond\"",
+    "seq": "ns=3;s=\"DB_Cmd\".\"ClockSeq\""
   },
   "zones": {
     "zone_rumman_1": {
@@ -204,6 +217,7 @@
     "pump_booster_01": {
       "run_fb": "ns=3;s=\"DB_Pumps\".\"Booster\".\"RunFb\"",
       "fault": "ns=3;s=\"DB_Pumps\".\"Booster\".\"Fault\"",
+      "failed_start": "ns=3;s=\"DB_Pumps\".\"Booster\".\"FailedStart\"",
       "runtime_hours": "ns=3;s=\"DB_Pumps\".\"Booster\".\"RuntimeHours\"",
       "panel_mode": "ns=3;s=\"DB_Pumps\".\"Booster\".\"PanelMode\"",
       "power_kw": "ns=3;s=\"DB_Pumps\".\"Booster\".\"PowerKw\"",
@@ -213,6 +227,7 @@
     "pump_well_01": {
       "run_fb": "ns=3;s=\"DB_Pumps\".\"Well\".\"RunFb\"",
       "fault": "ns=3;s=\"DB_Pumps\".\"Well\".\"Fault\"",
+      "failed_start": "ns=3;s=\"DB_Pumps\".\"Well\".\"FailedStart\"",
       "runtime_hours": "ns=3;s=\"DB_Pumps\".\"Well\".\"RuntimeHours\"",
       "panel_mode": "ns=3;s=\"DB_Pumps\".\"Well\".\"PanelMode\"",
       "power_kw": "ns=3;s=\"DB_Pumps\".\"Well\".\"PowerKw\"",

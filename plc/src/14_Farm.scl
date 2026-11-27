@@ -49,6 +49,10 @@ BEGIN
    #tickMem := #tick;
    "DB_Farm".Tick1s := #tick;
 
+   IF #firstScan THEN
+      "DB_Farm".Mode := "DB_Power".SavedMode;            // off stays off across a restart
+   END_IF;
+
    "FC_ReadInputs"();
    #link(Tick1s := #tick);
    // read the reset AFTER the command channels set it (it is cleared at the end of this scan;
@@ -59,7 +63,12 @@ BEGIN
    #hyd(Reset := #reset);
 
    FOR #i := 1 TO 16 DO
-      #useWell := "DB_Zones".Zone[#i].UsesWell;
+      // the source of the run in progress, or the one a start in this scan would use
+      IF "DB_Zones".Zone[#i].State >= 1 AND "DB_Zones".Zone[#i].State <= 5 THEN
+         #useWell := "DB_Zones".Zone[#i].UsesWell;
+      ELSE
+         #useWell := "DB_Farm".TankCritical AND "DB_Config".Zone[#i].UsesWellDirect;
+      END_IF;
       IF #useWell THEN
          #zone[#i](ZoneIndex := #i, Tick1s := #tick,
                    Trip := #hyd.Trip[#i], TripCode := #hyd.TripCode[#i],
@@ -77,10 +86,13 @@ BEGIN
 
    #booster(RunFbIn := "DI_BoosterRun", FaultIn := "DI_BoosterFault",
             HandIn := "DI_BoosterHand", OffIn := "DI_BoosterOff",
-            Tick1s := #tick, Reset := #reset, PowerOk := "DB_Farm".PowerOk, P := "DB_Pumps".Booster);
+            Tick1s := #tick, Reset := #reset, PowerOk := "DB_Farm".PowerOk,
+            Inhibit := "DB_Farm".EStop OR "DB_Farm".TankCritical,   // never run dry, even in HAND
+            P := "DB_Pumps".Booster);
    #well(RunFbIn := "DI_WellRun", FaultIn := "DI_WellFault",
          HandIn := "DI_WellHand", OffIn := "DI_WellOff",
-         Tick1s := #tick, Reset := #reset, PowerOk := "DB_Farm".PowerOk, P := "DB_Pumps".Well);
+         Tick1s := #tick, Reset := #reset, PowerOk := "DB_Farm".PowerOk,
+         Inhibit := "DB_Farm".EStop OR "DB_Farm".WellSensorBad, P := "DB_Pumps".Well);
 
    #radio(Tick1s := #tick);
    #alarms();
@@ -127,6 +139,7 @@ BEGIN
       "DB_Farm".Mode := "DB_HMI".ReqMode;
    END_IF;
    "DB_HMI".ReqMode := -1;
+   "DB_Power".SavedMode := "DB_Farm".Mode;
 
    // Schedule screen: the next fallback runs as rows (zone name, HH:MM, minutes, done)
    #digits := '0123456789';

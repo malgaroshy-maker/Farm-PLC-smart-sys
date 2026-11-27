@@ -102,6 +102,14 @@ python tools/tia/export_flow_config.py --approved-database <approved-app.db> <st
 - Import the staged `DB_Config` and compile. After the approved download, read back `DB_Config.Zone[n].Id`, `.FlowMinM3h`, and `.FlowMaxM3h` for every mapped zone. If the running PLC still holds old retained limits, wait until the zones and pumps are idle, apply the approved values to those members in the online watch table, and repeat the readback before running a zone. On PLCSIM, the simulation API can perform the same check.
 - Run one zone at a time. Check healthy flow, a pulse shorter than `BandTripS`, a sustained leak that raises ALM‑013 and closes the valve and stops the booster, and a restart after clearing the leak. Confirm the PLC alarm in the app and Unified runtime. Rerun `no_flow` and `valve_failed_close` after the change.
 
+## Check the flow limits after every download
+
+Importing the whole of `02_Data.db` resets `DB_Config`, and a download that reinitializes data blocks loads the project's start values. On 2026-11-27 the project was found to have lost every zone's flow limits (live values 1 and 30), so a leak did not trip.
+
+- Import only the data blocks that changed.
+- After each download read `DB_Config.Zone[1..12].FlowMinM3h` and `.FlowMaxM3h` (bench: 2 and 6). If they differ, export them again (above) and write the idle PLC's retained values.
+- After a download that reinitializes data blocks, restart the CPU, or Modbus port 502 can stay closed.
+
 ## Static check
 
 ```

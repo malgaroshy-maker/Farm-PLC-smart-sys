@@ -24,6 +24,7 @@ BEGIN
 
    REGION Reset (from any command channel)
       IF "DB_Cmd".ResetReq THEN
+         "DB_Power".IsolationFault := FALSE;
          FOR #i := 1 TO 48 DO
             "DB_Alarms".Latched[#i] := FALSE;
          END_FOR;

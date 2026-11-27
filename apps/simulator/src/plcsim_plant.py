@@ -83,6 +83,8 @@ class Plant:
     leak: bool = False
     well_low: bool = False
     filter_clog: bool = False
+    tank_sensor_broken: bool = False  # a cut wire: the analog input reads overflow
+    well_sensor_broken: bool = False
     pump_trip: set[str] = field(default_factory=set)
     pump_fail_start: set[str] = field(default_factory=set)
     valve_stuck_closed: set[str] = field(default_factory=set)
@@ -196,10 +198,12 @@ class Plant:
             f"W DI_ZoneOnHi u8 {on_hi}",
             f"W DI_ZoneOffLo u8 {off_lo}",
             f"W DI_ZoneOffHi u8 {off_hi}",
-            f"W AI_TankLevel i16 {raw(self.tank_pct, RANGE['tank'])}",
+            "W AI_TankLevel i16 "
+            + ("32767" if self.tank_sensor_broken else raw(self.tank_pct, RANGE["tank"])),
             f"W AI_MainPressure i16 {raw(self.main_pressure, RANGE['pressure'])}",
             f"W AI_MainFlow i16 {raw(self.main_flow, RANGE['flow'])}",
-            f"W AI_WellLevel i16 {raw(self.well_m, RANGE['well'])}",
+            "W AI_WellLevel i16 "
+            + ("32767" if self.well_sensor_broken else raw(self.well_m, RANGE["well"])),
             f"W AI_FilterDp i16 {raw(self.filter_dp, RANGE['filter'])}",
         ]
 
@@ -261,6 +265,10 @@ class Plant:
                 "well_recover": ("well_low", False),
                 "filter_clog": ("filter_clog", True),
                 "filter_clean": ("filter_clog", False),
+                "tank_sensor_break": ("tank_sensor_broken", True),
+                "tank_sensor_repair": ("tank_sensor_broken", False),
+                "well_sensor_break": ("well_sensor_broken", True),
+                "well_sensor_repair": ("well_sensor_broken", False),
             }
             if ft == "clear_all":
                 for attr, _ in flags.values():

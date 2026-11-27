@@ -290,7 +290,7 @@ export default function SimulatorPanel() {
                 value={tank}
                 onChange={(e) => setTank(Number(e.target.value))}
                 className="flex-1 accent-[#00e5ff]"
-                aria-label="Tank level to set"
+                aria-label={t('sim.tankLevel')}
               />
               <span className="font-mono text-sm w-10 text-end" dir="ltr">{tank}%</span>
               <button disabled={!isAdmin} onClick={setTankLevel} className="px-3 py-1.5 border border-[#353534] rounded text-xs disabled:opacity-40">

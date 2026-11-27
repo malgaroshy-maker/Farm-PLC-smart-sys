@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProgramStepSchema(BaseModel):
@@ -22,6 +22,15 @@ class ProgramStepCreate(BaseModel):
     zone_id: str
     step_order: int = Field(ge=1)
     duration_min: int = Field(ge=1)
+
+
+def _at_least_one_day(value: str | None) -> str | None:
+    if value is None:
+        return None
+    days = [d.strip() for d in value.split(",") if d.strip()]
+    if not days or any(d not in "1234567" or len(d) != 1 for d in days):
+        raise ValueError("weekday_mask needs at least one day, numbered 1 (Monday) to 7")
+    return ",".join(sorted(set(days)))
 
 
 class ProgramResponse(BaseModel):
@@ -50,6 +59,8 @@ class ProgramCreate(BaseModel):
     notes: str | None = None
     steps: list[ProgramStepCreate] = Field(min_length=1)
 
+    _days = field_validator("weekday_mask")(_at_least_one_day)
+
 
 class ProgramUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
@@ -59,6 +70,8 @@ class ProgramUpdate(BaseModel):
     season: str | None = None
     notes: str | None = None
     steps: list[ProgramStepCreate] | None = None
+
+    _days = field_validator("weekday_mask")(_at_least_one_day)
 
 
 class ProgramToggle(BaseModel):

@@ -43,7 +43,7 @@ async def resolve_token(token: str, db: AsyncSession) -> Actor | None:
     if not claims:
         return None
     user = await db.get(User, claims.get("sub"))
-    if not user or not user.is_active:
+    if not user or not user.is_active or claims.get("ver", 0) != (user.token_version or 0):
         return None
     return Actor(actor_type="user", actor_id=user.id, role=user.role, name=user.name)
 
