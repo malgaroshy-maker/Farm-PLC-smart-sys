@@ -166,6 +166,22 @@ class AlarmEngine:
         r_now = real_now or utcnow()
         stats = snapshots.get("simulation_stats")
         mode = snapshots.get("system_mode")
+        skew = mode.state.get("plc_clock_skew_sec") if mode else None
+        # held for a minute or so: the gateway corrects the clock itself within seconds
+        if self._debounced(
+            "ALM-051",
+            skew is not None and abs(skew) > settings.plc_clock_max_skew_sec,
+            settings.alarm_debounce_sec * 6,
+            r_now,
+        ):
+            out.append(
+                Condition(
+                    "ALM-051",
+                    value=float(skew),
+                    threshold=float(settings.plc_clock_max_skew_sec),
+                    detail=f"{skew:+d} s",
+                )
+            )
         if stats:
             tank = float(stats.state.get("tank_level_pct", 100.0))
             low = settings.tank_critical_pct <= tank < settings.tank_warning_pct
@@ -495,6 +511,7 @@ class AlarmEngine:
             "ALM-043",
             "ALM-046",
             "ALM-047",
+            "ALM-051",
         }
         events = await self.reconcile(db, self.plc_conditions(snapshots), plc_codes)
         events += await self.reconcile(

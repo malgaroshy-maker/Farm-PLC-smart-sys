@@ -435,6 +435,20 @@ _SPECS = [
         "تفقّد أنابيب التنقيط والفلاتر الشبكية والنقاطات بحثاً عن ترسبات أو انسدادات أو التواء الأنابيب. اغسل الخطوط الفرعية عند الحاجة.",
         source="derived",
     ),
+    AlarmSpec(
+        "ALM-051",
+        "PLC Clock Wrong",
+        "ساعة وحدة التحكم غير صحيحة",
+        "equipment",
+        "S2",
+        True,
+        False,
+        "The PLC's clock does not match farm time. If the server goes down, the PLC's backup schedule would run at the wrong time.",
+        "ساعة وحدة التحكم لا تطابق وقت المزرعة. إذا توقف الخادم، سيعمل جدول الطوارئ في وحدة التحكم في وقت خاطئ.",
+        "Check the date and time on the server first, then the PLC connection. The app sets the PLC clock by itself.",
+        "تحقق أولاً من التاريخ والوقت في الخادم، ثم من الاتصال بوحدة التحكم. يضبط التطبيق ساعة وحدة التحكم تلقائياً.",
+        source="derived",
+    ),
 ]
 
 CATALOG: dict[str, AlarmSpec] = {s.code: s for s in _SPECS}

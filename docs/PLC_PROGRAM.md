@@ -146,7 +146,7 @@ When the mains returns:
 - otherwise it goes to `faulted` with "power was out N min, run not resumed".
 
 ### 6.5 Fallback program (G7)
-While `FallbackActive`, `FB_Fallback` starts each run in `DB_Fallback` at its time, for its duration, through the normal zone logic and interlocks. Runs keep `RunSource = fallback`, so the app records them as unattended cycles when the link returns. The PLC clock is set from the gateway (NTP or the farm clock) so run times match.
+While `FallbackActive`, `FB_Fallback` starts each run in `DB_Fallback` at its time, for its duration, through the normal zone logic and interlocks. Runs keep `RunSource = fallback`, so the app records them as unattended cycles when the link returns. These times are the PLC's own local clock, so the gateway sets it over Modbus whenever it is more than 5 s off farm time (registers 16–19 show it, 308–314 set it). The app raises ALM-051 if it stays more than 2 minutes off. Over OPC UA the clock is not set yet.
 
 ### 6.6 Restart (OB100)
 - All outputs off, every zone `off`, and the radio boxes are sent "close".

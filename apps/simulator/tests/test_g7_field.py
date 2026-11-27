@@ -125,3 +125,19 @@ def test_filter_clog_and_clean(eng):
     assert eng.state.system.filter_dp_bar > 0.5
     fault(eng, "system", "filter_clean")
     assert eng.state.system.filter_dp_bar < 0.1
+
+
+@pytest.mark.parametrize("stop", ["stop_all", "stop_zone"])
+def test_a_stop_during_a_power_cut_cancels_the_resume(eng, stop):
+    """Safety: a zone that was stopped must not start again by itself when power returns."""
+    eng.process_commands([cmd("start_zone", "zone_a", duration_min=10)])
+    run(eng, 30)
+    fault(eng, "system", "power_cut")
+    run(eng, 2)
+    z = eng.state.zones["zone_a"]
+    assert z.state == "interrupted"
+    eng.process_commands([cmd(stop, "zone_a" if stop == "stop_zone" else "")])
+    assert z.state == "off"
+    fault(eng, "system", "power_restore")
+    run(eng, 30)
+    assert z.state == "off"

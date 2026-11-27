@@ -27,6 +27,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.alarm_catalog import CATALOG
 from app.core.clock import clock
 from app.database import async_session_factory, get_db
 from app.deps import Actor, get_actor, require_roles
@@ -155,11 +156,12 @@ async def api_explain_alarm(
 
         if alarm:
             zone = await db.get(Zone, alarm.zone_id) if alarm.zone_id else None
+            spec = CATALOG.get(alarm.alarm_code)  # alarm rows hold no name of their own
             alarm_data = {
                 "id": alarm.id,
                 "alarm_code": alarm.alarm_code,
-                "name": alarm.name,
-                "name_ar": alarm.name_ar,
+                "name": spec.name if spec else alarm.alarm_code,
+                "name_ar": spec.name_ar if spec else alarm.alarm_code,
                 "severity": alarm.severity,
                 "status": alarm.status,
                 "condition_active": alarm.cleared_at is None,

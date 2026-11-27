@@ -569,4 +569,15 @@ export const ALARM_DEFINITIONS: Record<string, AlarmDefinition> = {
     description_en: "Zone/device lacks required threshold values",
     description_ar: "المنطقة/الجهاز يفتقر لقيم الحدود المطلوبة",
   },
+  "ALM-051": {
+    code: "ALM-051",
+    name: "PLC Clock Wrong",
+    name_ar: "ساعة وحدة التحكم غير صحيحة",
+    category: "equipment",
+    severity: "S2",
+    requires_ack: true,
+    requires_manual_reset: false,
+    description_en: "PLC local time differs from farm time by more than 2 minutes",
+    description_ar: "وقت وحدة التحكم يختلف عن وقت المزرعة بأكثر من دقيقتين",
+  },
 };

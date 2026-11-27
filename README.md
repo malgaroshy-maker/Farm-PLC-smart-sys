@@ -25,7 +25,7 @@ A sensor-backed, remotely observable irrigation platform for Algaroshy Farm. It 
 - 🗺️ **Live farm map** traced from satellite imagery: every zone, tree row, pipe, valve, pump, tank and building, with animated water flow and day/night lighting.
 - 🔧 **Zone control:** start/stop with a duration picker and interlock feedback, plus a global STOP ALL.
 - 📅 **Schedules:** sequential irrigation programs on a weekly timeline with conflict checks.
-- 🚨 **Alarms:** 50 alarm definitions (23 raised today) with severity, ack/reset and Arabic/English guidance.
+- 🚨 **Alarms:** 51 alarm definitions (24 raised today) with severity, ack/reset and Arabic/English guidance.
 - 📈 **Reports:** daily irrigation, water per zone, pump runtime and alarm history, with CSV export.
 - 🧠 **AI:** explain any alarm, a farm assistant chat, a weather advisor whose decisions come from fixed server rules (the AI only explains them), statistical leak/clog detection, and a morning briefing.
 - 🔔 **Notifications:** critical and major alarms and the briefing go to Telegram and phone push.
@@ -149,7 +149,7 @@ All engineering documents are in [`/docs`](./docs/):
 | [IO List](docs/IO_LIST.md) | PLC tags, sensors, actuators |
 | [PLC Control Logic](docs/PLC_CONTROL_LOGIC.md) | Control philosophy, sequences, interlocks |
 | [Controller Adapter](docs/CONTROLLER_ADAPTER.md) | Simulator and OPC UA adapters, command handshake |
-| [Alarm Matrix](docs/ALARM_MATRIX.md) | 50 alarm definitions with full behavior |
+| [Alarm Matrix](docs/ALARM_MATRIX.md) | 51 alarm definitions with full behavior |
 | [Schedules](docs/SCHEDULES.md) / [Simulation Time](docs/SIMULATION_TIME.md) | Programs, scheduler and the virtual farm clock |
 | [Simulation Plan](docs/SIMULATION_PLAN.md) | Simulator design and test scenarios |
 | [Map Survey](docs/MAP_SURVEY.md) / [Farm Site](docs/FARM_SITE.md) | How the map was traced, site facts |

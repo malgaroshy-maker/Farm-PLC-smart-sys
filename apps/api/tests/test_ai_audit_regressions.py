@@ -14,7 +14,7 @@ from app.services.ai.agent import alarm_agent, chat, explain_alarm
 from app.services.ai.rules import rule_service
 from app.services.ai.tools import AIDeps, get_cycles, get_forecast, get_zone_state
 from app.services.weather import weather_service
-from tests.conftest import login
+from tests.conftest import login, push_state
 
 
 def test_offline_briefing_counts_critical_alarms_and_preserves_estimates():
@@ -125,3 +125,22 @@ async def test_cycle_tool_resolves_zone_code_and_uses_farm_local_day(client):
     assert answer.model_used == "farm_records"
     assert answer.references == ["get_cycles"]
     assert "0.73" in answer.reply_ar and "المقدّر" in answer.reply_ar
+
+
+@pytest.mark.parametrize("language", ["ar", "en"])
+def test_explain_a_real_alarm_by_its_id(client, language):
+    """The Explain button sends the alarm's record id (it answered 500 for every alarm)."""
+    push_state(client, plc_alarms=[{"code": "ALM-005", "device_id": "pump_booster_01"}])
+    admin = login(client, "admin")
+    [alarm] = [
+        a
+        for a in client.get("/api/v1/alarms", headers=admin).json()
+        if a["alarm_code"] == "ALM-005"
+    ]
+    r = client.post(
+        "/api/v1/ai/explain-alarm",
+        headers=admin,
+        json={"alarm_id": alarm["id"], "language": language},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["alarm_code"] == "ALM-005"

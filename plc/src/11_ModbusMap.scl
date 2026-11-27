@@ -2,6 +2,7 @@
 // Register layout = apps/simulator/modbus_map.example.json:
 //   0-19 system, zone n at 100 + 10*(n-1) (16 zones: 100-259), pumps 270 and 280,
 //   command 300-307, fallback list 318-319 + runs at 320 + 4*(k-1).
+//   Clock: the PLC shows its local time in 16-19; the app sets it with 308-313, then a new 314.
 
 FUNCTION "FC_W" : Word
 TITLE = 'Real x scale -> signed 16-bit register'
@@ -47,12 +48,16 @@ VERSION : 0.1
       server : MB_SERVER;
       conn : TCON_IP_v4;
       lastFallbackSeq : Word;
+      lastClockSeq : Word;
    END_VAR
    VAR_TEMP
       i : Int;
       k : Int;
       b : Int;
       n : Int;
+      clockIn : DTL;
+      clockNow : DTL;
+      ret : Int;
    END_VAR
 BEGIN
    REGION Server
@@ -77,6 +82,24 @@ BEGIN
       "DB_Cmd".Mb.Target := WORD_TO_INT("DB_Modbus".HR[302]);
       "DB_Cmd".Mb.DurationMin := WORD_TO_INT("DB_Modbus".HR[303]);
       "DB_Cmd".Mb.Heartbeat := WORD_TO_INT("DB_Modbus".HR[307]);
+   END_REGION
+
+   REGION Clock in: the app writes farm local time to 308-313, then changes 314
+      IF "DB_Modbus".HR[314] <> #lastClockSeq THEN
+         #lastClockSeq := "DB_Modbus".HR[314];
+         IF WORD_TO_INT("DB_Modbus".HR[308]) >= 2025 AND WORD_TO_INT("DB_Modbus".HR[308]) <= 2100 THEN
+            #clockIn.YEAR := WORD_TO_UINT("DB_Modbus".HR[308]);
+            #clockIn.MONTH := INT_TO_USINT(WORD_TO_INT("DB_Modbus".HR[309]));
+            #clockIn.DAY := INT_TO_USINT(WORD_TO_INT("DB_Modbus".HR[310]));
+            #clockIn.WEEKDAY := 1;                          // the CPU works it out from the date
+            #clockIn.HOUR := INT_TO_USINT(WORD_TO_INT("DB_Modbus".HR[311]));
+            #clockIn.MINUTE := INT_TO_USINT(WORD_TO_INT("DB_Modbus".HR[312]));
+            #clockIn.SECOND := INT_TO_USINT(WORD_TO_INT("DB_Modbus".HR[313]));
+            #clockIn.NANOSECOND := 0;
+            // local time: the CPU's own time zone setting converts it, whatever that setting is
+            #ret := WR_LOC_T(LOCTIME := #clockIn, DST := FALSE);
+         END_IF;
+      END_IF;
    END_REGION
 
    REGION Fallback list in: the gateway writes the runs, then bumps register 318
@@ -121,6 +144,11 @@ BEGIN
       "DB_Modbus".HR[13] := "FC_B"("DB_Farm".LinkOk);
       "DB_Modbus".HR[14] := "FC_B"("DB_Farm".Refilling);
       "DB_Modbus".HR[15] := INT_TO_WORD("DB_Farm".HmiStopAllCount);
+      #ret := RD_LOC_T(#clockNow);
+      "DB_Modbus".HR[16] := UINT_TO_WORD(#clockNow.YEAR);
+      "DB_Modbus".HR[17] := INT_TO_WORD(USINT_TO_INT(#clockNow.MONTH) * 100 + USINT_TO_INT(#clockNow.DAY));
+      "DB_Modbus".HR[18] := INT_TO_WORD(USINT_TO_INT(#clockNow.HOUR) * 100 + USINT_TO_INT(#clockNow.MINUTE));
+      "DB_Modbus".HR[19] := INT_TO_WORD(USINT_TO_INT(#clockNow.SECOND));
    END_REGION
 
    REGION Zones 100-259

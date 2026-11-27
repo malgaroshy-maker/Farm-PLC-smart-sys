@@ -304,4 +304,6 @@ def test_only_real_breaks_count_as_missing_readings():
     assert volume([*range(7, 200, 10), *range(400, 597, 10)]).has_gaps(start, stop)
     assert volume(range(40, 597, 10)).has_gaps(start, stop)
     assert volume(range(7, 560, 10)).has_gaps(start, stop)
+    # one skipped sample at the end is still a clean run
+    assert not volume(range(7, 580, 10)).has_gaps(start, stop)
     assert volume([]).has_gaps(start, stop)

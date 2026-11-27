@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Bench testing: safety, clock, OPC UA and AI fixes (2026-11-27)
+
+- **A stop during a power cut now cancels that zone's resume** (app STOP ALL, stop zone, HMI Stop all), in the PLC and the simulator. Before, the zone restarted by itself when power returned.
+- **The app sets the PLC clock over Modbus** and keeps it within seconds of farm time. The PLC publishes its local time in registers 16–19 and takes a new time from 308–314. Before, nothing set it, and a wrong clock ran the fallback schedule at the wrong time. New alarm ALM-051 (S2) if it stays more than 2 minutes off.
+- **OPC UA tag map fixed.** The PLC's server numbers array elements from 0, so the app read the next zone's state for every zone and could not load the fallback list. The adapter now checks each zone's id on the PLC when it connects.
+- **Explaining an alarm no longer fails with a server error** for a real alarm.
+- Bilingual AI answers (alarm explanation, briefing, advisor) now get at least 6,000 output tokens. At 2,048 they were discarded and the built-in rules answered.
+- At fast simulation speeds, one late reading no longer marks a run as missing readings.
+
 ### HMI Stop all ends the running program (2026-11-27)
 
 - The PLC counts presses of the HMI's **Stop all** (`DB_Farm.HmiStopAllCount`, Modbus holding register 15, OPC UA `HmiStopAllCount`). When the count moves, the app records a STOP ALL from the PLC: the running program ends and starts the controller has not finished are cancelled.

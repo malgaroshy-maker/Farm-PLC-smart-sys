@@ -65,6 +65,7 @@ class Settings(BaseSettings):
         30  # G7 owner rule; the controller applies it (POWER_RESUME_MAX_MIN)
     )
     alarm_debounce_sec: float = 10.0  # derived pressure warnings
+    plc_clock_max_skew_sec: int = 120  # ALM-051 above this (after the app tried to set it)
     tank_warning_debounce_sec: float = 5.0
     repeated_fault_threshold: int = 3  # ALM-036: major faults per zone per 24 h
     telemetry_interval_sec: float = 10.0

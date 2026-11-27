@@ -15,7 +15,7 @@ asyncua = pytest.importorskip("asyncua")
 from asyncua import Server, ua  # noqa: E402
 
 from src.adapter import Layout  # noqa: E402
-from src.adapters.opcua_adapter import OpcUaAdapter  # noqa: E402
+from src.adapters.opcua_adapter import OpcUaAdapter, TagMapError  # noqa: E402
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "opcua_tagmap.example.json"
 BOOLS = {
@@ -28,7 +28,7 @@ BOOLS = {
     "run_fb",
     "valid",
 }
-STRINGS = {"mode", "target", "ack_reason"}
+STRINGS = {"mode", "target", "ack_reason", "config_id"}
 WORDS = {"alarm_word0", "alarm_word1", "alarm_word2"}
 DINTS = {"runtime_sec", "target_sec"}
 REALS = {
@@ -113,6 +113,8 @@ async def _plc(port: int):
         node = await root.add_variable(ua.NodeId(sid, ns), sid, ua.Variant(default(t), t))
         await node.set_writable()
         nodes[nid] = (node, t)
+    for zid, tags in tm["zones"].items():  # the PLC's DB_Config holds each zone's id
+        await nodes[tags["config_id"]][0].write_value(ua.Variant(zid, ua.VariantType.String))
     return server, tm, nodes
 
 
@@ -221,3 +223,24 @@ def test_farm_plc_tag_map_end_to_end():
                 logic.cancel()
 
     asyncio.run(run())
+
+
+def test_a_tag_map_that_is_one_element_off_is_refused():
+    async def run():
+        server, tm, nodes = await _plc(_free_port())
+        wrong = tm["zones"]["zone_rumman_2"]["config_id"]
+        async with server:
+            await _set(nodes, wrong, "zone_rumman_3")  # this node belongs to the next zone
+            with pytest.raises(TagMapError, match="zone_rumman_2"):
+                await OpcUaAdapter(tm).start(Layout())
+
+    asyncio.run(run())
+
+
+def test_example_tag_map_counts_array_elements_from_zero():
+    """As the PLC's OPC UA server does (seen on PLCSIM): PLC zone n is element n - 1."""
+    tm = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    for tags in tm["zones"].values():
+        assert f'"Zone"[{tags["index"] - 1}].' in tags["state"]
+    runs = tm["fallback"]["runs"]
+    assert [int(r["zone"].split("[")[1].split("]")[0]) for r in runs] == list(range(48))

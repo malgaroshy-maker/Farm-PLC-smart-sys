@@ -59,7 +59,7 @@ def test_alarm_catalog_matches_contracts():
     from app.core.alarm_catalog import CATALOG
 
     contracts = ts_alarms()
-    assert len(contracts) == 50
+    assert len(contracts) == 51
     for code, spec in CATALOG.items():
         assert code in contracts, code
         expected = contracts[code]

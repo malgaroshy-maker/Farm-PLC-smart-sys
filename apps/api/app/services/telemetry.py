@@ -261,7 +261,8 @@ def integrate_flow(samples: Iterable[FlowSample], start: datetime, stop: datetim
                 total.covered_to = right
                 # samples are 10 farm seconds apart, or one per real second when faster
                 interval = max(10.0, speed, prior_speed)
-                total.edge_allowance_s = max(total.edge_allowance_s, 1.5 * interval)
+                # a push can miss the 1 s limit by a moment, leaving two intervals between samples
+                total.edge_allowance_s = max(total.edge_allowance_s, 2.5 * interval)
         previous = (timestamp, rate, speed)
     return total
 

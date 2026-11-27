@@ -1,6 +1,7 @@
 import asyncio
 from datetime import timedelta
 
+import pytest
 from conftest import SIM, login, push_state
 
 from app.core.timeutil import utcnow
@@ -324,3 +325,20 @@ def test_repeated_faulted_runs_raise_maintenance_alarm_with_a_plc(client):
         )
     a = by_code(active(client, op), "ALM-036")
     assert a["zone_id"] == "zone_enab" and a["current_value"] == 3
+
+
+@pytest.mark.parametrize(
+    ("skew", "expected"), [(None, False), (90, False), (-10800, True), (121, True)]
+)
+def test_wrong_plc_clock_raises_alm051_and_clears_when_fixed(client, skew, expected):
+    def active():
+        rows = client.get("/api/v1/alarms", headers=login(client, "admin")).json()
+        return any(a["alarm_code"] == "ALM-051" for a in rows)
+
+    push_state(client, system_extra={} if skew is None else {"plc_clock_skew_sec": skew})
+    assert active() is expected
+    push_state(client, system_extra={"plc_clock_skew_sec": 1})
+    if expected:  # cleared by itself; it only waits for the acknowledgement
+        rows = client.get("/api/v1/alarms", headers=login(client, "admin")).json()
+        [alarm] = [a for a in rows if a["alarm_code"] == "ALM-051"]
+        assert alarm["cleared_at"] is not None

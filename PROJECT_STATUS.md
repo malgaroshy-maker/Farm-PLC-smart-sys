@@ -43,10 +43,10 @@
 | Feature switches | ✅ | Owner switches for each AI feature, map effects, automation (schedules, daily weather check, anomaly detection) and alert channels (`/system/features`); changes reach every screen live. |
 | Notifications | ✅ | S3 critical and S2 major alarms and the morning briefing go to Telegram and phone push (web push with VAPID), with a test-message button in Settings. Phone push needs HTTPS, so it works on localhost until hosting is decided. |
 | Controller adapter | ✅ | The gateway drives a `ControllerAdapter`: the simulator today, and an OPC UA adapter (S7-1500, seq/ack handshake) tested against an in-process OPC UA server, and a Modbus TCP adapter (G7) tested against a built-in register server. G5: the production Modbus adapter drives the real PLC program in PLCSIM Advanced, with the farm model around it (`run.bat demo plcsim`). See [CONTROLLER_ADAPTER](docs/CONTROLLER_ADAPTER.md). |
-| Field readiness (G7) | ✅ | Manual mode (panel switches, hand icon, banner, ALM-042), unexpected flow (ALM-021), power cut with the 30-minute resume rule (ALM-033), fallback program, pump health (kW, current, well level, filter, ALM-027/039), soil moisture with per-crop levels and soil logic (levels proposed until the owner confirms). Shown in the simulator; the PLC side is G5. |
+| Field readiness (G7) | ✅ | PLCSIM bench 2026-11-27: 13/13 scenarios, 15/15 power-cut, fallback and clock checks, 14/14 OPC UA adapter checks. Manual mode (panel switches, hand icon, banner, ALM-042), unexpected flow (ALM-021), power cut with the 30-minute resume rule (ALM-033), fallback program, pump health (kW, current, well level, filter, ALM-027/039), soil moisture with per-crop levels and soil logic (levels proposed until the owner confirms). Shown in the simulator; the PLC side is G5. |
 | Farm server & backups | ✅ | `start.mjs server` (headless, restarts crashed parts), Windows/Linux service installers, daily backups (local, USB, Google Drive via rclone) with restore on restart in Settings → Backups, Tailscale HTTPS guide ([FARM_SERVER](docs/FARM_SERVER.md)). The installers have not been run on the farm PC yet. |
 | Operator guide | ✅ | Arabic + English guide in two parts (daily operation, administration): in-app Help page, [docs/OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md) and a printable A4 PDF. |
-| Tests + CI | ✅ | 2026-11-27: 308 API, 58 simulator (plus 3 OPC UA tests that need the optional library; all 61 passed with it), 113 web, 7 map-model and 12 launcher tests passed. GitHub Actions runs lint, tests, migrations, type checks, and builds. |
+| Tests + CI | ✅ | 2026-11-27: 314 API, 66 simulator (with the optional OPC UA library), 113 web, 7 map-model and 12 launcher tests passed. GitHub Actions runs lint, tests, migrations, type checks, and builds. |
 
 ## Live scenario suite
 
@@ -74,11 +74,13 @@ All **15/15** scenarios passed against the running API and software simulator at
 |-----|-----------|
 | No way to create operator or viewer accounts or change a password; only the seeded admin exists | Deferred by the owner (2026-11-27) |
 | Phones on the LAN use plain HTTP in demo and server modes, so passwords can be read on that network | Decide with hosting (owner, 2026-11-27) |
-| HMI Stop all was bench-tested by writing the button's tag, not by touching it on the HMI runtime; the OPC UA tag was not tested against the PLC | Next HMI session |
+| Over OPC UA the app does not set or check the PLC clock; only Modbus does | Before using OPC UA on the farm |
+| The OPC UA array numbering was seen on PLCSIM; check it again on the real PLC (the adapter refuses a wrong map) | Commissioning |
+| OPC UA was bench-tested with no security, and is switched off again in the TIA project | Before using OPC UA on the farm |
 | PLC access protection is "full access" and Modbus TCP has no login; the PLC network must be isolated | Before commissioning |
 | Python packages have not had a vulnerability scan | Next audit |
 | Arabic HMI localization and HMI permissions | Deferred by the owner. |
-| Live Siemens OPC UA and field commissioning | The G5 bench used PLCSIM over Modbus. Measure and approve field flow bands before commissioning. |
+| Field commissioning | The bench used PLCSIM over Modbus and OPC UA. Measure and approve field flow bands before commissioning. |
 | Phone push on phones needs HTTPS: Tailscale `serve` is documented but not set up yet | Farm PC setup |
 | PostgreSQL in production, SMS/escalation | Production track |
 | Per-crop soil levels are proposed values; soil logic waits for the owner to confirm them | Owner input |

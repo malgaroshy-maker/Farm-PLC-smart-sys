@@ -76,6 +76,14 @@ BEGIN
 
    REGION Requests
       IF #s.ReqStop THEN
+         IF #s.State = 8 THEN
+            // waiting for the mains to come back: a stop cancels the resume. Clear the retained
+            // flag too, or a PLC restart during the outage would bring the run back, and any
+            // start made by FB_Power in this same scan.
+            #s.State := 0;
+            "DB_Power".Interrupted[#ZoneIndex] := FALSE;
+            #s.ReqStart := FALSE;
+         END_IF;
          IF #s.RunSource <> 1 AND #s.State >= 1 AND #s.State <= 4 THEN
             #s.State := 5;
          END_IF;

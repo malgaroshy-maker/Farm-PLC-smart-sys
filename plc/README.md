@@ -82,6 +82,12 @@ The helper `tools/tia/TiaTool.exe` (built from `tools/tia/TiaTool.cs`) can add t
 - Only the changed blocks were imported (`DB_Farm`, `03`, `06`, `11`). **Do not re-import `02_Data.db` whole into the bench project:** it resets `DB_Config` and with it the approved flow limits.
 - **After a download that reinitializes data blocks, restart the CPU (STOP, then RUN).** Modbus port 502 stayed closed with `DB_Modbus.ServerStatus` = `16#80A3` until the restart, most likely because the old connection was still held.
 
+**Second bench pass (2026-11-27):**
+- 13/13 scenarios; Stop all and zone limit 11/11; HMI **Stop all** touched in the Unified runtime ended the app's program.
+- Power cut, fallback and clock 15/15. Found and fixed: a stop during a power cut did not cancel the resume; nothing set the PLC clock.
+- **The PLCSIM clock runs a few percent slow and can be hours off after a pause.** The gateway now corrects it; by hand, set the instance's `SystemTime` through the PLCSIM Advanced API.
+- OPC UA (anonymous, no security, SIMATIC OPC UA small licence, then switched off again): the adapter passed 14/14 once the tag map numbered arrays from 0. Turning the server on assigned its certificate by itself.
+
 ## Load approved zone flow limits
 
 Generate a separate `02_Config.db` in a staging folder. The exporter reads the app's existing zone fields by PLC zone ID and validates the bands against the mainline meter range. It leaves the farm database and checked-in PLC defaults untouched.

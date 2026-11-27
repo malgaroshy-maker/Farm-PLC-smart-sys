@@ -67,6 +67,9 @@ from app.services.weather import WeatherForecast, is_usable_forecast
 
 log = logging.getLogger(__name__)
 
+BILINGUAL_FEATURES = {"explain_alarm", "briefing", "advisor"}
+BILINGUAL_MIN_OUTPUT_TOKENS = 6000
+
 # Request Cache: (cache_key -> (timestamp, data))
 _REQUEST_CACHE: dict[str, tuple[datetime, Any]] = {}
 CACHE_TTL_SEC = 60.0
@@ -468,6 +471,10 @@ async def _run_with_retry_and_fallback(
         safe_prompt = redact_text(prompt)
         allowed_names = await farm_proper_nouns(factory)
         token_budget = ai_settings.token_budget if ai_settings else settings.ai_token_budget
+        # these answers are written twice, Arabic and English; cut off at the chat budget they
+        # were thrown away and every one fell back to the rules
+        if feature_name in BILINGUAL_FEATURES:
+            token_budget = max(token_budget, BILINGUAL_MIN_OUTPUT_TOKENS)
         limits = UsageLimits(request_limit=8, output_tokens_limit=token_budget)
         base_url = ai_settings.apinex_base_url if ai_settings else None
         repair_name = ai_settings.apinex_fallback_model if ai_settings else None

@@ -28,8 +28,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from ..adapter import Layout
 from ..modbus_tcp import ModbusError, ModbusTcpClient
@@ -39,6 +42,8 @@ from . import plc_common as pc
 COMMAND_TYPES = {"start_zone": 1, "stop_zone": 2, "stop_all": 3, "reset_alarm": 4}
 REASONS = pc.REASONS
 ALARM_WORDS = ("alarm_word0", "alarm_word1", "alarm_word2")
+CLOCK_TOLERANCE_S = 5  # set the PLC clock when it is further off than this
+CLOCK_SET_EVERY_S = 60.0
 
 
 class MapError(ValueError):
@@ -77,6 +82,7 @@ class ModbusAdapter:
         self._addr = self._addresses()
         self._heartbeat = 0
         self._heartbeat_due = False
+        self._next_clock_set = 0.0
         self._zone_index = {
             zid: int(z["index"]) for zid, z in regmap["zones"].items() if "index" in z
         }
@@ -191,6 +197,9 @@ class ModbusAdapter:
             if f"system.{opt}" in v:
                 stats[opt] = sys(opt)
         mode_extra = {}
+        skew = await self._check_clock(v, raw)
+        if skew is not None:
+            mode_extra["plc_clock_skew_sec"] = skew
         if "system.hmi_stop_all_count" in v:
             mode_extra["hmi_stop_all_count"] = int(sys("hmi_stop_all_count"))
         out = [
@@ -274,6 +283,58 @@ class ModbusAdapter:
             active = pc.alarm_bits([raw[f"system.{w}"] for w in ALARM_WORDS])
             out.append(item("plc_alarms", {"active": pc.plc_alarms(active, zone_faults)}))
         return out
+
+    # ── PLC clock ──────────────────────────────────────────
+
+    async def _check_clock(self, values: dict, raw: dict) -> int | None:
+        """Seconds the PLC's local time is ahead of the farm's, and set it when it is off.
+
+        The fallback schedule runs on the PLC's own clock, so it must show farm time. Always
+        the real wall clock: a PLC cannot follow the simulator's virtual clock. Returns None
+        for a controller that does not publish its clock.
+        """
+        if not raw.get("system.clock_year"):
+            return None
+        month_day, hour_minute = raw["system.clock_month_day"], raw["system.clock_hour_minute"]
+        now = self._farm_wall_clock()
+        try:
+            plc = datetime(
+                raw["system.clock_year"],
+                month_day // 100,
+                month_day % 100,
+                hour_minute // 100,
+                hour_minute % 100,
+                raw["system.clock_second"],
+            )
+        except ValueError:
+            return None
+        skew = round((plc - now).total_seconds())
+        if abs(skew) > CLOCK_TOLERANCE_S and time.monotonic() >= self._next_clock_set:
+            self._next_clock_set = time.monotonic() + CLOCK_SET_EVERY_S
+            await self._set_clock(now, skew)
+        return skew
+
+    @staticmethod
+    def _farm_wall_clock() -> datetime:
+        zone = ZoneInfo(os.getenv("FARM_TIMEZONE", "Africa/Tripoli"))
+        return datetime.now(zone).replace(tzinfo=None, microsecond=0)
+
+    async def _set_clock(self, now: datetime, skew: int) -> None:
+        clock = self.map.get("clock")
+        if not clock:
+            return
+        try:
+            await self.client.write_registers(
+                int(clock["base"]),
+                [now.year, now.month, now.day, now.hour, now.minute, now.second],
+            )
+            seq_addr = int(clock["seq"]["hr"])
+            seq = (await self.client.read_holding(seq_addr, 1))[0]
+            # last: the PLC takes the time when this changes
+            await self.client.write_register(seq_addr, seq % 30000 + 1)
+            print(f"[MODBUS] PLC clock was {skew:+d} s off farm time: set")
+        except Exception as exc:  # the next check tries again; the API raises ALM-051
+            print(f"[MODBUS] clock write failed: {type(exc).__name__}")
 
     # ── fallback program (G7/G5) ───────────────────────────
 

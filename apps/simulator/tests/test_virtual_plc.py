@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 
 from src.adapter import Layout
@@ -230,6 +231,35 @@ def test_hmi_stop_all_is_counted_and_reaches_the_gateway():
             assert (await mode())["hmi_stop_all_count"] == 0
             plc.press_hmi_stop_all()
             assert (await mode())["hmi_stop_all_count"] == 1
+        finally:
+            await _close(plc, gw, loop)
+
+    asyncio.run(go())
+
+
+def test_gateway_sets_a_wrong_plc_clock(monkeypatch):
+    async def go():
+        e, m = _setup()
+        plc, gw, loop = await _wire(e, m)
+        try:
+            monkeypatch.setattr(
+                type(gw),
+                "_farm_wall_clock",
+                staticmethod(lambda: datetime(2026, 11, 27, 3, 20, 30)),
+            )
+
+            async def mode():
+                out = {p["device_key"]: p["state_json"] for p in await gw.read_state()}
+                return out["system_mode"]
+
+            # the virtual PLC publishes no clock: nothing to compare or set
+            assert "plc_clock_skew_sec" not in await mode()
+            assert plc.server.regs[314] == 0
+            plc.server.regs[16:20] = [2026, 1127, 20, 30]  # 00:20:30, three hours behind
+            assert (await mode())["plc_clock_skew_sec"] == -10800
+            assert plc.server.regs[308:315] == [2026, 11, 27, 3, 20, 30, 1]
+            await mode()  # still wrong, but not written again straight away
+            assert plc.server.regs[314] == 1
         finally:
             await _close(plc, gw, loop)
 

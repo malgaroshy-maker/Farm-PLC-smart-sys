@@ -56,6 +56,24 @@
     },
     "hmi_stop_all_count": {
       "hr": 15
+    },
+    "clock_year": {
+      "hr": 16
+    },
+    "clock_month_day": {
+      "hr": 17
+    },
+    "clock_hour_minute": {
+      "hr": 18
+    },
+    "clock_second": {
+      "hr": 19
+    }
+  },
+  "clock": {
+    "base": 308,
+    "seq": {
+      "hr": 314
     }
   },
   "zones": {

@@ -177,6 +177,10 @@ class SimulatorEngine:
 
     def begin_stop(self, zid: str) -> None:
         z = self.state.zones.get(zid)
+        if z and z.state == "interrupted":  # a stop during a power cut cancels the resume
+            self.interrupted.pop(zid, None)
+            z.state, z.run_source = "off", None
+            return
         if z and z.state in ACTIVE_STATES and z.state != "stopping":
             z.state = "stopping"
             self.phase_t[zid] = 0.0

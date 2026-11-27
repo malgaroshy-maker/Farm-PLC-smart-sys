@@ -36,7 +36,7 @@ from ..state import utcnow
 from . import plc_common as pc
 
 COMMAND_TYPES = {"start_zone": 1, "stop_zone": 2, "stop_all": 3, "reset_alarm": 4}
-NOT_NODES = {"index"}  # tag-map keys that are settings, not node ids
+NOT_NODES = {"index", "config_id"}  # tag-map keys that are settings, not node ids
 ALARM_WORDS = ("alarm_word0", "alarm_word1", "alarm_word2")
 
 
@@ -87,6 +87,11 @@ class OpcUaAdapter:
         await self.client.connect()
         for path, node_id in self._all_tags():
             self._nodes[path] = self.client.get_node(node_id)
+        try:
+            await self._check_zone_ids()
+        except Exception:
+            await self.client.disconnect()
+            raise
         missing = [
             z["id"]
             for z in layout.zones
@@ -95,6 +100,22 @@ class OpcUaAdapter:
         if missing:
             print(f"[OPCUA] zones without tags (not controllable): {', '.join(missing)}")
         self._ok = True
+
+    async def _check_zone_ids(self) -> None:
+        """Refuse a tag map whose nodes belong to another zone.
+
+        A map that is one array element off would send commands to the right zone and show the
+        state of its neighbour. Each zone's `config_id` node must hold that zone's own id.
+        """
+        for zid, tags in self.tagmap["zones"].items():
+            if "config_id" not in tags:
+                continue
+            actual = await self.client.get_node(tags["config_id"]).read_value()
+            if actual != zid:
+                raise TagMapError(
+                    f"tag map points {zid} at the PLC data of {actual!r}: "
+                    "check the array indices in the node ids"
+                )
 
     async def stop(self) -> None:
         if self.client is not None:
