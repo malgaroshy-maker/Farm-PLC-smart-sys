@@ -9,8 +9,10 @@ from pydantic_ai.exceptions import ModelAPIError
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.function import FunctionModel
+from test_ai_advisor import _build_forecast_day
 
 from app.config import settings
+from app.core.clock import clock
 from app.database import async_session_factory, engine
 from app.services.ai.agent import (
     alarm_agent,
@@ -31,6 +33,7 @@ from app.services.ai.tools import (
     get_schedule,
     get_zone_state,
 )
+from app.services.weather import OPEN_METEO_URL, weather_service
 
 # Strict requirement: Disable live external model requests in tests
 models.ALLOW_MODEL_REQUESTS = False
@@ -264,10 +267,19 @@ async def test_tools_direct_execution_with_seeded_data(client):
     assert "programs" in s_res
     assert "schedules" in s_res
 
-    # 6. get_forecast
+    # 6. get_forecast: no live weather service in tests
+    weather_service.reset_cache()
+    with respx.mock() as weather_api:
+        weather_api.get(url__startswith=OPEN_METEO_URL).respond(503)
+        down = await get_forecast(ctx)
+    assert down == {"available": False, "source": None, "days": []}
+
+    weather_service._cached_forecast = _build_forecast_day(
+        temp_max=31.0, precip_mm=0.0, precip_prob=5.0, et0=4.2
+    )
+    weather_service._cache_time = clock.farm_now()
     f_res = await get_forecast(ctx)
-    assert isinstance(f_res, dict)
-    assert "today_max_temp_c" in f_res or "error" in f_res
+    assert f_res["available"] is True and f_res["today_max_temp_c"] == 31.0
     await engine.dispose()
 
 
