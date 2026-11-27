@@ -53,6 +53,9 @@
     },
     "refilling": {
       "hr": 14
+    },
+    "hmi_stop_all_count": {
+      "hr": 15
     }
   },
   "zones": {

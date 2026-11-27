@@ -372,9 +372,10 @@ async def test_api_restart_after_downtime_marks_missed_not_fired(client):
 
 
 @pytest.mark.asyncio
-async def test_stop_all_ends_the_running_program(client):
+@pytest.mark.parametrize("source", ["app", "plc_hmi"])
+async def test_stop_all_ends_the_running_program(client, source):
     """Safety: after STOP ALL the next step of a program must not start by itself."""
-    push_state(client)
+    push_state(client, system_extra={"hmi_stop_all_count": 4})
     admin = login(client, "admin")
     resp = client.post(
         "/api/v1/schedules",
@@ -414,13 +415,16 @@ async def test_stop_all_ends_the_running_program(client):
         await tick(1)
         assert await program_starts() == ["zone_enab"]
 
-        stop = client.post(
-            "/api/v1/commands",
-            headers=admin,
-            json={"command_type": "stop_all", "target_type": "system"},
-        )
-        assert stop.status_code == 201, stop.text
-        push_state(client)  # every zone is off
+        if source == "app":
+            stop = client.post(
+                "/api/v1/commands",
+                headers=admin,
+                json={"command_type": "stop_all", "target_type": "system"},
+            )
+            assert stop.status_code == 201, stop.text
+            push_state(client, system_extra={"hmi_stop_all_count": 4})  # every zone is off
+        else:  # the PLC's HMI: the app only sees the count move and the zones stop
+            push_state(client, system_extra={"hmi_stop_all_count": 5})
         await tick(2)
         assert await program_starts() == ["zone_enab"]
         async with async_session_factory() as db:

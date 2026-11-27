@@ -72,6 +72,7 @@ NON_RETAIN
       TankCritical : Bool;
       ZonesActive : Int;
       Heartbeat : Int;                     // PLC -> app, +1 per second
+      HmiStopAllCount : Int;               // PLC -> app, +1 per Stop all on the HMI (0 = none since restart)
       Tick1s : Bool;                       // one-cycle pulse each second
       AnalogFault : Bool;
    END_VAR

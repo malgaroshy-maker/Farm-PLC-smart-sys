@@ -87,6 +87,13 @@ class VirtualPlc:
             self.sync()
             await asyncio.sleep(period)
 
+    def press_hmi_stop_all(self) -> None:
+        """The HMI's Stop all button, like FB_Link: stop the zones and count the press."""
+        self.engine.process_commands(
+            [{"id": f"hmi-{self.server.regs[15] + 1}", "command_type": "stop_all", "target_id": ""}]
+        )
+        self.server.regs[15] = self.server.regs[15] % 29999 + 1
+
     # ── one scan ───────────────────────────────────────────
 
     def sync(self) -> None:

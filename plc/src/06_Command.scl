@@ -117,6 +117,14 @@ BEGIN
    "DB_HMI".BtnStop := FALSE;
    "DB_HMI".BtnStopAll := FALSE;
    "DB_HMI".BtnReset := FALSE;
+   // tell the app, so that it ends the program it is running instead of starting the next zone.
+   // Only the HMI's button counts: the app already knows about its own stop_all.
+   IF #cmd = 3 THEN
+      "DB_Farm".HmiStopAllCount := "DB_Farm".HmiStopAllCount + 1;
+      IF "DB_Farm".HmiStopAllCount >= 30000 THEN
+         "DB_Farm".HmiStopAllCount := 1;
+      END_IF;
+   END_IF;
    IF #cmd <> 0 THEN
       "DB_Cmd".Hmi.CmdType := #cmd;
       "DB_Cmd".Hmi.Target := "DB_HMI".SelectedZone;

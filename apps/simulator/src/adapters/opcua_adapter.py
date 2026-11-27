@@ -165,6 +165,9 @@ class OpcUaAdapter:
         for opt in ("well_level_m", "filter_dp_bar"):
             if f"system.{opt}" in v:
                 stats[opt] = float(sys(opt))
+        mode_extra = {}
+        if "system.hmi_stop_all_count" in v:
+            mode_extra["hmi_stop_all_count"] = int(sys("hmi_stop_all_count"))
         out = [
             item(
                 "system_mode",
@@ -173,6 +176,7 @@ class OpcUaAdapter:
                     "estop": bool(sys("estop", False)),
                     "power_ok": bool(sys("power_ok", True)),
                     "fallback_active": bool(sys("fallback_active", False)),
+                    **mode_extra,
                 },
             ),
             item("simulation_stats", stats),

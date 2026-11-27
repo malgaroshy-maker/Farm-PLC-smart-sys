@@ -190,6 +190,9 @@ class ModbusAdapter:
         for opt in ("well_level_m", "filter_dp_bar"):
             if f"system.{opt}" in v:
                 stats[opt] = sys(opt)
+        mode_extra = {}
+        if "system.hmi_stop_all_count" in v:
+            mode_extra["hmi_stop_all_count"] = int(sys("hmi_stop_all_count"))
         out = [
             item(
                 "system_mode",
@@ -198,6 +201,7 @@ class ModbusAdapter:
                     "estop": bool(sys("estop")),
                     "power_ok": bool(sys("power_ok", 1)),
                     "fallback_active": bool(sys("fallback_active")),
+                    **mode_extra,
                 },
             ),
             item("simulation_stats", stats),

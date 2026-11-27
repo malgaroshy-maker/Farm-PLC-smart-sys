@@ -214,3 +214,23 @@ def test_comms_drop_cuts_the_plc_link():
             await _close(plc, gw, loop)
 
     asyncio.run(go())
+
+
+def test_hmi_stop_all_is_counted_and_reaches_the_gateway():
+    async def go():
+        e, m = _setup()
+        plc, gw, loop = await _wire(e, m)
+        try:
+
+            async def mode():
+                await asyncio.sleep(0.1)
+                out = {p["device_key"]: p["state_json"] for p in await gw.read_state()}
+                return out["system_mode"]
+
+            assert (await mode())["hmi_stop_all_count"] == 0
+            plc.press_hmi_stop_all()
+            assert (await mode())["hmi_stop_all_count"] == 1
+        finally:
+            await _close(plc, gw, loop)
+
+    asyncio.run(go())

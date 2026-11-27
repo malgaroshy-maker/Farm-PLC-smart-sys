@@ -13,6 +13,7 @@
     "well_level_m": "ns=3;s=\"DB_Farm\".\"WellLevelM\"",
     "filter_dp_bar": "ns=3;s=\"DB_Farm\".\"FilterDpBar\"",
     "refilling": "ns=3;s=\"DB_Farm\".\"Refilling\"",
+    "hmi_stop_all_count": "ns=3;s=\"DB_Farm\".\"HmiStopAllCount\"",
     "alarm_word0": "ns=3;s=\"DB_Alarms\".\"Word0\"",
     "alarm_word1": "ns=3;s=\"DB_Alarms\".\"Word1\"",
     "alarm_word2": "ns=3;s=\"DB_Alarms\".\"Word2\""

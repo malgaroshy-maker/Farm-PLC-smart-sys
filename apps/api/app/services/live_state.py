@@ -199,6 +199,24 @@ async def upsert_snapshots(
     return accepted
 
 
+def hmi_stop_all_pressed(before: dict[str, Snapshot], payloads: list[StateSyncPayload]) -> bool:
+    """True when the controller's count of HMI Stop all presses has moved since we last saw it.
+
+    The count restarts at 0 with the PLC. The first count we ever see only sets the baseline.
+    A press made while the app was away is still noticed, because the last count is stored.
+    """
+    previous = before.get("system_mode")
+    seen = previous.state.get("hmi_stop_all_count") if previous else None
+    if seen is None:
+        return False
+    return any(
+        p.device_key == "system_mode"
+        and p.state_json.get("hmi_stop_all_count") not in (None, 0, seen)
+        and as_utc(p.updated_at) > previous.updated_at
+        for p in payloads
+    )
+
+
 def diff_events(
     before: dict[str, Snapshot], payloads: list[StateSyncPayload]
 ) -> list[tuple[str, dict[str, Any]]]:

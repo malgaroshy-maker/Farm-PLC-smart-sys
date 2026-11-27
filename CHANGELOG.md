@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### HMI Stop all ends the running program (2026-11-27)
+
+- The PLC counts presses of the HMI's **Stop all** (`DB_Farm.HmiStopAllCount`, Modbus holding register 15, OPC UA `HmiStopAllCount`). When the count moves, the app records a STOP ALL from the PLC: the running program ends and starts the controller has not finished are cancelled.
+- Tested in PLCSIM Advanced over Modbus, along with the zone limit across two PLC command channels (11 of 11 checks). TIA compiles all 32 blocks with 0 errors and 0 warnings.
+
 ### Safety and security audit fixes (2026-11-27)
 
 - **STOP ALL now ends a running irrigation program.** Before this fix the program started its next zone moments later.

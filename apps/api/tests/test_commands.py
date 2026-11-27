@@ -254,3 +254,52 @@ def test_simultaneous_starts_respect_the_zone_limit(client):
 
     responses = client.portal.call(start_all)
     assert sorted(r.status_code for r in responses) == [201, 409, 409, 409]
+
+
+def _stops_recorded(client, headers):
+    rows = client.get("/api/v1/commands?limit=50", headers=headers).json()
+    return [c for c in rows if c["command_type"] == "stop_all"]
+
+
+def test_hmi_stop_all_is_recorded_once_and_cancels_a_waiting_start(client):
+    push_state(client, system_extra={"hmi_stop_all_count": 0})
+    headers = login(client, "operator")
+    started = start(client, headers)
+    assert started.status_code == 201
+
+    push_state(client, system_extra={"hmi_stop_all_count": 1})
+    push_state(client, system_extra={"hmi_stop_all_count": 1})  # the same press, seen again
+
+    assert [(c["actor_type"], c["status"]) for c in _stops_recorded(client, headers)] == [
+        ("plc", "completed")
+    ]
+    # the start the controller had not picked up must never reach it
+    assert client.get("/api/v1/commands/pending", headers=SIM).json() == []
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        [7],  # first sight of the count is only the baseline
+        [7, 7],
+        [7, 0],  # PLC restarted
+        [None, None],  # a controller without an HMI
+    ],
+)
+def test_counts_that_are_not_a_new_press_stop_nothing(client, counts):
+    for count in counts:
+        push_state(client, system_extra={} if count is None else {"hmi_stop_all_count": count})
+    assert _stops_recorded(client, login(client, "operator")) == []
+
+
+def test_press_after_a_plc_restart_is_noticed(client):
+    for count in (1, 0, 1):
+        push_state(client, system_extra={"hmi_stop_all_count": count})
+    assert len(_stops_recorded(client, login(client, "operator"))) == 1
+
+
+def test_an_old_replayed_snapshot_is_not_a_press(client):
+    earlier = (utcnow() - timedelta(seconds=3)).isoformat()
+    push_state(client, system_extra={"hmi_stop_all_count": 5})
+    push_state(client, system_extra={"hmi_stop_all_count": 4}, updated_at=earlier)
+    assert _stops_recorded(client, login(client, "operator")) == []

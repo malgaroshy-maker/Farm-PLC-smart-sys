@@ -120,6 +120,7 @@ BEGIN
       "DB_Modbus".HR[12] := "DB_Alarms".Word2;
       "DB_Modbus".HR[13] := "FC_B"("DB_Farm".LinkOk);
       "DB_Modbus".HR[14] := "FC_B"("DB_Farm".Refilling);
+      "DB_Modbus".HR[15] := INT_TO_WORD("DB_Farm".HmiStopAllCount);
    END_REGION
 
    REGION Zones 100-259

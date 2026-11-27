@@ -98,7 +98,7 @@ The HMI never writes the command channel itself. It sets values in `DB_HMI`; the
 | `DB_HMI.StartDurationMin` | the duration entry | minutes for a start (the PLC caps it at the zone's maximum) |
 | `DB_HMI.BtnStart` | Start button, **SetBit** | start the selected zone |
 | `DB_HMI.BtnStop` | Stop button | stop the selected zone |
-| `DB_HMI.BtnStopAll` | Stop all button | stop every zone the app owns |
+| `DB_HMI.BtnStopAll` | Stop all button | stop every zone the app owns; the PLC also counts the press (`DB_Farm.HmiStopAllCount`) so the app ends its running program |
 | `DB_HMI.BtnReset` | Reset alarms button | reset the PLC's latched alarms |
 | `DB_HMI.ResultOk`, `ResultText`, `ResultSeq` | read only | the PLC's answer. `ResultSeq` changes with each answer. Show `ResultText` for 4 seconds (empty when accepted, else a short reason such as `pump_unavailable`) |
 

@@ -76,6 +76,12 @@ The first compile found three things the static checker can't catch, all fixed i
 
 The helper `tools/tia/TiaTool.exe` (built from `tools/tia/TiaTool.cs`) can add the CPU and modules through Openness (`add-device`, `plug`, `project-set`), once the licence allows it.
 
+**Bench check (2026-11-27), PLCSIM Advanced over Modbus, 11 of 11:**
+- Pressing HMI **Stop all** (by writing `DB_HMI.BtnStopAll`) during a two-step program stopped the first zone, the app recorded a PLC stop and cancelled the program, and the second zone never started. The app's own STOP ALL left the HMI count unchanged.
+- Starts for two different zones sent together on the HMI and OPC UA channels started exactly one zone in 6 of 6 trials. The test cannot force both into the same scan.
+- Only the changed blocks were imported (`DB_Farm`, `03`, `06`, `11`). **Do not re-import `02_Data.db` whole into the bench project:** it resets `DB_Config` and with it the approved flow limits.
+- **After a download that reinitializes data blocks, restart the CPU (STOP, then RUN).** Modbus port 502 stayed closed with `DB_Modbus.ServerStatus` = `16#80A3` until the restart, most likely because the old connection was still held.
+
 ## Load approved zone flow limits
 
 Generate a separate `02_Config.db` in a staging folder. The exporter reads the app's existing zone fields by PLC zone ID and validates the bands against the mainline meter range. It leaves the farm database and checked-in PLC defaults untouched.

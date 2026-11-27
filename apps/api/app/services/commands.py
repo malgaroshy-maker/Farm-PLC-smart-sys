@@ -271,7 +271,7 @@ async def _supersede_starts(db: AsyncSession, req: CommandCreate) -> list[Comman
 _submit_locks: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = WeakKeyDictionary()
 
 
-def _submit_lock() -> asyncio.Lock:
+def command_turn() -> asyncio.Lock:
     return _submit_locks.setdefault(asyncio.get_running_loop(), asyncio.Lock())
 
 
@@ -295,7 +295,7 @@ async def submit_command(
     zone = await _validate_structure(db, req)
     # release any SQLite write lock the caller holds before waiting for our turn
     await db.commit()
-    async with _submit_lock():
+    async with command_turn():
         if program_run_since and await stopped_all_since(db, program_run_since):
             raise ProgramStopped
         return await _check_and_save(db, req, actor, zone)
@@ -362,6 +362,38 @@ async def _check_and_save(
     if rejection:
         raise CommandRejected(rejection.code, rejection.message, cmd.id)
     return cmd
+
+
+async def record_controller_stop_all(db: AsyncSession) -> list[Command]:
+    """Stop all pressed on the PLC's own HMI: record it as a STOP ALL that is already done.
+
+    From here it works like the app's own: it ends the running program and cancels starts the
+    controller has not finished, so none of them can restart a zone. The caller holds
+    command_turn() and commits. Returns the commands to broadcast.
+    """
+    cmd = Command(
+        id=uuid4().hex,
+        command_type="stop_all",
+        target_type="system",
+        actor_type="plc",
+        status="completed",
+        requested_at=clock.farm_now(),
+        requested_at_real=utcnow(),
+    )
+    cmd.acknowledged_at = cmd.completed_at = cmd.requested_at
+    superseded = await _supersede_starts(
+        db, CommandCreate(command_type="stop_all", target_type="system")
+    )
+    db.add(cmd)
+    await log_event(
+        db,
+        "command.completed",
+        "system",
+        None,
+        actor_type="plc",
+        payload={"command_id": cmd.id, "command_type": "stop_all", "source": "hmi"},
+    )
+    return [*superseded, cmd]
 
 
 async def sync_command(db: AsyncSession, command_id: str, update: CommandSyncUpdate) -> Command:
